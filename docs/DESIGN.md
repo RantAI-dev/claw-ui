@@ -120,17 +120,27 @@ Base: `${RANTAICLAW_GATEWAY_URL}/api/v1`. Auth: `Authorization: Bearer <token>` 
    fresh chat captures its id mid-stream and continues seamlessly. Resuming a session continues it.
 2. **Session delete** ✅ — `DELETE /api/v1/sessions/{id}` + `SessionStore::delete_session`
    (transactional; detaches child sessions, FTS kept in sync). Wired to the trash action in the UI.
-3. **Cron (read-only)** ✅ — `GET /api/v1/cron` lists scheduled jobs; surfaced in the Ops **Cron** tab.
+3. **Cron** ✅ — `GET /api/v1/cron` + full CRUD: `POST /cron` (agent jobs), `PUT /cron/{id}`
+   (incl. enable/disable), `DELETE /cron/{id}`, `POST /cron/{id}/run` (`execute_job_now`).
+4. **Skills enable/disable** ✅ — `PUT /api/v1/skills/{name}/enabled`; `skills_list` now reports
+   `enabled`/`active`/`reasons` and lists disabled skills too.
+5. **Config view + edit** ✅ — `GET /api/v1/config` (secrets redacted) + `PUT /api/v1/config/model`.
+6. **Secrets** ✅ — `GET /api/v1/secrets` (presence only) + `PUT /api/v1/secrets` (active provider
+   key, encrypted at rest via `Config::save()`, never echoed).
+7. **Personality** ✅ — `PUT /api/v1/personality` wired into the Persona panel.
+8. **Auth** ✅ (frontend) — optional password gate (`src/proxy.ts` + signed HttpOnly cookie),
+   enabled via `RANTAICLAW_UI_PASSWORD`.
 
-**Deliberately deferred (each is large + security-sensitive; rushing them ≠ prod-ready):**
+This brings the management surface to **minimal parity with the Hermes web UI**.
 
-- **Usage/cost aggregation** — RantaiClaw does not yet compute or persist per-turn token/cost
-  (`empty_usage` returns zeros; `CostTracker` is unused). A `/usage` endpoint needs real token
-  accounting wired out of provider responses first. The UI shows token/cost where the SSE `usage`
-  frame provides it (currently zero until that lands).
-- **Mutating ops** — config editor, cron create/edit/delete, skill enable/disable, secrets
-  management. These need new write endpoints + a careful auth/audit story; tracked for a later pass.
-- Personality `PUT` exists in the API; the UI keeps it read-only for now.
+**Deliberately out of scope (backend-blocked or too heavy for "minimal"):**
+
+- **Usage/cost analytics** — RantaiClaw does not compute or persist per-turn token/cost
+  (`empty_usage` returns zeros; `CostTracker` is unused). Needs token accounting wired out of
+  provider responses first.
+- **Embedded PTY terminal** (Hermes's `/api/pty` xterm.js) — needs a WebSocket/PTY bridge.
+- **Chat polish** — file attachments, voice input, slash-command palette, logs viewer.
+- Cron over HTTP creates **agent** jobs only; shell jobs stay CLI-only (no arbitrary-command surface).
 
 ## 8. Security
 

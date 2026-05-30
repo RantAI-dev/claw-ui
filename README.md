@@ -15,8 +15,14 @@ OpenClaw-style ops panels.
 - **Chat** — streaming responses (SSE), **multi-turn** conversations, session
   history with resume / full-text search / rename / delete, inline tool-call cards, syntax-highlighted
   code blocks, regenerate, model/provider switching, Stop, and a context/details side panel.
-- **Ops** — dashboard with a live metric bar and panels: status & doctor checks, sessions, usage
-  insights, providers, channels, **cron jobs**, skills, memory browser, personality.
+- **Ops** — live metric bar + panels, most now **interactive**:
+  - status & doctor, sessions, usage, providers, channels, memory (read-only views)
+  - **Cron** — create agent jobs, enable/disable, run-now, delete
+  - **Skills** — enable/disable toggles
+  - **Config** — edit the default model + view full config (secrets redacted)
+  - **Secrets** — set the active provider key (encrypted at rest, never echoed)
+  - **Persona** — switch presets
+- **Auth** — optional password gate (signed HttpOnly cookie); set `RANTAICLAW_UI_PASSWORD` to enable.
 
 Hardened for self-hosting: server-side proxy (token never reaches the browser), CSP + security
 headers, standalone Docker image, health endpoint, graceful gateway-down handling.
