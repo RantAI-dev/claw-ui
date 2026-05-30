@@ -1,6 +1,7 @@
 // Client-side API — talks to the Next.js proxy at /api/rc/* (never the gateway directly).
 import type {
   ChannelsInfo,
+  ClawHubSkill,
   CronJob,
   CronSchedule,
   DoctorResult,
@@ -81,6 +82,23 @@ export const api = {
     rc<{ name: string; enabled: boolean }>(`skills/${encodeURIComponent(name)}/enabled`, {
       method: "PUT",
       body: JSON.stringify({ enabled }),
+    }),
+  // ClawHub registry — browse top-by-stars, or search with q. Goes via the Next
+  // /api/clawhub proxy (not the gateway).
+  clawhub: async (q?: string): Promise<{ items: ClawHubSkill[] }> => {
+    const res = await fetch(`/api/clawhub${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || d.error || "ClawHub error");
+    return d;
+  },
+  installSkill: (slug: string) =>
+    rc<{ slug: string; installed: boolean }>("skills/install", {
+      method: "POST",
+      body: JSON.stringify({ slug }),
+    }),
+  uninstallSkill: (name: string) =>
+    rc<{ name: string; removed: boolean }>(`skills/${encodeURIComponent(name)}`, {
+      method: "DELETE",
     }),
   config: () => rc<Record<string, unknown>>("config"),
   setConfigModel: (body: { provider?: string; model?: string; temperature?: number }) =>

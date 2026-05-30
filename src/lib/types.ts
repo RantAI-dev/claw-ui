@@ -70,6 +70,15 @@ export interface Skill {
   reasons?: string[];
 }
 
+export interface ClawHubSkill {
+  slug: string;
+  displayName: string;
+  summary: string;
+  stars?: number;
+  downloads?: number;
+  version?: string;
+}
+
 export interface SecretsInfo {
   provider: string;
   api_url: string | null;
