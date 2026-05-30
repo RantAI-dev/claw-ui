@@ -110,7 +110,9 @@ export function ChatScreen() {
   };
 
   const handleSend = (text: string) => {
-    setActiveId(null);
+    // Don't clear the highlight here — for a new chat the session id arrives via
+    // the `done` frame (synced by the effect); for an existing session the
+    // highlight should stay put through the turn.
     send(text);
   };
 

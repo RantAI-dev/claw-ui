@@ -23,6 +23,12 @@ export function useChat(opts: UseChatOptions) {
   const abortRef = React.useRef<AbortController | null>(null);
   const optsRef = React.useRef(opts);
   optsRef.current = opts;
+  // Always read the current session id at call time (not closure-captured), so
+  // a turn started right after `done` set a new id still continues the session.
+  const sessionIdRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   const patch = React.useCallback((id: string, fn: (m: ChatMessage) => ChatMessage) => {
     setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
@@ -93,7 +99,7 @@ export function useChat(opts: UseChatOptions) {
           model: optsRef.current.model,
           provider: optsRef.current.provider,
           temperature: optsRef.current.temperature,
-          session_id: sessionId ?? undefined,
+          session_id: sessionIdRef.current ?? undefined,
         },
         onEvent,
         controller.signal,
@@ -102,7 +108,7 @@ export function useChat(opts: UseChatOptions) {
       setIsStreaming(false);
       abortRef.current = null;
     },
-    [patch, sessionId],
+    [patch],
   );
 
   const send = React.useCallback(
@@ -118,18 +124,16 @@ export function useChat(opts: UseChatOptions) {
   /** Re-run the most recent user turn, replacing the last assistant reply. */
   const regenerate = React.useCallback(async () => {
     if (isStreaming) return;
-    let lastUser: ChatMessage | undefined;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    // Drop everything after the last user message (keyed on the object ref so
+    // it's correct even if `prev` differs from this render's snapshot).
     setMessages((prev) => {
-      const lastUserIdx = [...prev].reverse().findIndex((m) => m.role === "user");
-      if (lastUserIdx === -1) return prev;
-      const idx = prev.length - 1 - lastUserIdx;
-      lastUser = prev[idx];
-      return prev.slice(0, idx + 1); // drop everything after the last user message
+      const i = prev.lastIndexOf(lastUser);
+      return i === -1 ? prev : prev.slice(0, i + 1);
     });
-    // allow state to settle, then re-run
-    await Promise.resolve();
-    if (lastUser) await runAssistant(lastUser.content);
-  }, [isStreaming, runAssistant]);
+    await runAssistant(lastUser.content);
+  }, [isStreaming, messages, runAssistant]);
 
   const stop = React.useCallback(() => abortRef.current?.abort(), []);
 

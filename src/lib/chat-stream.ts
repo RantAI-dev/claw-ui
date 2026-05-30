@@ -50,11 +50,23 @@ export async function streamChat(
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
-      // SSE frames are separated by a blank line.
-      let sep: number;
-      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      // SSE frames are separated by a blank line — tolerate both LF and CRLF
+      // (an intermediary proxy may rewrite line endings).
+      while (true) {
+        const lf = buffer.indexOf("\n\n");
+        const crlf = buffer.indexOf("\r\n\r\n");
+        if (lf === -1 && crlf === -1) break;
+        let sep: number;
+        let stride: number;
+        if (crlf === -1 || (lf !== -1 && lf < crlf)) {
+          sep = lf;
+          stride = 2;
+        } else {
+          sep = crlf;
+          stride = 4;
+        }
         const frame = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
+        buffer = buffer.slice(sep + stride);
         const dataLine = frame
           .split("\n")
           .filter((l) => l.startsWith("data:"))
