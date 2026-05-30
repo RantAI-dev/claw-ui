@@ -102,10 +102,6 @@ export function Composer({
             )}
           </div>
         </div>
-        <p className="mt-1.5 px-1 text-center text-[10px] text-muted-foreground">
-          v1 sends each message as a fresh turn — the agent does not yet retain earlier turns of
-          this thread.
-        </p>
       </div>
     </div>
   );

@@ -7,6 +7,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function proxy(req: NextRequest, path: string[]) {
+  // Refuse traversal segments so the proxy can never reach gateway endpoints
+  // outside /api/v1/* (e.g. /webhook, /pair) by escaping the prefix.
+  if (path.some((seg) => seg === "." || seg === ".." || seg === "")) {
+    return Response.json({ error: "invalid_path" }, { status: 400 });
+  }
   const suffix = path.join("/");
   const search = req.nextUrl.search || "";
   const url = `${GATEWAY_URL}/api/v1/${suffix}${search}`;
