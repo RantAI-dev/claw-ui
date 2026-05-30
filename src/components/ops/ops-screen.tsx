@@ -12,6 +12,8 @@ import {
   UserCog,
   Circle,
   CalendarClock,
+  SlidersHorizontal,
+  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -26,6 +28,8 @@ import {
   MemoryPanel,
   PersonaPanel,
   CronPanel,
+  ConfigPanel,
+  SecretsPanel,
 } from "./panels";
 
 function MetricBar() {
@@ -66,6 +70,8 @@ const TABS = [
   { value: "skills", label: "Skills", icon: Wrench, el: <SkillsPanel /> },
   { value: "memory", label: "Memory", icon: Brain, el: <MemoryPanel /> },
   { value: "persona", label: "Persona", icon: UserCog, el: <PersonaPanel /> },
+  { value: "config", label: "Config", icon: SlidersHorizontal, el: <ConfigPanel /> },
+  { value: "secrets", label: "Secrets", icon: KeyRound, el: <SecretsPanel /> },
 ];
 
 export function OpsScreen() {

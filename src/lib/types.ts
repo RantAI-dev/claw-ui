@@ -65,7 +65,22 @@ export interface Skill {
   description: string | null;
   tags: string[];
   tools: string[];
+  enabled?: boolean;
+  active?: boolean;
+  reasons?: string[];
 }
+
+export interface SecretsInfo {
+  provider: string;
+  api_url: string | null;
+  api_key_present: boolean;
+  encrypt_at_rest: boolean;
+}
+
+export type CronSchedule =
+  | { kind: "cron"; expr: string; tz?: string | null }
+  | { kind: "at"; at: string }
+  | { kind: "every"; every_ms: number };
 
 export interface MemoryEntry {
   key: string;

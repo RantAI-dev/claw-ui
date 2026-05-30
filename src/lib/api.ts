@@ -2,6 +2,7 @@
 import type {
   ChannelsInfo,
   CronJob,
+  CronSchedule,
   DoctorResult,
   Insights,
   MemoryEntry,
@@ -9,6 +10,7 @@ import type {
   Personality,
   ProviderInfo,
   SearchResult,
+  SecretsInfo,
   SessionDetail,
   SessionSummary,
   Skill,
@@ -63,4 +65,33 @@ export const api = {
   channels: () => rc<ChannelsInfo>("channels"),
   providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   cron: () => rc<{ jobs: CronJob[]; count: number }>("cron"),
+  createCron: (body: { schedule: CronSchedule; prompt: string; name?: string; model?: string }) =>
+    rc<CronJob>("cron", { method: "POST", body: JSON.stringify(body) }),
+  updateCron: (
+    id: string,
+    body: { enabled?: boolean; name?: string; prompt?: string; model?: string; schedule?: CronSchedule },
+  ) => rc<CronJob>(`cron/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteCron: (id: string) =>
+    rc<{ id: string; deleted: boolean }>(`cron/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  runCron: (id: string) =>
+    rc<{ id: string; success: boolean; output: string }>(`cron/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+    }),
+  setSkillEnabled: (name: string, enabled: boolean) =>
+    rc<{ name: string; enabled: boolean }>(`skills/${encodeURIComponent(name)}/enabled`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }),
+  config: () => rc<Record<string, unknown>>("config"),
+  setConfigModel: (body: { provider?: string; model?: string; temperature?: number }) =>
+    rc<{ default_provider: string | null; default_model: string | null; default_temperature: number }>(
+      "config/model",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  secrets: () => rc<SecretsInfo>("secrets"),
+  setSecrets: (body: { api_key?: string; api_url?: string }) =>
+    rc<{ ok: boolean; api_key_present: boolean }>("secrets", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
 };
