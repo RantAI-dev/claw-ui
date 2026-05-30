@@ -23,8 +23,17 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+// Hosts/IPs allowed to reach the dev server for HMR/assets when accessing it
+// over the LAN / Tailscale (not just localhost). Set RANTAICLAW_UI_DEV_ORIGINS
+// to a comma-separated list in .env.local. Dev-only; ignored in production.
+const devOrigins = (process.env.RANTAICLAW_UI_DEV_ORIGINS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const nextConfig = {
   reactStrictMode: true,
+  ...(devOrigins.length ? { allowedDevOrigins: devOrigins } : {}),
   // Lean container image: bundle a minimal standalone server.
   output: "standalone",
   // This app lives inside the RantAI-Agents monorepo tree but is its own project.
