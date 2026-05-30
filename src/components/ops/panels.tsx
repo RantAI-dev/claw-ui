@@ -4,6 +4,7 @@ import * as React from "react";
 import { RefreshCw, Plus, Play, Trash2, Power, Loader2, KeyRound, Save, Eye, EyeOff } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
+import { modelsForProvider, isModelLikelyValid } from "@/lib/models";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -168,7 +169,9 @@ export function UsagePanel() {
 export function ProvidersPanel() {
   const catalog = useAsync(() => api.providers(), []);
   const secrets = useAsync(() => api.secrets(), []);
+  const info = useAsync(() => api.status(), []);
   const [provider, setProvider] = React.useState("");
+  const [model, setModel] = React.useState("");
   const [key, setKey] = React.useState("");
   const [url, setUrl] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -177,20 +180,40 @@ export function ProvidersPanel() {
     if (secrets.data?.provider) setProvider(secrets.data.provider);
     if (secrets.data?.api_url) setUrl(secrets.data.api_url);
   }, [secrets.data?.provider, secrets.data?.api_url]);
+  React.useEffect(() => {
+    if (info.data?.model) setModel(info.data.model);
+  }, [info.data?.model]);
 
   const active = secrets.data?.provider;
   const keyPresent = secrets.data?.api_key_present;
 
+  // Switching provider: if the current model isn't valid for it, suggest the first known one.
+  const changeProvider = (next: string) => {
+    setProvider(next);
+    const known = modelsForProvider(next);
+    if (known.length && !known.includes(model)) setModel(known[0]);
+  };
+
+  const modelMismatch = !!provider && !isModelLikelyValid(provider, model);
+
   const save = async () => {
     setBusy(true);
     try {
-      if (provider && provider !== active) await api.setConfigModel({ provider });
+      const providerChanged = provider && provider !== active;
+      const modelChanged = model && model !== info.data?.model;
+      if (providerChanged || modelChanged) {
+        await api.setConfigModel({
+          provider: providerChanged ? provider : undefined,
+          model: model || undefined,
+        });
+      }
       if (key.trim() || url.trim()) {
         await api.setSecrets({ api_key: key.trim() || undefined, api_url: url.trim() || undefined });
       }
-      toast.success(`Saved — active provider: ${provider || "(unchanged)"}`);
+      toast.success(`Saved — ${provider || active} · ${model || "model unchanged"}`);
       setKey("");
       secrets.refresh();
+      info.refresh();
     } catch (e) {
       toast.error(`Save failed: ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -219,7 +242,7 @@ export function ProvidersPanel() {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <select
             value={provider}
-            onChange={(e) => setProvider(e.target.value)}
+            onChange={(e) => changeProvider(e.target.value)}
             className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
           >
             <option value="" disabled>Choose provider…</option>
@@ -230,12 +253,32 @@ export function ProvidersPanel() {
             ))}
           </select>
           <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="API base URL (optional)"
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            list="provider-model-list"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="default model"
+            className={cn(
+              "h-9 rounded-md border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              modelMismatch ? "border-warning" : "border-border",
+            )}
           />
+          <datalist id="provider-model-list">
+            {modelsForProvider(provider).map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
         </div>
+        {modelMismatch && (
+          <p className="text-[10px] text-warning">
+            “{model}” may not be a {provider} model — pick one from the dropdown, or type the right id.
+          </p>
+        )}
+        <input
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="API base URL (optional)"
+          className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
         <input
           value={key}
           onChange={(e) => setKey(e.target.value)}

@@ -4,6 +4,7 @@ import * as React from "react";
 import { ArrowUp, Square } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { modelsForProvider } from "@/lib/models";
 import type { ProviderInfo } from "@/lib/types";
 
 export interface ComposerProps {
@@ -85,12 +86,18 @@ export function Composer({
               ))}
             </select>
             <input
+              list="composer-model-list"
               value={model}
               onChange={(e) => onModelChange(e.target.value)}
               placeholder={defaultModel ? `${defaultModel} (default)` : "model override"}
               className="h-7 min-w-0 flex-1 rounded-md border border-border bg-background px-2 font-mono text-xs text-muted-foreground outline-none focus-visible:ring-1 focus-visible:ring-ring"
               title="Model override"
             />
+            <datalist id="composer-model-list">
+              {modelsForProvider(provider || defaultProvider).map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
             {isStreaming ? (
               <Button size="icon-sm" variant="destructive" onClick={onStop} title="Stop">
                 <Square className="size-3.5" />
