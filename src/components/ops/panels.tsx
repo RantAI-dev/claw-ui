@@ -7,7 +7,17 @@ import { useAsync } from "@/hooks/use-async";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { PanelFrame, StatCard, KeyVal, SeverityBadge } from "./shared";
+
+const PERSONA_PRESETS = [
+  { value: "default", label: "Default" },
+  { value: "concise_pro", label: "Concise Pro" },
+  { value: "friendly_companion", label: "Friendly Companion" },
+  { value: "research_analyst", label: "Research Analyst" },
+  { value: "executive_assistant", label: "Executive Assistant" },
+];
 
 function RefreshButton({ onClick }: { onClick: () => void }) {
   return (
@@ -306,6 +316,27 @@ export function CronPanel() {
 // ── Persona ─────────────────────────────────────────────────────────────────
 export function PersonaPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.personality(), []);
+  const [preset, setPreset] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    if (data?.preset) setPreset(data.preset);
+  }, [data?.preset]);
+
+  const apply = async () => {
+    if (!preset) return;
+    setSaving(true);
+    try {
+      await api.setPersonality(preset);
+      toast.success(`Preset set to “${preset}”`);
+      refresh();
+    } catch (e) {
+      toast.error(`Failed to set preset: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div>
       <SectionTitle action={<RefreshButton onClick={refresh} />}>Personality</SectionTitle>
@@ -319,6 +350,29 @@ export function PersonaPanel() {
             {data.tone && <KeyVal k="Tone" v={data.tone} />}
             {data.timezone && <KeyVal k="Timezone" v={data.timezone} />}
             {data.avoid && <KeyVal k="Avoid" v={data.avoid} />}
+            <div className="mt-4 flex items-center gap-2 border-t border-border/60 pt-4">
+              <select
+                value={preset}
+                onChange={(e) => setPreset(e.target.value)}
+                className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+              >
+                <option value="" disabled>
+                  Choose a preset…
+                </option>
+                {PERSONA_PRESETS.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <Button
+                onClick={apply}
+                disabled={saving || !preset || preset === data.preset}
+                size="sm"
+              >
+                {saving ? "Applying…" : "Apply preset"}
+              </Button>
+            </div>
           </Card>
         )}
       </PanelFrame>

@@ -55,6 +55,11 @@ export const api = {
     rc<{ entries: MemoryEntry[]; count: number }>(`memory?limit=${limit}`),
   memoryStats: () => rc<MemoryStats>("memory/stats"),
   personality: () => rc<Personality>("personality"),
+  setPersonality: (preset: string) =>
+    rc<{ preset: string }>("personality", {
+      method: "PUT",
+      body: JSON.stringify({ preset }),
+    }),
   channels: () => rc<ChannelsInfo>("channels"),
   providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   cron: () => rc<{ jobs: CronJob[]; count: number }>("cron"),
