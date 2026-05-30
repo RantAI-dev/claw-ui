@@ -4,7 +4,16 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { MessageSquare, LayoutDashboard, Moon, Sun, Circle, LogOut } from "lucide-react";
+import {
+  MessageSquare,
+  LayoutDashboard,
+  Moon,
+  Sun,
+  Circle,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { brand } from "@/lib/branding";
@@ -15,7 +24,12 @@ const NAV = [
   { href: "/ops", label: "Ops", icon: LayoutDashboard },
 ];
 
-function StatusDot({ connection }: { connection: Connection }) {
+/** Label visibility: hidden when collapsed; otherwise hidden below lg, shown at lg+. */
+function labelCls(collapsed: boolean, extra?: string) {
+  return cn("hidden", extra, !collapsed && "lg:inline");
+}
+
+function StatusDot({ connection, collapsed }: { connection: Connection; collapsed: boolean }) {
   const map: Record<Connection, { color: string; label: string }> = {
     connecting: { color: "text-warning", label: "Connecting…" },
     online: { color: "text-success", label: "Gateway online" },
@@ -27,12 +41,12 @@ function StatusDot({ connection }: { connection: Connection }) {
       <Circle
         className={cn("size-2.5 fill-current", s.color, connection === "connecting" && "animate-pulse-glow")}
       />
-      <span className="hidden text-xs text-sidebar-muted lg:inline">{s.label}</span>
+      <span className={labelCls(collapsed, "text-xs text-sidebar-muted")}>{s.label}</span>
     </div>
   );
 }
 
-function ThemeToggle() {
+function ThemeToggle({ collapsed }: { collapsed: boolean }) {
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
@@ -44,7 +58,7 @@ function ThemeToggle() {
       title="Toggle theme"
     >
       {mounted && isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
-      <span className="hidden text-xs lg:inline">{mounted && isDark ? "Light" : "Dark"} mode</span>
+      <span className={labelCls(collapsed, "text-xs")}>{mounted && isDark ? "Light" : "Dark"} mode</span>
     </button>
   );
 }
@@ -53,13 +67,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { status, connection } = useGatewayStatus();
   const [authOn, setAuthOn] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(false);
 
   React.useEffect(() => {
+    setCollapsed(localStorage.getItem("rc_sidebar_collapsed") === "1");
     fetch("/api/auth/status")
       .then((r) => r.json())
       .then((d) => setAuthOn(!!d.enabled))
       .catch(() => {});
   }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem("rc_sidebar_collapsed", next ? "1" : "0");
+      return next;
+    });
+  };
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -72,7 +96,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">
       {/* Left rail */}
-      <aside className="flex w-[64px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:w-56">
+      <aside
+        className={cn(
+          "flex w-16 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200",
+          !collapsed && "lg:w-56",
+        )}
+      >
         <div className="flex h-14 items-center gap-2 px-3">
           <Image
             src={brand.logo}
@@ -82,7 +111,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             className="rounded-md"
             priority
           />
-          <span className="hidden truncate text-sm font-semibold lg:inline">{brand.name}</span>
+          <span className={labelCls(collapsed, "truncate text-sm font-semibold")}>{brand.name}</span>
         </div>
 
         <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
@@ -101,20 +130,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 title={label}
               >
                 <Icon className="size-4 shrink-0" />
-                <span className="hidden lg:inline">{label}</span>
+                <span className={labelCls(collapsed)}>{label}</span>
               </Link>
             );
           })}
         </nav>
 
         <div className="flex flex-col gap-1 border-t border-sidebar-border px-3 py-3">
-          <StatusDot connection={connection} />
+          <StatusDot connection={connection} collapsed={collapsed} />
           {status?.version && (
-            <span className="hidden text-[10px] text-sidebar-muted lg:inline">
+            <span className={labelCls(collapsed, "text-[10px] text-sidebar-muted")}>
               v{status.version} · {status.provider || "no provider"}
             </span>
           )}
-          <ThemeToggle />
+          <ThemeToggle collapsed={collapsed} />
           {authOn && (
             <button
               onClick={logout}
@@ -122,9 +151,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               title="Sign out"
             >
               <LogOut className="size-4" />
-              <span className="hidden text-xs lg:inline">Sign out</span>
+              <span className={labelCls(collapsed, "text-xs")}>Sign out</span>
             </button>
           )}
+          {/* Collapse toggle — only meaningful at lg where the rail expands */}
+          <button
+            onClick={toggleCollapsed}
+            className="hidden items-center gap-2 rounded-md px-2 py-2 text-sidebar-muted transition-colors hover:bg-sidebar-hover hover:text-sidebar-foreground cursor-pointer lg:flex"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+            <span className={labelCls(collapsed, "text-xs")}>Collapse</span>
+          </button>
         </div>
       </aside>
 

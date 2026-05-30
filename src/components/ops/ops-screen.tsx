@@ -13,7 +13,6 @@ import {
   Circle,
   CalendarClock,
   SlidersHorizontal,
-  KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -29,7 +28,6 @@ import {
   PersonaPanel,
   CronPanel,
   ConfigPanel,
-  SecretsPanel,
 } from "./panels";
 
 function MetricBar() {
@@ -71,15 +69,25 @@ const TABS = [
   { value: "memory", label: "Memory", icon: Brain, el: <MemoryPanel /> },
   { value: "persona", label: "Persona", icon: UserCog, el: <PersonaPanel /> },
   { value: "config", label: "Config", icon: SlidersHorizontal, el: <ConfigPanel /> },
-  { value: "secrets", label: "Secrets", icon: KeyRound, el: <SecretsPanel /> },
 ];
 
 export function OpsScreen() {
   const [tab, setTab] = React.useState("status");
+
+  // Deep-linkable tabs via URL hash (e.g. /ops#providers).
+  React.useEffect(() => {
+    const h = window.location.hash.replace("#", "");
+    if (h && TABS.some((t) => t.value === h)) setTab(h);
+  }, []);
+  const onTab = (v: string) => {
+    setTab(v);
+    window.history.replaceState(null, "", `#${v}`);
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <MetricBar />
-      <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
+      <Tabs value={tab} onValueChange={onTab} className="flex min-h-0 flex-1 flex-col">
         <div className="border-b border-border px-4 py-2">
           <TabsList>
             {TABS.map(({ value, label, icon: Icon }) => (

@@ -166,21 +166,108 @@ export function UsagePanel() {
 
 // ── Providers ───────────────────────────────────────────────────────────────
 export function ProvidersPanel() {
-  const { data, loading, error, refresh } = useAsync(() => api.providers(), []);
+  const catalog = useAsync(() => api.providers(), []);
+  const secrets = useAsync(() => api.secrets(), []);
+  const [provider, setProvider] = React.useState("");
+  const [key, setKey] = React.useState("");
+  const [url, setUrl] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    if (secrets.data?.provider) setProvider(secrets.data.provider);
+    if (secrets.data?.api_url) setUrl(secrets.data.api_url);
+  }, [secrets.data?.provider, secrets.data?.api_url]);
+
+  const active = secrets.data?.provider;
+  const keyPresent = secrets.data?.api_key_present;
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (provider && provider !== active) await api.setConfigModel({ provider });
+      if (key.trim() || url.trim()) {
+        await api.setSecrets({ api_key: key.trim() || undefined, api_url: url.trim() || undefined });
+      }
+      toast.success(`Saved — active provider: ${provider || "(unchanged)"}`);
+      setKey("");
+      secrets.refresh();
+    } catch (e) {
+      toast.error(`Save failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <div>
-      <SectionTitle action={<RefreshButton onClick={refresh} />}>
-        Providers {data && <span className="text-muted-foreground">· {data.count}</span>}
+    <div className="space-y-4">
+      <SectionTitle
+        action={<RefreshButton onClick={() => { catalog.refresh(); secrets.refresh(); }} />}
+      >
+        Providers {catalog.data && <span className="text-muted-foreground">· {catalog.data.count}</span>}
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} onRefresh={refresh}>
+
+      <Card className="space-y-3 p-4">
+        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Active provider & key
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>Currently:</span>
+          <Badge variant="accent">{active || "none"}</Badge>
+          <Badge variant={keyPresent ? "success" : "warning"}>{keyPresent ? "key set" : "no key"}</Badge>
+          {secrets.data?.encrypt_at_rest && <span className="text-[10px]">· encrypted at rest</span>}
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+          >
+            <option value="" disabled>Choose provider…</option>
+            {catalog.data?.providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.display_name}{p.local ? " · local" : ""}
+              </option>
+            ))}
+          </select>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="API base URL (optional)"
+            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+        </div>
+        <input
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          type="password"
+          placeholder="API key for this provider (leave blank to keep current)"
+          className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" onClick={save} disabled={busy || !provider}>
+            <KeyRound className="size-4" /> Save provider &amp; key
+          </Button>
+          <span className="text-[10px] text-muted-foreground">
+            Sets the active provider; key stored encrypted, never shown back.
+          </span>
+        </div>
+      </Card>
+
+      <PanelFrame loading={catalog.loading} error={catalog.error} onRefresh={catalog.refresh}>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {data?.providers.map((p) => (
-            <Card key={p.id} className="flex items-center justify-between p-3">
+          {catalog.data?.providers.map((p) => (
+            <Card
+              key={p.id}
+              className={cn("flex items-center justify-between p-3", p.id === active && "border-accent/50")}
+            >
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{p.display_name}</div>
                 <div className="truncate font-mono text-[11px] text-muted-foreground">{p.id}</div>
               </div>
-              {p.local && <Badge variant="success">local</Badge>}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {p.id === active && <Badge variant="accent">active</Badge>}
+                {p.local && <Badge variant="success">local</Badge>}
+              </div>
             </Card>
           ))}
         </div>
