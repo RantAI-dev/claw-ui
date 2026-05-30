@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { MessageSquare, LayoutDashboard, Moon, Sun, Circle } from "lucide-react";
+import { MessageSquare, LayoutDashboard, Moon, Sun, Circle, LogOut } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { brand } from "@/lib/branding";
@@ -52,6 +52,22 @@ function ThemeToggle() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { status, connection } = useGatewayStatus();
+  const [authOn, setAuthOn] = React.useState(false);
+
+  React.useEffect(() => {
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then((d) => setAuthOn(!!d.enabled))
+      .catch(() => {});
+  }, []);
+
+  const logout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.href = "/login";
+  };
+
+  // The login screen renders without the app chrome.
+  if (pathname === "/login") return <>{children}</>;
 
   return (
     <div className="flex h-dvh w-full overflow-hidden bg-background">
@@ -99,6 +115,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           )}
           <ThemeToggle />
+          {authOn && (
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sidebar-muted transition-colors hover:bg-sidebar-hover hover:text-sidebar-foreground cursor-pointer"
+              title="Sign out"
+            >
+              <LogOut className="size-4" />
+              <span className="hidden text-xs lg:inline">Sign out</span>
+            </button>
+          )}
         </div>
       </aside>
 
