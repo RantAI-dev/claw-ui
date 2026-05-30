@@ -110,17 +110,27 @@ Base: `${RANTAICLAW_GATEWAY_URL}/api/v1`. Auth: `Authorization: Bearer <token>` 
   footer with model/provider switch + Stop. Tool-call & usage cards inline.
 - **Ops**: persistent metrics strip (version/provider/model/memory/health) + tabbed read-only panels.
 
-## 7. Known constraints & backend follow-ups
+## 7. Status & remaining backend work
 
-1. **Multi-turn continuity**: `POST /agent/chat` builds a fresh per-turn agent and persists each
-   call as a *new* session — it accepts no `session_id`/history. v1 keeps the visible thread
-   **client-side**; the agent does not yet "remember" earlier turns of the same on-screen thread.
-   _Follow-up (Rust)_: add `session_id`/`history` to `ChatRequestBody` and replay prior messages.
-2. **Resuming a past session** loads its transcript read-only (sending a new message starts a fresh
-   backend session) — same root cause as (1).
-3. **Ops is read-only** for v1. Mutating ops (config edit, cron CRUD, skill enable/disable, secrets)
-   require new gateway endpoints — out of scope tonight, listed for later.
-4. Personality `PUT` is wired (it exists in the API) but exposed cautiously.
+**Implemented (gateway changes on branch `feat/gateway-webui-api`):**
+
+1. **Multi-turn continuity** ✅ — `ChatRequestBody` now takes `session_id`; the gateway replays
+   prior messages into the agent (`Agent::seed_history`, capped at 60) and appends the new turn to
+   the **same** session. The `done` SSE frame (and sync response) return the `session_id`, so a
+   fresh chat captures its id mid-stream and continues seamlessly. Resuming a session continues it.
+2. **Session delete** ✅ — `DELETE /api/v1/sessions/{id}` + `SessionStore::delete_session`
+   (transactional; detaches child sessions, FTS kept in sync). Wired to the trash action in the UI.
+3. **Cron (read-only)** ✅ — `GET /api/v1/cron` lists scheduled jobs; surfaced in the Ops **Cron** tab.
+
+**Deliberately deferred (each is large + security-sensitive; rushing them ≠ prod-ready):**
+
+- **Usage/cost aggregation** — RantaiClaw does not yet compute or persist per-turn token/cost
+  (`empty_usage` returns zeros; `CostTracker` is unused). A `/usage` endpoint needs real token
+  accounting wired out of provider responses first. The UI shows token/cost where the SSE `usage`
+  frame provides it (currently zero until that lands).
+- **Mutating ops** — config editor, cron create/edit/delete, skill enable/disable, secrets
+  management. These need new write endpoints + a careful auth/audit story; tracked for a later pass.
+- Personality `PUT` exists in the API; the UI keeps it read-only for now.
 
 ## 8. Security
 

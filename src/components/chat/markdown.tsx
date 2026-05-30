@@ -3,12 +3,19 @@
 import * as React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { useTheme } from "next-themes";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function CodeBlock({ className, children }: { className?: string; children: React.ReactNode }) {
   const [copied, setCopied] = React.useState(false);
-  const lang = /language-(\w+)/.exec(className || "")?.[1];
+  const [mounted, setMounted] = React.useState(false);
+  const { resolvedTheme } = useTheme();
+  React.useEffect(() => setMounted(true), []);
+
+  const lang = /language-(\w+)/.exec(className || "")?.[1] || "text";
   const raw = String(children).replace(/\n$/, "");
 
   const copy = async () => {
@@ -21,11 +28,13 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
     }
   };
 
+  const isDark = mounted ? resolvedTheme === "dark" : true;
+
   return (
     <div className="group relative my-3 overflow-hidden rounded-lg border border-border bg-muted">
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
         <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          {lang || "text"}
+          {lang}
         </span>
         <button
           onClick={copy}
@@ -35,9 +44,21 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <pre className="overflow-x-auto p-3 font-mono text-xs leading-relaxed scrollbar-thin">
-        <code>{raw}</code>
-      </pre>
+      <SyntaxHighlighter
+        language={lang}
+        style={isDark ? oneDark : oneLight}
+        customStyle={{
+          margin: 0,
+          background: "transparent",
+          padding: "0.75rem",
+          fontSize: "0.78rem",
+          lineHeight: 1.55,
+        }}
+        codeTagProps={{ style: { fontFamily: "var(--font-mono)" } }}
+        wrapLongLines={false}
+      >
+        {raw}
+      </SyntaxHighlighter>
     </div>
   );
 }
@@ -66,7 +87,6 @@ export const Markdown = React.memo(function Markdown({
             return <CodeBlock className={c}>{children}</CodeBlock>;
           },
           pre({ children }) {
-            // CodeBlock renders its own <pre>; avoid double-wrapping.
             return <>{children}</>;
           },
           a({ children, ...props }) {

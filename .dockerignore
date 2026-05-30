@@ -1,0 +1,16 @@
+node_modules
+.next
+.git
+.gitignore
+.env
+.env.local
+.env*.local
+.devgateway
+.shots
+*.log
+*.pid
+Dockerfile
+.dockerignore
+README.md
+MORNING-HANDOFF.md
+docs

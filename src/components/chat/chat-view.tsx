@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, RotateCcw } from "lucide-react";
 import { MessageBubble } from "./message-bubble";
 import { Composer, type ComposerProps } from "./composer";
 import type { ChatMessage } from "@/lib/types";
@@ -16,12 +16,12 @@ const SUGGESTIONS = [
 export interface ChatViewProps extends Omit<ComposerProps, "onSend" | "onStop" | "isStreaming"> {
   messages: ChatMessage[];
   isStreaming: boolean;
-  readOnlyNotice?: string | null;
   onSend: (text: string) => void;
   onStop: () => void;
+  onRegenerate: () => void;
 }
 
-export function ChatView({ messages, isStreaming, readOnlyNotice, onSend, onStop, ...composer }: ChatViewProps) {
+export function ChatView({ messages, isStreaming, onSend, onStop, onRegenerate, ...composer }: ChatViewProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const atBottomRef = React.useRef(true);
 
@@ -37,6 +37,8 @@ export function ChatView({ messages, isStreaming, readOnlyNotice, onSend, onStop
   }, [messages]);
 
   const empty = messages.length === 0;
+  const last = messages[messages.length - 1];
+  const canRegenerate = !isStreaming && last?.role === "assistant" && (!!last.content || !!last.error);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -66,14 +68,19 @@ export function ChatView({ messages, isStreaming, readOnlyNotice, onSend, onStop
           </div>
         ) : (
           <div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
-            {readOnlyNotice && (
-              <div className="rounded-lg border border-warning/40 bg-warning/5 px-3 py-2 text-center text-xs text-warning">
-                {readOnlyNotice}
-              </div>
-            )}
             {messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
+            {canRegenerate && (
+              <div className="flex justify-center pt-1">
+                <button
+                  onClick={onRegenerate}
+                  className="flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
+                >
+                  <RotateCcw className="size-3.5" /> Regenerate
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

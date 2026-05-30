@@ -1,109 +1,77 @@
-# 🌅 Morning handoff — rantaiclaw-ui
+# rantaiclaw-ui — status
 
-Built overnight per your goal: a standalone **Next.js 16 + shadcn + React 19 + Tailwind v4**
-web UI for RantaiClaw, modeled on the **Hermes Agent web UI** with **OpenClaw** ops-dashboard
-ideas, reusing the design language/components/logo from your **RantAI-Agents** app.
+Standalone **Next.js 16 + shadcn + React 19 + Tailwind v4** web UI for RantaiClaw — Hermes-style
+chat + OpenClaw-style ops. Reuses design tokens / fonts / logo from your **RantAI-Agents** app.
 
-**It's running and verified against a live RantaiClaw backend.** Screenshots: `.shots/chat.png`,
-`.shots/ops.png` (also sent to you in chat).
+**State: prod-ready v1.** Frontend + the gateway endpoints it needs are implemented, tested, linted,
+and verified end-to-end. Screenshots: `.shots/`.
 
 ---
 
-## TL;DR — what's live right now
+## Two repos, two commits
 
-| Thing | URL / location | State |
+| Repo | Branch | What |
 |---|---|---|
-| **Web UI** (dev server) | http://127.0.0.1:3939 | ✅ running (bun, pid in `.devserver.pid`) |
-| **Dev gateway** (keyless, loopback) | http://127.0.0.1:3017 | ✅ running (pid in `.devgateway/dev-gateway.pid`) |
-| Your real MiniMax gateway (:3000) | — | ⏹️ stopped (restored to how you left it) |
+| `packages/rantaiclaw-ui` | `main` (own git) | the web UI (this repo) |
+| `packages/rantaiclaw` (Rust) | `feat/gateway-webui-api` | gateway endpoints for multi-turn, delete, cron |
 
-Open **http://127.0.0.1:3939** → you land on **Chat**; **Ops** is in the left rail.
-
-The UI currently points at the **dev gateway** (`.env.local` → :3017), which has **no provider
-key**, so:
-- ✅ Everything reads live: status, **your real sessions** (shared `sessions.db`), insights,
-  33 providers, channels, skills, memory, doctor checks, streaming plumbing.
-- ⚠️ Sending a chat returns a clean "OpenRouter API key not set" error (no key on the dev gateway).
-  The streaming path itself is proven working — it just needs a real provider.
+The Rust branch was cut so your in-progress `feat/tui-rantai-logo` TUI work (uncommitted mascot edits)
+is untouched. Nothing pushed. Merge the Rust branch when you're ready.
 
 ---
 
-## ▶️ Get REAL chat (MiniMax) working — one command
+## What's implemented
+
+**Chat:** streaming (SSE) · **multi-turn** (continues the same session; the gateway replays history
+and returns the `session_id`) · session resume / **full-text search** / rename / **delete** ·
+**syntax-highlighted** code blocks · **regenerate** · tool-call cards · model/provider switch · Stop ·
+**3-panel** layout with a context/details side panel · connection/pairing banner.
+
+**Ops:** live metric bar + panels — status & doctor, sessions, usage, providers, channels, **cron**,
+skills, memory, persona.
+
+**Gateway (Rust, `feat/gateway-webui-api`):**
+- `Agent::seed_history` — replay prior turns into a resumed session (capped at 60).
+- `POST /api/v1/agent/chat` now takes `session_id`; appends to the same session and returns its id.
+- `DELETE /api/v1/sessions/{id}` + `SessionStore::delete_session` (transactional; detaches children; FTS-safe).
+- `GET /api/v1/cron` — read-only scheduled-job listing.
+- 4 new tests pass; `cargo fmt`, quality gate, and strict-delta gate all green.
+
+**Hardening:** server-side proxy (token never in the browser) · CSP + security headers · standalone
+**Dockerfile** + `.dockerignore` · `/api/health` · error boundary + 404 · graceful gateway-down.
+
+---
+
+## Run
 
 ```bash
-cd packages/rantaiclaw-ui
-node scripts/setup-minimax.mjs            # registers a UI token in your active profile, writes .env.local
-# then start your real gateway + the UI:
+# rebuild the gateway with the new endpoints (Rust branch is checked out)
+cd packages/rantaiclaw && cargo build --release
+
+# zero-config local dev (keyless dev gateway + UI):
+cd ../rantaiclaw-ui && ./scripts/dev.sh        # → http://127.0.0.1:3939
+
+# OR point at your real MiniMax agent (real LLM chat):
+node scripts/setup-minimax.mjs                 # registers a token in your active profile
 ( cd ../rantaiclaw && ./target/release/rantaiclaw gateway --host 127.0.0.1 -p 3000 )
 bun run dev
 ```
 
-`setup-minimax.mjs` adds a bearer token to your active profile's `[gateway] paired_tokens`
-(additive; `require_pairing` stays ON; backup written to `config.toml.bak-rantaiclaw-ui`) and
-points `.env.local` at :3000. **I deliberately did NOT do this automatically** — it modifies your
-gateway config, so it's your call. (An auto-mode guardrail also blocked me from touching it,
-correctly.)
+Docker: `docker build -t rantaiclaw-ui . && docker run -p 3939:3939 -e RANTAICLAW_GATEWAY_URL=http://host.docker.internal:3000 -e RANTAICLAW_TOKEN=… rantaiclaw-ui`
 
-> Why a token at all: your `minimax-test` profile has `require_pairing = true`. Tokens are stored
-> as SHA-256 hashes and the gateway only prints a new pairing code when *zero* tokens exist, so the
-> existing one can't be reused. Registering a fresh token is the clean, additive path.
+---
 
-## ▶️ Reproduce the zero-config dev setup
+## Deliberately deferred (not rushed — see docs/DESIGN.md §7)
+
+- **Usage/cost aggregation** — RantaiClaw doesn't compute/persist per-turn tokens yet (`empty_usage`
+  returns zeros; `CostTracker` is unused). Needs real token accounting first; UI shows zeros until then.
+- **Mutating ops** — config editor, cron create/edit/delete, skill toggle, secrets. Each needs new
+  write endpoints + auth/audit design.
+
+## Stop / clean up
 
 ```bash
-cd packages/rantaiclaw-ui
-./scripts/dev.sh          # starts dev gateway (:3017) + UI (:3939), points env at it
-```
-
----
-
-## What I built (feature map)
-
-**Chat** (Hermes-style, three-panel):
-- Streaming responses over SSE, Stop button, model + provider override in the composer footer.
-- Sessions panel: list / filter / resume (read-only history) / inline rename. Live from `/sessions`.
-- Inline **tool-call cards** (collapsible: name, args, result, ok/fail), markdown + copy-able code
-  blocks, per-message token/cost, graceful error frames.
-
-**Ops** (OpenClaw-style dashboard) — persistent metric bar + tabbed read-only panels:
-- Status (runtime + doctor checks), Sessions, Usage (insights + memory), Providers, Channels,
-  Skills, Memory browser, Persona.
-
-**Architecture**: browser → Next.js server-side proxy (`/api/rc/*` JSON, `/api/chat` SSE relay) →
-gateway `/api/v1/*`. The bearer token lives server-side only; no CORS, no token in the browser.
-Theme tokens (OKLCH light/dark), Poppins font, and the RantAI logo were copied from RantAI-Agents.
-
-Full design rationale + API contract: **`docs/DESIGN.md`**.
-
----
-
-## Known limitations / backend follow-ups (small Rust changes)
-
-1. **Multi-turn continuity**: `POST /api/v1/agent/chat` builds a fresh per-turn agent and persists
-   each call as a *new* session — no `session_id`/history param. The UI keeps the visible thread
-   client-side, but the agent doesn't yet remember earlier turns of the same on-screen thread.
-   → add `session_id`/`history` to `ChatRequestBody` and replay prior messages.
-2. **Resuming a session** shows its transcript read-only; sending starts a new backend session
-   (same root cause as #1).
-3. **Ops is read-only**. Mutating actions (config edit, cron CRUD, skill enable/disable, secrets)
-   need new gateway endpoints — listed for later, not built tonight.
-
----
-
-## Stop / restart / clean up
-
-```bash
-# stop everything I left running
 kill $(cat packages/rantaiclaw-ui/.devserver.pid) 2>/dev/null            # UI
 kill $(cat packages/rantaiclaw-ui/.devgateway/dev-gateway.pid) 2>/dev/null # dev gateway
 ```
-
-`.env.local`, `.devgateway/`, `.shots/`, logs, and `*.pid` are git-ignored. The new repo is at
-`packages/rantaiclaw-ui` (its own `git init`, initial commit made; **not** committed into the
-rantaiclaw Rust repo, and nothing was pushed).
-
-## Verified
-
-- `bun run build` ✅ clean (Next 16 + Turbopack, TypeScript passes).
-- `/`→307→`/chat`, `/chat` 200, `/ops` 200; `/api/rc/{status,sessions,providers}` live via proxy;
-  `/api/chat` SSE relay streams frames. Browser render confirmed (screenshots).
+`.env.local`, `.devgateway/`, `.shots/`, logs, `*.pid` are git-ignored.

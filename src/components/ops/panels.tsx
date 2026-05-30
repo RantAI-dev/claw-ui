@@ -261,6 +261,48 @@ export function MemoryPanel() {
   );
 }
 
+// ── Cron ────────────────────────────────────────────────────────────────────
+function fmtWhen(ts: string | number | null): string {
+  if (ts == null) return "—";
+  try {
+    const ms = typeof ts === "number" ? (ts < 1e12 ? ts * 1000 : ts) : Date.parse(ts);
+    if (!Number.isFinite(ms)) return String(ts);
+    return new Date(ms).toLocaleString();
+  } catch {
+    return String(ts);
+  }
+}
+
+export function CronPanel() {
+  const { data, loading, error, refresh } = useAsync(() => api.cron(), []);
+  return (
+    <div>
+      <SectionTitle action={<RefreshButton onClick={refresh} />}>
+        Scheduled jobs {data && <span className="text-muted-foreground">· {data.count}</span>}
+      </SectionTitle>
+      <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
+        <Card className="divide-y divide-border">
+          {data?.jobs.map((j) => (
+            <div key={j.id} className="flex items-center gap-3 px-4 py-2.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium">{j.name || j.id.slice(0, 8)}</span>
+                  <Badge variant="secondary" className="text-[10px]">{j.job_type}</Badge>
+                </div>
+                <div className="truncate font-mono text-[11px] text-muted-foreground">
+                  {j.expression} · next {fmtWhen(j.next_run)}
+                  {j.last_status ? ` · last: ${j.last_status}` : ""}
+                </div>
+              </div>
+              <Badge variant={j.enabled ? "success" : "secondary"}>{j.enabled ? "enabled" : "paused"}</Badge>
+            </div>
+          ))}
+        </Card>
+      </PanelFrame>
+    </div>
+  );
+}
+
 // ── Persona ─────────────────────────────────────────────────────────────────
 export function PersonaPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.personality(), []);

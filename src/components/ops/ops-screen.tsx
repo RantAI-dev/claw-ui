@@ -11,6 +11,7 @@ import {
   Brain,
   UserCog,
   Circle,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -24,6 +25,7 @@ import {
   SkillsPanel,
   MemoryPanel,
   PersonaPanel,
+  CronPanel,
 } from "./panels";
 
 function MetricBar() {
@@ -60,6 +62,7 @@ const TABS = [
   { value: "usage", label: "Usage", icon: BarChart3, el: <UsagePanel /> },
   { value: "providers", label: "Providers", icon: Cpu, el: <ProvidersPanel /> },
   { value: "channels", label: "Channels", icon: Radio, el: <ChannelsPanel /> },
+  { value: "cron", label: "Cron", icon: CalendarClock, el: <CronPanel /> },
   { value: "skills", label: "Skills", icon: Wrench, el: <SkillsPanel /> },
   { value: "memory", label: "Memory", icon: Brain, el: <MemoryPanel /> },
   { value: "persona", label: "Persona", icon: UserCog, el: <PersonaPanel /> },

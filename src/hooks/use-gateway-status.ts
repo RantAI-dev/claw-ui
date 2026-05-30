@@ -9,14 +9,21 @@ export type Connection = "connecting" | "online" | "offline";
 export function useGatewayStatus(pollMs = 15000) {
   const [status, setStatus] = React.useState<StatusInfo | null>(null);
   const [connection, setConnection] = React.useState<Connection>("connecting");
+  const [error, setError] = React.useState<string | null>(null);
+  const [needsAuth, setNeedsAuth] = React.useState(false);
 
   const refresh = React.useCallback(async () => {
     try {
       const s = await api.status();
       setStatus(s);
       setConnection("online");
-    } catch {
+      setError(null);
+      setNeedsAuth(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       setConnection("offline");
+      setError(msg);
+      setNeedsAuth(/401|unauthor|pair/i.test(msg));
     }
   }, []);
 
@@ -26,5 +33,5 @@ export function useGatewayStatus(pollMs = 15000) {
     return () => clearInterval(id);
   }, [refresh, pollMs]);
 
-  return { status, connection, refresh };
+  return { status, connection, error, needsAuth, refresh };
 }

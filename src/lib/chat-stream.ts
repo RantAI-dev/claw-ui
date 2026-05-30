@@ -7,6 +7,8 @@ export interface ChatRequest {
   model?: string;
   provider?: string;
   temperature?: number;
+  /** When set, the backend continues this session (multi-turn) instead of forking a new one. */
+  session_id?: string;
 }
 
 /**

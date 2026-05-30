@@ -1,6 +1,7 @@
 // Client-side API — talks to the Next.js proxy at /api/rc/* (never the gateway directly).
 import type {
   ChannelsInfo,
+  CronJob,
   DoctorResult,
   Insights,
   MemoryEntry,
@@ -45,6 +46,10 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ title }),
     }),
+  deleteSession: (id: string) =>
+    rc<{ deleted: boolean; id: string }>(`sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   skills: () => rc<{ skills: Skill[]; count: number }>("skills"),
   memory: (limit = 100) =>
     rc<{ entries: MemoryEntry[]; count: number }>(`memory?limit=${limit}`),
@@ -52,4 +57,5 @@ export const api = {
   personality: () => rc<Personality>("personality"),
   channels: () => rc<ChannelsInfo>("channels"),
   providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
+  cron: () => rc<{ jobs: CronJob[]; count: number }>("cron"),
 };

@@ -12,10 +12,14 @@ OpenClaw-style ops panels.
 
 ## Features
 
-- **Chat** — streaming responses (SSE), session history, resume/search/rename, inline tool-call
-  cards, model/provider switching, Stop button.
-- **Ops** — read-only dashboard: status & health, sessions, usage insights, providers, channels,
-  skills, memory browser, personality preset.
+- **Chat** — streaming responses (SSE), **multi-turn** conversations, session
+  history with resume / full-text search / rename / delete, inline tool-call cards, syntax-highlighted
+  code blocks, regenerate, model/provider switching, Stop, and a context/details side panel.
+- **Ops** — dashboard with a live metric bar and panels: status & doctor checks, sessions, usage
+  insights, providers, channels, **cron jobs**, skills, memory browser, personality.
+
+Hardened for self-hosting: server-side proxy (token never reaches the browser), CSP + security
+headers, standalone Docker image, health endpoint, graceful gateway-down handling.
 
 ## Architecture
 

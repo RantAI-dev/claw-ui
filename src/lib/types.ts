@@ -104,6 +104,17 @@ export interface ProviderInfo {
   local: boolean;
 }
 
+export interface CronJob {
+  id: string;
+  name: string | null;
+  expression: string;
+  job_type: string;
+  enabled: boolean;
+  next_run: string | number | null;
+  last_run: string | number | null;
+  last_status: string | null;
+}
+
 // ---- Chat SSE event frames ----
 export type ChatEvent =
   | { type: "chunk"; text: string }
@@ -111,7 +122,7 @@ export type ChatEvent =
   | { type: "tool_call_start"; id: string; name: string; args: unknown }
   | { type: "tool_call_end"; id: string; ok: boolean; output_preview: string }
   | { type: "error"; message: string }
-  | { type: "done"; text: string; cancelled: boolean }
+  | { type: "done"; text: string; cancelled: boolean; session_id?: string | null }
   | { type: "reload_complete" }
   | { type: "compaction_start"; original_count: number; keep_last: number }
   | { type: "compaction_complete"; summary: string; original_count: number; keep_last: number; kept_count: number };

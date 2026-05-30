@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { streamChat } from "@/lib/chat-stream";
-import type { ChatMessage, SessionMessage, ToolCall } from "@/lib/types";
+import type { ChatEvent, ChatMessage, SessionMessage, ToolCall } from "@/lib/types";
 
 let idSeq = 0;
 function nextId(prefix: string) {
@@ -19,23 +19,18 @@ export interface UseChatOptions {
 export function useChat(opts: UseChatOptions) {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = React.useState(false);
+  const [sessionId, setSessionId] = React.useState<string | null>(null);
   const abortRef = React.useRef<AbortController | null>(null);
   const optsRef = React.useRef(opts);
   optsRef.current = opts;
 
-  const patchAssistant = React.useCallback(
-    (id: string, fn: (m: ChatMessage) => ChatMessage) => {
-      setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
-    },
-    [],
-  );
+  const patch = React.useCallback((id: string, fn: (m: ChatMessage) => ChatMessage) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
+  }, []);
 
-  const send = React.useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
-
-      const userMsg: ChatMessage = { id: nextId("u"), role: "user", content: trimmed };
+  // Core turn runner — appends an assistant message and streams into it.
+  const runAssistant = React.useCallback(
+    async (userContent: string) => {
       const assistantId = nextId("a");
       const assistantMsg: ChatMessage = {
         id: assistantId,
@@ -46,89 +41,112 @@ export function useChat(opts: UseChatOptions) {
         usage: null,
         error: null,
       };
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setMessages((prev) => [...prev, assistantMsg]);
       setIsStreaming(true);
 
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const onEvent = (ev: ChatEvent) => {
+        switch (ev.type) {
+          case "chunk":
+            patch(assistantId, (m) => ({ ...m, content: m.content + ev.text }));
+            break;
+          case "tool_call_start":
+            patch(assistantId, (m) => ({
+              ...m,
+              toolCalls: [...(m.toolCalls || []), { id: ev.id, name: ev.name, args: ev.args, done: false } as ToolCall],
+            }));
+            break;
+          case "tool_call_end":
+            patch(assistantId, (m) => ({
+              ...m,
+              toolCalls: (m.toolCalls || []).map((t) =>
+                t.id === ev.id ? { ...t, ok: ev.ok, outputPreview: ev.output_preview, done: true } : t,
+              ),
+            }));
+            break;
+          case "usage":
+            patch(assistantId, (m) => ({ ...m, usage: { total: ev.total, cost_usd: ev.cost_usd } }));
+            break;
+          case "error":
+            patch(assistantId, (m) => ({ ...m, error: ev.message }));
+            break;
+          case "done":
+            // Capture the session the backend persisted this turn to, so the
+            // next message continues the same conversation (multi-turn).
+            if (ev.session_id) setSessionId(ev.session_id);
+            patch(assistantId, (m) => ({
+              ...m,
+              streaming: false,
+              content: m.content || (ev.cancelled ? "_(stopped)_" : ev.text || ""),
+            }));
+            break;
+          default:
+            break;
+        }
+      };
+
       await streamChat(
         {
-          message: trimmed,
+          message: userContent,
           model: optsRef.current.model,
           provider: optsRef.current.provider,
           temperature: optsRef.current.temperature,
+          session_id: sessionId ?? undefined,
         },
-        (ev) => {
-          switch (ev.type) {
-            case "chunk":
-              patchAssistant(assistantId, (m) => ({ ...m, content: m.content + ev.text }));
-              break;
-            case "tool_call_start":
-              patchAssistant(assistantId, (m) => ({
-                ...m,
-                toolCalls: [
-                  ...(m.toolCalls || []),
-                  { id: ev.id, name: ev.name, args: ev.args, done: false } as ToolCall,
-                ],
-              }));
-              break;
-            case "tool_call_end":
-              patchAssistant(assistantId, (m) => ({
-                ...m,
-                toolCalls: (m.toolCalls || []).map((t) =>
-                  t.id === ev.id
-                    ? { ...t, ok: ev.ok, outputPreview: ev.output_preview, done: true }
-                    : t,
-                ),
-              }));
-              break;
-            case "usage":
-              patchAssistant(assistantId, (m) => ({
-                ...m,
-                usage: { total: ev.total, cost_usd: ev.cost_usd },
-              }));
-              break;
-            case "error":
-              patchAssistant(assistantId, (m) => ({ ...m, error: ev.message }));
-              break;
-            case "done":
-              patchAssistant(assistantId, (m) => ({
-                ...m,
-                streaming: false,
-                content:
-                  m.content || (ev.cancelled ? "_(stopped)_" : ev.text || (m.error ? "" : "")),
-              }));
-              break;
-            default:
-              break;
-          }
-        },
+        onEvent,
         controller.signal,
       );
 
       setIsStreaming(false);
       abortRef.current = null;
     },
-    [isStreaming, patchAssistant],
+    [patch, sessionId],
   );
 
-  const stop = React.useCallback(() => {
-    abortRef.current?.abort();
-  }, []);
+  const send = React.useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isStreaming) return;
+      setMessages((prev) => [...prev, { id: nextId("u"), role: "user", content: trimmed }]);
+      await runAssistant(trimmed);
+    },
+    [isStreaming, runAssistant],
+  );
+
+  /** Re-run the most recent user turn, replacing the last assistant reply. */
+  const regenerate = React.useCallback(async () => {
+    if (isStreaming) return;
+    let lastUser: ChatMessage | undefined;
+    setMessages((prev) => {
+      const lastUserIdx = [...prev].reverse().findIndex((m) => m.role === "user");
+      if (lastUserIdx === -1) return prev;
+      const idx = prev.length - 1 - lastUserIdx;
+      lastUser = prev[idx];
+      return prev.slice(0, idx + 1); // drop everything after the last user message
+    });
+    // allow state to settle, then re-run
+    await Promise.resolve();
+    if (lastUser) await runAssistant(lastUser.content);
+  }, [isStreaming, runAssistant]);
+
+  const stop = React.useCallback(() => abortRef.current?.abort(), []);
 
   const reset = React.useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     setIsStreaming(false);
     setMessages([]);
+    setSessionId(null);
   }, []);
 
-  /** Load a past session transcript (read-only history). */
-  const loadHistory = React.useCallback((history: SessionMessage[]) => {
+  /** Load a past session transcript and continue it (multi-turn when backend supports session_id). */
+  const loadHistory = React.useCallback((history: SessionMessage[], id: string | null) => {
     abortRef.current?.abort();
     abortRef.current = null;
     setIsStreaming(false);
+    setSessionId(id);
     setMessages(
       history
         .filter((m) => m.role === "user" || m.role === "assistant")
@@ -140,5 +158,20 @@ export function useChat(opts: UseChatOptions) {
     );
   }, []);
 
-  return { messages, isStreaming, send, stop, reset, loadHistory };
+  // Thread-level token/cost totals for the context panel.
+  const totals = React.useMemo(() => {
+    let tokens = 0;
+    let cost = 0;
+    let toolCalls = 0;
+    for (const m of messages) {
+      if (m.usage) {
+        tokens += m.usage.total || 0;
+        cost += m.usage.cost_usd || 0;
+      }
+      toolCalls += m.toolCalls?.length || 0;
+    }
+    return { tokens, cost, toolCalls, turns: messages.filter((m) => m.role === "user").length };
+  }, [messages]);
+
+  return { messages, isStreaming, sessionId, send, regenerate, stop, reset, loadHistory, totals };
 }
