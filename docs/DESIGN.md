@@ -1,0 +1,141 @@
+# rantaiclaw-ui — Design & Architecture
+
+> Standalone, optional web UI for the [RantaiClaw](../../rantaiclaw) Rust agent runtime.
+> Modeled on the **Hermes Agent web UI** (chat-first, three-panel) with **OpenClaw** ops-dashboard ideas folded in.
+> **Separate repo** — not committed to the rantaiclaw Rust repo.
+
+Date: 2026-05-30 · Author: autonomous overnight build (Claude)
+
+---
+
+## 1. Goal
+
+A self-hostable web UI that talks to a running RantaiClaw gateway over its existing
+`/api/v1/*` HTTP API. Two top-level modes:
+
+- **Chat** (default) — streaming conversation with the agent, session history, tool-call cards.
+- **Ops** — read-only operations dashboard: status, sessions, usage, providers, channels, skills, memory, personality.
+
+Optional to install; ships independently of the runtime.
+
+## 2. Why "Hermes-style + OpenClaw notes", not "OpenClaw `/web`"
+
+The user's hard constraints — **separate repo** + **optional install** — match the standalone
+Hermes-WebUI pattern (a frontend that consumes the agent's HTTP API), not OpenClaw's
+in-monorepo `/web`. Research summary:
+
+| | Hermes web UIs | OpenClaw dashboards |
+|---|---|---|
+| Repo | standalone (`nesquena/hermes-webui`) + bundled | bundled Control UI + standalone community dashboards |
+| Transport | REST + **SSE** streaming | HTTP + WebSocket |
+| Strength | **chat UX** (3-panel, streaming, tool cards, sessions) | **ops UX** (status cards, cost/usage, cron, memory browser, metrics bar) |
+
+We take the chat UX from Hermes and the ops panels from OpenClaw. Both modes share one
+gateway connection, status indicator, and theme.
+
+## 3. Stack
+
+Mirrors the sibling `RantAI-Agents` app so components/icons/theme are reusable:
+
+- **Next.js 16** (App Router) · **React 19** · **TypeScript**
+- **Tailwind CSS v4** (`@tailwindcss/postcss`, `@import "tailwindcss"`, `@theme inline`)
+- **shadcn** conventions (new-york / neutral, CSS variables) — minimal hand-written primitives, no Radix dep for v1
+- **next-themes** (class-based dark mode) · **lucide-react** icons · **sonner** toasts
+- **react-markdown + remark-gfm** for assistant markdown (lightweight; streamdown is a drop-in upgrade later)
+- Package manager: **bun**
+
+Theme tokens (OKLCH light/dark), Poppins font, and brand logo are copied verbatim from RantAI-Agents.
+
+## 4. Architecture — server-side proxy (no CORS, no token in browser)
+
+```
+Browser ──fetch──▶ Next.js route handlers ──fetch(+Bearer)──▶ RantaiClaw gateway /api/v1/*
+         (same origin)        (server-side)                     (127.0.0.1:3000)
+```
+
+- The browser **never** talks to the gateway directly and **never** sees the bearer token.
+- `src/app/api/rc/[...path]/route.ts` — generic JSON proxy (GET/POST/PUT) → gateway `/api/v1/*`.
+- `src/app/api/chat/route.ts` — dedicated **SSE relay**: opens `POST /api/v1/agent/chat` with
+  `Accept: text/event-stream` and pipes the event stream straight back to the browser.
+- Server config via env:
+  - `RANTAICLAW_GATEWAY_URL` (default `http://127.0.0.1:3000`)
+  - `RANTAICLAW_TOKEN` (bearer; omitted when the gateway runs `require_pairing=false`)
+
+Security posture inherited from the references: loopback bind, token server-side only,
+SSH-tunnel/Tailscale as the blessed remote path. (See §8.)
+
+## 5. RantaiClaw API contract (consumed)
+
+Base: `${RANTAICLAW_GATEWAY_URL}/api/v1`. Auth: `Authorization: Bearer <token>` when paired.
+
+| Method | Path | Notes |
+|---|---|---|
+| POST | `/agent/chat` | body `{message, model?, provider?, temperature?}`. SSE when `Accept: text/event-stream`. |
+| GET | `/sessions?limit` | `{sessions:[{id,title,model,started_at,message_count}],count}` |
+| GET | `/sessions/{id}` | `{id,title,model,started_at,messages:[{role,content,timestamp}]}` |
+| POST | `/sessions/search` | body `{query,limit?}` → `{results:[{session_id,session_title,role,content,timestamp,rank}]}` |
+| PUT | `/sessions/{id}/title` | body `{title}` |
+| GET | `/status` | version, provider, model, memory_backend, autonomy, workspace_dir, paired, runtime(health snapshot) |
+| GET | `/doctor` | `{results:[{name,category,severity,message,hint,duration_ms}]}` |
+| GET | `/insights` | totals + averages over sessions |
+| GET | `/skills` · `/skills/{name}` | name, version, description, tags, tools |
+| GET | `/memory?limit` · `/memory/stats` | entries + backend/health |
+| GET/PUT | `/personality` | preset get/set (presets: default, concise_pro, friendly_companion, research_analyst, executive_assistant) |
+| GET | `/channels` | `{configured:[...]}` |
+| GET | `/providers` | `{providers:[{id,display_name,aliases,local}]}` |
+
+### SSE event frames (`data: <json>`), discriminated by `type`:
+
+- `chunk` `{type,text}` — append to assistant message
+- `usage` `{type,model,prompt,completion,total,cost_usd}`
+- `tool_call_start` `{type,id,name,args}` · `tool_call_end` `{type,id,ok,output_preview}`
+- `reload_complete` · `compaction_start` · `compaction_complete` (informational)
+- `error` `{type,message}`
+- `done` `{type,text,cancelled}` — stream terminates after this frame
+
+## 6. Information architecture
+
+```
+┌ left rail ─┐ ┌───────── main ─────────┐
+│ ● status   │ │  Chat mode:            │
+│ [Chat]     │ │   sessions │ thread │ details
+│ [Ops]      │ │  Ops mode:             │
+│ ─────────  │ │   tabs: Status·Sessions·Usage·
+│ theme      │ │   Providers·Channels·Skills·Memory·Persona
+│ logo       │ │                        │
+└────────────┘ └────────────────────────┘
+```
+
+- **Chat**: left = session list (resume/search/rename), center = streaming thread, composer
+  footer with model/provider switch + Stop. Tool-call & usage cards inline.
+- **Ops**: persistent metrics strip (version/provider/model/memory/health) + tabbed read-only panels.
+
+## 7. Known constraints & backend follow-ups
+
+1. **Multi-turn continuity**: `POST /agent/chat` builds a fresh per-turn agent and persists each
+   call as a *new* session — it accepts no `session_id`/history. v1 keeps the visible thread
+   **client-side**; the agent does not yet "remember" earlier turns of the same on-screen thread.
+   _Follow-up (Rust)_: add `session_id`/`history` to `ChatRequestBody` and replay prior messages.
+2. **Resuming a past session** loads its transcript read-only (sending a new message starts a fresh
+   backend session) — same root cause as (1).
+3. **Ops is read-only** for v1. Mutating ops (config edit, cron CRUD, skill enable/disable, secrets)
+   require new gateway endpoints — out of scope tonight, listed for later.
+4. Personality `PUT` is wired (it exists in the API) but exposed cautiously.
+
+## 8. Security
+
+- Default bind loopback; proxy holds the token server-side; nothing secret reaches the browser.
+- Remote access: SSH tunnel (`ssh -N -L 3939:127.0.0.1:3939 user@host`) or Tailscale — never raw exposure.
+- No secrets logged. `.env.local` is git-ignored.
+
+## 9. Run
+
+```bash
+# 1. backend (from packages/rantaiclaw)
+./target/release/rantaiclaw gateway --host 127.0.0.1 -p 3000
+# pair once, capture token → rantaiclaw-ui/.env.local : RANTAICLAW_TOKEN=...
+# (scripts/dev.sh automates pairing)
+
+# 2. UI
+cd packages/rantaiclaw-ui && bun install && bun run dev   # http://127.0.0.1:3939
+```
