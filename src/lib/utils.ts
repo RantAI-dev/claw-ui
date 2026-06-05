@@ -9,6 +9,8 @@ export function cn(...inputs: ClassValue[]) {
 export function relativeTime(ts: number | string | null | undefined): string {
   if (ts == null) return "";
   let ms = typeof ts === "string" ? Number(ts) : ts;
+  // ISO 8601 strings (e.g. "2026-06-04T16:49:15Z") aren't numeric — parse them.
+  if (typeof ts === "string" && !Number.isFinite(ms)) ms = Date.parse(ts);
   if (!Number.isFinite(ms)) return String(ts);
   // Heuristic: treat 10-digit values as seconds.
   if (ms < 1e12) ms *= 1000;

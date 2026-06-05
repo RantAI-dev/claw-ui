@@ -1,5 +1,5 @@
-import { ChatScreen } from "@/components/chat/chat-screen";
+import { ConsoleShell } from "@/components/console/console-shell";
 
 export default function ChatPage() {
-  return <ChatScreen />;
+  return <ConsoleShell />;
 }

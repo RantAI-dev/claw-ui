@@ -6,6 +6,8 @@ import type {
   CronSchedule,
   DoctorResult,
   Insights,
+  KbDocument,
+  KbGroup,
   MemoryEntry,
   MemoryStats,
   Personality,
@@ -58,10 +60,10 @@ export const api = {
     rc<{ entries: MemoryEntry[]; count: number }>(`memory?limit=${limit}`),
   memoryStats: () => rc<MemoryStats>("memory/stats"),
   personality: () => rc<Personality>("personality"),
-  setPersonality: (preset: string) =>
-    rc<{ preset: string }>("personality", {
+  setPersonality: (body: { preset?: string; always_on_kbs?: string[] }) =>
+    rc<Personality>("personality", {
       method: "PUT",
-      body: JSON.stringify({ preset }),
+      body: JSON.stringify(body),
     }),
   channels: () => rc<ChannelsInfo>("channels"),
   providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
@@ -106,10 +108,62 @@ export const api = {
       "config/model",
       { method: "PUT", body: JSON.stringify(body) },
     ),
+  setAutonomy: (body: {
+    level?: string;
+    auto_approve?: string[];
+    always_ask?: string[];
+    allowed_commands?: string[];
+    forbidden_paths?: string[];
+    max_actions_per_hour?: number;
+    max_cost_per_day_cents?: number;
+    workspace_only?: boolean;
+    block_high_risk_commands?: boolean;
+    require_approval_for_medium_risk?: boolean;
+  }) =>
+    rc<Record<string, unknown>>("config/autonomy", { method: "PUT", body: JSON.stringify(body) }),
+  addMcpServer: (name: string, body: { command: string; args?: string[]; env?: Record<string, string> }) =>
+    rc<{ name: string; added: boolean; count: number }>(
+      `config/mcp_servers/${encodeURIComponent(name)}`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  deleteMcpServer: (name: string) =>
+    rc<{ name: string; removed: boolean; count: number }>(
+      `config/mcp_servers/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+  addMemory: (body: { content: string; key?: string; category?: string; session_id?: string }) =>
+    rc<{ key: string; stored: boolean }>("memory", { method: "POST", body: JSON.stringify(body) }),
+  deleteMemory: (key: string) =>
+    rc<{ key: string; removed: boolean }>(`memory/${encodeURIComponent(key)}`, { method: "DELETE" }),
   secrets: () => rc<SecretsInfo>("secrets"),
   setSecrets: (body: { api_key?: string; api_url?: string }) =>
     rc<{ ok: boolean; api_key_present: boolean }>("secrets", {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  // ---- Knowledge Base groups (a "Knowledge Base" == a group) ----
+  kbGroups: () => rc<KbGroup[]>("kb/groups"),
+  kbCreateGroup: (body: { name: string; description?: string; color?: string }) =>
+    rc<KbGroup>("kb/groups", { method: "POST", body: JSON.stringify(body) }),
+  kbUpdateGroup: (id: string, body: { name?: string; description?: string; color?: string }) =>
+    rc<KbGroup>(`kb/groups/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  kbDeleteGroup: (id: string) =>
+    rc<{ id: string; deleted: boolean }>(`kb/groups/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  kbGroupDocuments: (id: string) =>
+    rc<KbDocument[]>(`kb/groups/${encodeURIComponent(id)}/documents`),
+  kbAddDocToGroup: (id: string, docId: string) =>
+    rc<{ ok: boolean }>(`kb/groups/${encodeURIComponent(id)}/documents`, {
+      method: "POST",
+      body: JSON.stringify({ document_id: docId }),
+    }),
+  kbRemoveDocFromGroup: (id: string, docId: string) =>
+    rc<{ ok: boolean }>(
+      `kb/groups/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}`,
+      { method: "DELETE" },
+    ),
 };

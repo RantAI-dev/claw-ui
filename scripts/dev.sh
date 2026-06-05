@@ -40,6 +40,10 @@ fi
 [ -f "$DEVDIR/dev-gateway.pid" ] && kill "$(cat "$DEVDIR/dev-gateway.pid")" 2>/dev/null || true
 sleep 1
 
+# Load KB embedding creds (OPENROUTER_API_KEY / KB_* overrides) so the KB routes
+# can embed & ingest. Lives in .devgateway/kb.env (gitignored — never committed).
+[ -f "$DEVDIR/kb.env" ] && { set -a; . "$DEVDIR/kb.env"; set +a; }
+
 echo "▶ dev gateway: $BIN gateway -p $GW_PORT (config: $DEVDIR)"
 RANTAICLAW_CONFIG_DIR="$DEVDIR" nohup "$BIN" gateway --host 127.0.0.1 -p "$GW_PORT" \
   > "$DEVDIR/dev-gateway.log" 2>&1 &

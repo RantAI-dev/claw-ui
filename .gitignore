@@ -31,3 +31,7 @@ next-env.d.ts
 /.shots/
 *.pid
 .devserver.log
+
+# Nexus brand build dir
+.next-nexus/
+.devgateway/

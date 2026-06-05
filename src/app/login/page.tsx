@@ -44,7 +44,7 @@ export default function LoginPage() {
     <div className="flex h-dvh w-full items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm p-6">
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
-          <Image src={brand.logo} alt={brand.name} width={40} height={40} className="rounded-lg" priority />
+          <Image src={brand.logo} alt={brand.name} width={40} height={40} className="rounded-lg" priority unoptimized />
           <h1 className="text-base font-semibold">{brand.productName}</h1>
           <p className="text-xs text-muted-foreground">Enter your password to continue</p>
         </div>

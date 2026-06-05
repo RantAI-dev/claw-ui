@@ -1,5 +1,5 @@
-import { OpsScreen } from "@/components/ops/ops-screen";
+import { ConsoleShell } from "@/components/console/console-shell";
 
 export default function OpsPage() {
-  return <OpsScreen />;
+  return <ConsoleShell initialRoute="status" />;
 }

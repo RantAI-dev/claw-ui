@@ -1,48 +1,60 @@
 import type { Metadata, Viewport } from "next";
-import localFont from "next/font/local";
+import { Geist, Geist_Mono, Montserrat, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { AppShell } from "@/components/layout/app-shell";
 import { Toaster } from "sonner";
 import { brand } from "@/lib/branding";
 
-const poppins = localFont({
-  src: [
-    { path: "./fonts/poppins/Poppins-300.ttf", weight: "300", style: "normal" },
-    { path: "./fonts/poppins/Poppins-400.ttf", weight: "400", style: "normal" },
-    { path: "./fonts/poppins/Poppins-500.ttf", weight: "500", style: "normal" },
-    { path: "./fonts/poppins/Poppins-600.ttf", weight: "600", style: "normal" },
-    { path: "./fonts/poppins/Poppins-700.ttf", weight: "700", style: "normal" },
-  ],
-  variable: "--font-poppins",
+const geist = Geist({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-geist",
+  display: "swap",
+});
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600"],
+  variable: "--font-geist-mono",
+  display: "swap",
+});
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
+const jetbrains = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-jetbrains",
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: `${brand.productName}`,
   description: brand.tagline,
-  icons: { icon: "/favicon-32x32.png", apple: "/apple-touch-icon.png" },
+  icons: { icon: brand.favicon, apple: brand.favicon },
 };
 
 export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#fafaf5" },
-    { media: "(prefers-color-scheme: dark)", color: "#252525" },
-  ],
+  themeColor: brand.theme === "dark" ? "#0b0f1a" : "#ffffff",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const dark = brand.theme === "dark";
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={`${poppins.variable} font-sans antialiased bg-background text-foreground`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <AppShell>{children}</AppShell>
-          <Toaster position="bottom-right" richColors closeButton theme="system" />
+    <html
+      lang="en"
+      data-brand={brand.id}
+      className={dark ? "dark" : undefined}
+      suppressHydrationWarning
+    >
+      <body
+        className={`${geist.variable} ${geistMono.variable} ${montserrat.variable} ${jetbrains.variable} antialiased`}
+      >
+        <ThemeProvider attribute="class" forcedTheme={brand.theme} disableTransitionOnChange>
+          {children}
+          <Toaster position="bottom-right" richColors closeButton theme={brand.theme} />
         </ThemeProvider>
       </body>
     </html>

@@ -114,6 +114,31 @@ export interface Personality {
   tone?: string | null;
   avoid?: string | null;
   configured?: boolean;
+  /** KB group ids the agent always retrieves from, regardless of per-chat selection. */
+  always_on_kbs?: string[];
+}
+
+// ---- Knowledge Base groups ----
+export interface KbGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  document_count?: number;
+  created_at?: number | string | null;
+  updated_at?: number | string | null;
+}
+
+export interface KbDocument {
+  id: string;
+  title: string | null;
+  file_type: string | null;
+  file_size: number | null;
+  created_at: number | string | null;
+  categories?: string[];
+  mime_type?: string | null;
+  retrieval_count?: number;
+  updated_at?: number | string | null;
 }
 
 export interface ChannelsInfo {
@@ -159,6 +184,10 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
   usage?: { total: number; cost_usd: number } | null;
   error?: string | null;
+  /** KB document titles retrieved for this assistant turn (citations). */
+  sources?: string[];
+  /** Filenames the user had attached when sending this user turn. */
+  attachments?: string[];
 }
 
 export interface ToolCall {
@@ -168,4 +197,13 @@ export interface ToolCall {
   ok?: boolean;
   outputPreview?: string;
   done?: boolean;
+}
+
+// A document attached to a chat and ingested into the KB (scoped by conversation id).
+export interface Attachment {
+  id: string;
+  name: string;
+  chunks: number;
+  status: "uploading" | "ready" | "error";
+  error?: string;
 }

@@ -33,6 +33,9 @@ const devOrigins = (process.env.RANTAICLAW_UI_DEV_ORIGINS || "")
 
 const nextConfig = {
   reactStrictMode: true,
+  // Brand-scoped build dir so the Nexus (NQRust) and RantaiClaw variants can be
+  // dev-served / built side by side without clobbering each other's .next cache.
+  distDir: process.env.NEXT_PUBLIC_BRAND === "nexus" ? ".next-nexus" : ".next",
   ...(devOrigins.length ? { allowedDevOrigins: devOrigins } : {}),
   // Lean container image: bundle a minimal standalone server.
   output: "standalone",

@@ -2,9 +2,6 @@
 
 import * as React from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
-import { cn, formatNumber } from "@/lib/utils";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 
 export function PanelFrame({
   loading,
@@ -21,30 +18,67 @@ export function PanelFrame({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          padding: "64px 0",
+          color: "var(--muted-foreground)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+        }}
+      >
         <Loader2 className="size-4 animate-spin" /> Loading…
       </div>
     );
   }
   if (error) {
     return (
-      <div className="flex flex-col items-center gap-3 py-16 text-center">
-        <div className="flex items-center gap-2 text-sm text-destructive">
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 12,
+          padding: "56px 0",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            color: "var(--destructive)",
+            fontSize: 13,
+          }}
+        >
           <AlertTriangle className="size-4" /> {error}
         </div>
         {onRefresh && (
-          <button
-            onClick={onRefresh}
-            className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs hover:bg-secondary cursor-pointer"
-          >
-            <RefreshCw className="size-3.5" /> Retry
+          <button className="gbtn" onClick={onRefresh}>
+            <RefreshCw /> Retry
           </button>
         )}
       </div>
     );
   }
   if (empty) {
-    return <div className="py-16 text-center text-sm text-muted-foreground">Nothing here yet.</div>;
+    return (
+      <div
+        style={{
+          padding: "56px 0",
+          textAlign: "center",
+          color: "var(--muted-foreground)",
+          fontFamily: "var(--font-mono)",
+          fontSize: 12,
+        }}
+      >
+        Nothing here yet.
+      </div>
+    );
   }
   return <>{children}</>;
 }
@@ -60,46 +94,76 @@ export function StatCard({
   hint?: string;
   tone?: "default" | "success" | "warning" | "destructive" | "accent";
 }) {
-  const toneClass = {
-    default: "text-foreground",
-    success: "text-success",
-    warning: "text-warning",
-    destructive: "text-destructive",
-    accent: "text-accent",
+  const color = {
+    default: "var(--foreground)",
+    success: "var(--accent-green)",
+    warning: "var(--accent-orange)",
+    destructive: "var(--destructive)",
+    accent: "var(--brand-sky)",
   }[tone];
   return (
-    <Card className="p-4">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 truncate text-xl font-semibold", toneClass)} title={typeof value === "string" ? value : undefined}>
+    <div className="card" style={{ padding: "16px 18px" }}>
+      <div className="s-lab" style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>
+        {label}
+      </div>
+      <div
+        className="s-fig"
+        title={typeof value === "string" ? value : undefined}
+        style={{
+          marginTop: 6,
+          fontSize: 22,
+          fontWeight: 500,
+          letterSpacing: "-0.02em",
+          color,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
         {value}
       </div>
-      {hint && <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>}
-    </Card>
+      {hint && (
+        <div style={{ marginTop: 3, fontSize: 11, color: "var(--muted-foreground)" }}>{hint}</div>
+      )}
+    </div>
   );
 }
 
 export function KeyVal({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-2 last:border-0">
-      <span className="shrink-0 text-xs text-muted-foreground">{k}</span>
-      <span className={cn("min-w-0 truncate text-right text-sm", mono && "font-mono text-xs")}>{v}</span>
+    <div
+      className="kv-row"
+      style={{ padding: "8px 0", borderBottom: "1px solid color-mix(in oklab, var(--border) 60%, transparent)" }}
+    >
+      <span className="k">{k}</span>
+      <span className="v" style={mono ? undefined : { fontFamily: "var(--font-sans)" }}>
+        {v}
+      </span>
     </div>
   );
 }
 
 export function SeverityBadge({ severity }: { severity: string }) {
   const s = severity.toLowerCase();
-  const variant =
+  const cls =
     s.includes("err") || s.includes("crit") || s.includes("fail")
-      ? "destructive"
+      ? "red"
       : s.includes("warn")
-        ? "warning"
+        ? "amber"
         : s.includes("ok") || s.includes("pass") || s.includes("healthy")
-          ? "success"
-          : "secondary";
-  return <Badge variant={variant as never}>{severity}</Badge>;
+          ? "green"
+          : "dim";
+  return (
+    <span className={"badge " + cls}>
+      <span className="bd" /> {severity}
+    </span>
+  );
 }
 
 export function CountBadge({ n }: { n: number }) {
-  return <span className="text-xs text-muted-foreground">{formatNumber(n)}</span>;
+  return (
+    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--muted-foreground)" }}>
+      {n.toLocaleString()}
+    </span>
+  );
 }
