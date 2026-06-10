@@ -17,7 +17,7 @@ import {
   X,
 } from "lucide-react";
 import type { Attachment, ChatMessage, KbGroup, ProviderInfo } from "@/lib/types";
-import { modelsForProvider } from "@/lib/models";
+import { ModelPicker } from "@/components/ui/model-picker";
 import { brand } from "@/lib/branding";
 import { acceptAttr, imageAcceptAttr, ingestFile, MAX_BYTES, MAX_FILES } from "@/lib/attachments";
 import type { Connection } from "@/hooks/use-gateway-status";
@@ -264,7 +264,6 @@ export function ChatPane(props: ChatPaneProps) {
   const empty = messages.length === 0;
   const last = messages[messages.length - 1];
   const canRegenerate = !isStreaming && !pending && last?.role === "assistant" && (!!last.content || !!last.error);
-  const modelList = modelsForProvider(provider || defaultProvider);
 
   return (
     <>
@@ -463,19 +462,14 @@ export function ChatPane(props: ChatPaneProps) {
                 </select>
                 <ChevronDown style={{ width: 12, height: 12, opacity: 0.6 }} />
               </span>
-              <span className="cchip input" title="Model override">
-                <input
-                  list="composer-models"
-                  value={model}
-                  onChange={(e) => onModelChange(e.target.value)}
-                  placeholder={defaultModel || "model"}
-                />
-              </span>
-              <datalist id="composer-models">
-                {modelList.map((m) => (
-                  <option key={m} value={m} />
-                ))}
-              </datalist>
+              <ModelPicker
+                provider={provider || defaultProvider || ""}
+                value={model}
+                onChange={onModelChange}
+                defaultModel={defaultModel}
+                compact
+                className="min-w-[7rem]"
+              />
 
               {isStreaming ? (
                 <button className="send-btn stop" onClick={onStop}>

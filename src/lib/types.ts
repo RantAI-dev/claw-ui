@@ -153,6 +153,17 @@ export interface ProviderInfo {
   local: boolean;
 }
 
+/** A provider's model catalog, served by the gateway from the same cache the TUI uses. */
+export interface ModelCatalog {
+  provider: string;
+  models: string[];
+  default: string;
+  /** "cache" (from models_cache.json) or "curated" (hardcoded fallback). */
+  source: string;
+  age_secs: number | null;
+  count: number;
+}
+
 export interface CronJob {
   id: string;
   name: string | null;

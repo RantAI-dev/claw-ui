@@ -20,7 +20,7 @@ import {
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { BUILTIN_TOOLS } from "@/lib/console";
-import { modelsForProvider, isModelLikelyValid } from "@/lib/models";
+import { ModelPicker } from "@/components/ui/model-picker";
 import type { ClawHubSkill } from "@/lib/types";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -201,14 +201,7 @@ export function ProvidersPanel() {
   const active = secrets.data?.provider;
   const keyPresent = secrets.data?.api_key_present;
 
-  // Switching provider: if the current model isn't valid for it, suggest the first known one.
-  const changeProvider = (next: string) => {
-    setProvider(next);
-    const known = modelsForProvider(next);
-    if (known.length && !known.includes(model)) setModel(known[0]);
-  };
-
-  const modelMismatch = !!provider && !isModelLikelyValid(provider, model);
+  const changeProvider = (next: string) => setProvider(next);
 
   const save = async () => {
     setBusy(true);
@@ -266,27 +259,13 @@ export function ProvidersPanel() {
               </option>
             ))}
           </select>
-          <input
-            list="provider-model-list"
+          <ModelPicker
+            provider={provider}
             value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder="default model"
-            className={cn(
-              "h-9 rounded-md border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring",
-              modelMismatch ? "border-warning" : "border-border",
-            )}
+            onChange={setModel}
+            defaultModel={info.data?.model}
           />
-          <datalist id="provider-model-list">
-            {modelsForProvider(provider).map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
         </div>
-        {modelMismatch && (
-          <p className="text-[10px] text-warning">
-            “{model}” may not be a {provider} model — pick one from the dropdown, or type the right id.
-          </p>
-        )}
         <input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
