@@ -10,6 +10,7 @@ import type {
   KbGroup,
   MemoryEntry,
   MemoryStats,
+  ModelCatalog,
   Personality,
   ProviderInfo,
   SearchResult,
@@ -67,6 +68,14 @@ export const api = {
     }),
   channels: () => rc<ChannelsInfo>("channels"),
   providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
+  // Model catalog for a provider — resolved by the gateway from the SAME on-disk
+  // cache + curated fallback the TUI uses, so the UI never drifts. `source` is
+  // "cache" | "curated"; `refreshProviderModels` repopulates the cache from the
+  // live provider API (mirrors `rantaiclaw models refresh`).
+  providerModels: (id: string) =>
+    rc<ModelCatalog>(`providers/${encodeURIComponent(id)}/models`),
+  refreshProviderModels: (id: string) =>
+    rc<ModelCatalog>(`providers/${encodeURIComponent(id)}/models/refresh`, { method: "POST" }),
   cron: () => rc<{ jobs: CronJob[]; count: number }>("cron"),
   createCron: (body: { schedule: CronSchedule; prompt: string; name?: string; model?: string }) =>
     rc<CronJob>("cron", { method: "POST", body: JSON.stringify(body) }),
