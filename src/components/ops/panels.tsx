@@ -21,6 +21,7 @@ import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { BUILTIN_TOOLS } from "@/lib/console";
 import { ModelPicker } from "@/components/ui/model-picker";
+import { Combobox } from "@/components/ui/combobox";
 import type { ClawHubSkill } from "@/lib/types";
 import { cn, formatNumber, relativeTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -247,18 +248,18 @@ export function ProvidersPanel() {
           {secrets.data?.encrypt_at_rest && <span className="text-[10px]">· encrypted at rest</span>}
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <select
+          <Combobox
+            items={(catalog.data?.providers ?? []).map((p) => ({
+              value: p.id,
+              label: p.display_name,
+              hint: p.local ? "local" : undefined,
+            }))}
             value={provider}
-            onChange={(e) => changeProvider(e.target.value)}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
-          >
-            <option value="" disabled>Choose provider…</option>
-            {catalog.data?.providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.display_name}{p.local ? " · local" : ""}
-              </option>
-            ))}
-          </select>
+            onChange={changeProvider}
+            placeholder="Choose provider…"
+            searchPlaceholder="Search provider…"
+            emptyText="No providers"
+          />
           <ModelPicker
             provider={provider}
             value={model}
