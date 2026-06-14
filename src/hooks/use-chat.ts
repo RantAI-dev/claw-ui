@@ -1,8 +1,16 @@
 "use client";
 
 import * as React from "react";
+import { api } from "@/lib/api";
 import { streamChat } from "@/lib/chat-stream";
 import type { ChatEvent, ChatMessage, SessionMessage, ToolCall } from "@/lib/types";
+
+/** A tool call paused awaiting the user's in-browser approve/deny decision. */
+export interface PendingApproval {
+  id: string;
+  tool: string;
+  args: unknown;
+}
 
 let idSeq = 0;
 function nextId(prefix: string) {
@@ -101,6 +109,10 @@ export function useChat(opts: UseChatOptions) {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = React.useState(false);
   const [sessionId, setSessionId] = React.useState<string | null>(null);
+  // A tool the agent paused on, awaiting an in-browser approve/deny. The stream
+  // stays open while this is set; resolving it (POST /approvals/{id}) lets the
+  // paused turn resume.
+  const [pendingApproval, setPendingApproval] = React.useState<PendingApproval | null>(null);
   // Stable client-side id used to scope KB attachments + retrieval per chat.
   const [conversationId, setConversationId] = React.useState<string>(() => nextId("c"));
   const abortRef = React.useRef<AbortController | null>(null);
@@ -189,6 +201,12 @@ export function useChat(opts: UseChatOptions) {
           case "usage":
             patch(assistantId, (m) => ({ ...m, usage: { total: ev.total, cost_usd: ev.cost_usd } }));
             break;
+          case "approval_request":
+            // Surface the request; the stream keeps reading (keep-alives) until
+            // the user resolves it via `resolveApproval`, after which the
+            // gateway emits the tool_call_start/end + remaining events.
+            setPendingApproval({ id: ev.id, tool: ev.tool, args: ev.args });
+            break;
           case "error":
             patch(assistantId, (m) => ({ ...m, error: ev.message }));
             break;
@@ -245,6 +263,17 @@ export function useChat(opts: UseChatOptions) {
     },
     [isStreaming, runAssistant, decorate, retrieve],
   );
+
+  /** Approve or deny the pending tool call; resumes the paused stream. */
+  const resolveApproval = React.useCallback(async (id: string, approve: boolean) => {
+    setPendingApproval(null);
+    try {
+      await api.resolveApproval(id, approve);
+    } catch {
+      // If the resolve POST fails the gateway's 5-min deadline still auto-denies,
+      // so the stream won't hang forever; surface nothing extra here.
+    }
+  }, []);
 
   /** Re-run the most recent user turn, replacing the last assistant reply. */
   const regenerate = React.useCallback(async () => {
@@ -322,5 +351,7 @@ export function useChat(opts: UseChatOptions) {
     reset,
     loadHistory,
     totals,
+    pendingApproval,
+    resolveApproval,
   };
 }
