@@ -33,6 +33,7 @@ import type { KbGroup, Personality, ProviderInfo, SessionSummary } from "@/lib/t
 import { kbSearch } from "@/lib/attachments";
 import { useChat } from "@/hooks/use-chat";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
+import { Modal } from "@/components/ui/modal";
 import { ChatPane } from "./chat-pane";
 import { OpsView } from "./ops-view";
 import { RightPanel } from "./right-panel";
@@ -591,6 +592,71 @@ export function ConsoleShell({
       )}
 
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} tweaks={tweaks} setTweak={setTweak} />
+
+      {/* In-browser tool-approval modal (WebModal backend). Shown when the agent
+          pauses on a tool that needs approval; Approve/Deny resumes the turn. */}
+      <Modal
+        open={!!chat.pendingApproval}
+        onClose={() =>
+          chat.pendingApproval && chat.resolveApproval(chat.pendingApproval.id, false)
+        }
+        title="🔧 Approve tool?"
+        description={
+          chat.pendingApproval
+            ? `The agent wants to run the “${chat.pendingApproval.tool}” tool.`
+            : undefined
+        }
+        footer={
+          chat.pendingApproval ? (
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => chat.resolveApproval(chat.pendingApproval!.id, false)}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 9,
+                  border: 0,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: "#ef4444",
+                  color: "#fff",
+                }}
+              >
+                Deny
+              </button>
+              <button
+                onClick={() => chat.resolveApproval(chat.pendingApproval!.id, true)}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 9,
+                  border: 0,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  background: "#10b981",
+                  color: "#fff",
+                }}
+              >
+                Approve
+              </button>
+            </div>
+          ) : null
+        }
+      >
+        {chat.pendingApproval ? (
+          <pre
+            style={{
+              margin: 0,
+              padding: 12,
+              borderRadius: 8,
+              background: "rgba(0,0,0,0.25)",
+              fontSize: 12.5,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {JSON.stringify(chat.pendingApproval.args, null, 2)}
+          </pre>
+        ) : null}
+      </Modal>
     </div>
   );
 }

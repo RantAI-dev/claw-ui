@@ -61,11 +61,24 @@ export const api = {
     rc<{ entries: MemoryEntry[]; count: number }>(`memory?limit=${limit}`),
   memoryStats: () => rc<MemoryStats>("memory/stats"),
   personality: () => rc<Personality>("personality"),
-  setPersonality: (body: { preset?: string; always_on_kbs?: string[] }) =>
+  setPersonality: (body: {
+    preset?: string;
+    name?: string;
+    role?: string;
+    tone?: string;
+    avoid?: string;
+    always_on_kbs?: string[];
+  }) =>
     rc<Personality>("personality", {
       method: "PUT",
       body: JSON.stringify(body),
     }),
+  /** Resolve an in-browser tool-approval modal raised mid-chat (WebModal backend). */
+  resolveApproval: (id: string, approve: boolean) =>
+    rc<{ resolved: boolean; id: string; approved: boolean }>(
+      `approvals/${encodeURIComponent(id)}`,
+      { method: "POST", body: JSON.stringify({ approve }) },
+    ),
   channels: () => rc<ChannelsInfo>("channels"),
   providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   // Model catalog for a provider — resolved by the gateway from the SAME on-disk

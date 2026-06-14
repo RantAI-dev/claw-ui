@@ -181,6 +181,7 @@ export type ChatEvent =
   | { type: "usage"; model: string; prompt: number; completion: number; total: number; cost_usd: number }
   | { type: "tool_call_start"; id: string; name: string; args: unknown }
   | { type: "tool_call_end"; id: string; ok: boolean; output_preview: string }
+  | { type: "approval_request"; id: string; tool: string; args: unknown }
   | { type: "error"; message: string }
   | { type: "done"; text: string; cancelled: boolean; session_id?: string | null }
   | { type: "reload_complete" }
