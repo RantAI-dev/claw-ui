@@ -19,6 +19,7 @@ import type {
   SessionSummary,
   Skill,
   StatusInfo,
+  TelegramConnectResult,
 } from "./types";
 
 async function rc<T>(path: string, init?: RequestInit): Promise<T> {
@@ -80,6 +81,17 @@ export const api = {
       { method: "POST", body: JSON.stringify({ approve }) },
     ),
   channels: () => rc<ChannelsInfo>("channels"),
+  // Experimental: connect a Telegram channel from the console. The gateway
+  // validates the token against Telegram (getMe) before persisting it.
+  connectTelegram: (bot_token: string, allowed_users: string[]) =>
+    rc<TelegramConnectResult>("channels/telegram", {
+      method: "POST",
+      body: JSON.stringify({ bot_token, allowed_users }),
+    }),
+  disconnectTelegram: () =>
+    rc<{ disconnected: boolean; channel: string }>("channels/telegram", {
+      method: "DELETE",
+    }),
   providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   // Model catalog for a provider — resolved by the gateway from the SAME on-disk
   // cache + curated fallback the TUI uses, so the UI never drifts. `source` is
