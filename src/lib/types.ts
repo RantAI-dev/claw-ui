@@ -146,6 +146,17 @@ export interface ChannelsInfo {
   count: number;
 }
 
+/** Result of the experimental "connect Telegram" flow (validate + persist). */
+export interface TelegramConnectResult {
+  connected: boolean;
+  channel: string;
+  bot_username: string;
+  allowed_users: number;
+  experimental?: boolean;
+  warning?: string | null;
+  note?: string;
+}
+
 export interface ProviderInfo {
   id: string;
   display_name: string;

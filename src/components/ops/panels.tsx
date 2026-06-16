@@ -27,6 +27,7 @@ import { cn, formatNumber, relativeTime } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PanelFrame, StatCard, KeyVal, SeverityBadge } from "./shared";
 
@@ -316,19 +317,119 @@ export function ProvidersPanel() {
 // ── Channels ────────────────────────────────────────────────────────────────
 export function ChannelsPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.channels(), []);
+  const [token, setToken] = React.useState("");
+  const [users, setUsers] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const tgConnected = !!data?.configured.includes("telegram");
+
+  const connect = async () => {
+    const t = token.trim();
+    if (!t) return;
+    setBusy(true);
+    try {
+      const allowed = users
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const r = await api.connectTelegram(t, allowed);
+      toast.success(`Connected Telegram @${r.bot_username}`);
+      if (r.warning) toast.warning(r.warning);
+      else if (r.note) toast.message(r.note);
+      setToken("");
+      setUsers("");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (
+      !window.confirm(
+        "Disconnect Telegram? The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect.",
+      )
+    )
+      return;
+    setBusy(true);
+    try {
+      await api.disconnectTelegram();
+      toast.success("Disconnected Telegram");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div>
       <SectionTitle action={<RefreshButton onClick={refresh} />}>
         Channels {data && <span className="text-muted-foreground">· {data.count} configured</span>}
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
+      <PanelFrame loading={loading} error={error} onRefresh={refresh}>
         <div className="flex flex-wrap gap-2">
-          {data?.configured.map((c) => (
-            <Badge key={c} variant="accent" className="px-3 py-1 text-sm capitalize">
-              {c}
-            </Badge>
-          ))}
+          {data && data.count > 0 ? (
+            data.configured.map((c) => (
+              <Badge key={c} variant="accent" className="px-3 py-1 text-sm capitalize">
+                {c}
+              </Badge>
+            ))
+          ) : (
+            <span className="text-sm text-muted-foreground">No channels configured yet.</span>
+          )}
         </div>
+
+        {/* Experimental: connect a Telegram channel from the console. */}
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              Connect Telegram
+              <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                experimental
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {tgConnected ? (
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm text-muted-foreground">
+                  Telegram is configured. It starts receiving messages when the channels runtime
+                  (<code>rantaiclaw channels</code>) (re)starts.
+                </span>
+                <Button size="sm" variant="destructive" onClick={disconnect} disabled={busy}>
+                  Disconnect
+                </Button>
+              </div>
+            ) : (
+              <>
+                <Input
+                  type="password"
+                  placeholder="Bot token (from @BotFather)"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  autoComplete="off"
+                />
+                <Input
+                  placeholder="Allowed user ids / usernames (comma-separated)"
+                  value={users}
+                  onChange={(e) => setUsers(e.target.value)}
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    The token is validated with Telegram, then saved (encrypted at rest). Leave
+                    allowed users empty to deny all senders.
+                  </span>
+                  <Button size="sm" onClick={connect} disabled={busy || !token.trim()}>
+                    {busy ? "Connecting…" : "Connect"}
+                  </Button>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </PanelFrame>
     </div>
   );
