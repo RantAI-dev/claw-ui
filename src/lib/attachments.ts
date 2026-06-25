@@ -64,7 +64,9 @@ export interface IngestResult {
 export async function ingestFile(file: File, conversationId: string): Promise<IngestResult> {
   const form = new FormData();
   form.append("file", file, file.name);
-  form.append("session", conversationId);
+  // Send the gateway's own field name so the proxy can forward the body
+  // verbatim (no server-side re-parse/rename) — see /api/rc/kb/ingest.
+  form.append("categories", conversationId);
 
   const res = await fetch("/api/rc/kb/ingest", { method: "POST", body: form });
   const text = await res.text();
