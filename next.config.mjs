@@ -33,6 +33,14 @@ const devOrigins = (process.env.RANTAICLAW_UI_DEV_ORIGINS || "")
 
 const nextConfig = {
   reactStrictMode: true,
+  // KB document uploads (PDFs / office docs) routinely exceed Next's 10 MiB
+  // default request-body cap. The /api/rc/kb/ingest proxy buffers the upload and
+  // forwards it to the gateway (which accepts up to 32 MiB); without raising this,
+  // bodies over 10 MiB are silently truncated and the gateway then rejects the
+  // multipart with "file bytes: Error parsing multipart/form-data request".
+  experimental: {
+    proxyClientMaxBodySize: 32 * 1024 * 1024,
+  },
   // Brand-scoped build dir so the Nexus (NQRust) and RantaiClaw variants can be
   // dev-served / built side by side without clobbering each other's .next cache.
   distDir: process.env.NEXT_PUBLIC_BRAND === "nexus" ? ".next-nexus" : ".next",
