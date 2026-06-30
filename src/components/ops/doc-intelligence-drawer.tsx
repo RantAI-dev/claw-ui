@@ -49,11 +49,31 @@ export function DocIntelligenceDrawer({
 }) {
   const intel = useAsync(() => api.kbDocumentIntelligence(documentId), [documentId]);
   const [reextracting, setReextracting] = React.useState(false);
+  const panelRef = React.useRef<HTMLDivElement>(null);
 
-  // Esc to close + lock background scroll while open.
+  // Esc to close, trap Tab focus within the dialog, lock background scroll, and
+  // move focus into the panel on open (WCAG 2.4.3).
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab" && panelRef.current) {
+        const f = panelRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (f.length === 0) return;
+        const first = f[0];
+        const last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -120,7 +140,10 @@ export function DocIntelligenceDrawer({
       role="dialog"
       aria-modal="true"
     >
-      <div className="flex h-full w-full max-w-xl flex-col border-l border-border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-right-4">
+      <div
+        ref={panelRef}
+        className="flex h-full w-full max-w-xl flex-col border-l border-border bg-card text-card-foreground shadow-2xl animate-in slide-in-from-right-4"
+      >
         {/* Header */}
         <div className="flex items-start justify-between gap-3 border-b border-border/60 p-4">
           <div className="flex min-w-0 items-start gap-2.5">
@@ -135,7 +158,12 @@ export function DocIntelligenceDrawer({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={reextract} disabled={reextracting}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={reextract}
+              disabled={reextracting || intel.loading}
+            >
               {reextracting ? (
                 <Loader2 className="size-3.5 animate-spin" />
               ) : (
@@ -144,6 +172,7 @@ export function DocIntelligenceDrawer({
               Re-extract
             </Button>
             <button
+              autoFocus
               onClick={onClose}
               aria-label="Close"
               className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
@@ -169,10 +198,11 @@ export function DocIntelligenceDrawer({
                 <Network className="size-6 text-muted-foreground" />
               </div>
               <div>
-                <p className="text-sm font-medium">No intelligence yet</p>
+                <p className="text-sm font-medium">No entities found</p>
                 <p className="mt-0.5 max-w-xs text-xs text-muted-foreground">
-                  No entities have been extracted from this document. Extraction may be disabled
-                  (<code>KB_INTELLIGENCE_ENABLED</code>) or not yet run — try Re-extract.
+                  No entities are stored for this document. Extraction may not have run yet (enable
+                  it with <code>KB_INTELLIGENCE_ENABLED</code>), or the document yielded none. Try
+                  Re-extract.
                 </p>
               </div>
             </div>

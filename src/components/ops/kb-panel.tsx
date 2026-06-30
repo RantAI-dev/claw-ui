@@ -458,6 +458,7 @@ function KbDetail({
   const [deleting, setDeleting] = React.useState(false);
   // Per-document intelligence drawer target (SP-3).
   const [intelDoc, setIntelDoc] = React.useState<KbDocument | null>(null);
+  const closeIntel = React.useCallback(() => setIntelDoc(null), []);
 
   const uploading = uploads.some((u) => u.status === "uploading");
 
@@ -882,7 +883,7 @@ function KbDetail({
         <DocIntelligenceDrawer
           documentId={intelDoc.id}
           documentTitle={intelDoc.title || intelDoc.id.slice(0, 8)}
-          onClose={() => setIntelDoc(null)}
+          onClose={closeIntel}
         />
       )}
     </div>
