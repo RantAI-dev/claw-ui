@@ -101,12 +101,23 @@ interface ForceGraph2DProps {
   maxZoom?: number;
   enableNodeDrag?: boolean;
   onNodeClick?: (n: RTNode) => void;
+  onEngineStop?: () => void;
 }
 
+/** Imperative handle exposed by react-force-graph-2d (only the bits we use). */
+type FgHandle = {
+  zoomToFit?: (durationMs?: number, padding?: number) => void;
+  d3Force?: (name: string) => { distanceMax?: (n: number) => void } | undefined;
+};
+
+// react-force-graph-2d is a forwardRef component; Next 16 / React 19 forwards a
+// `ref` through next/dynamic to it, exposing the imperative handle (zoomToFit…).
 const ForceGraph2D = dynamic(
   async () => {
     const mod = await import("react-force-graph-2d");
-    return mod.default as unknown as ComponentType<ForceGraph2DProps>;
+    return mod.default as unknown as ComponentType<
+      ForceGraph2DProps & { ref?: React.Ref<FgHandle> }
+    >;
   },
   { ssr: false, loading: () => <GraphLoading /> },
 );
@@ -138,6 +149,8 @@ export function KnowledgeGraph({
   selectedId,
 }: KnowledgeGraphProps) {
   const wrapRef = React.useRef<HTMLDivElement>(null);
+  const fgRef = React.useRef<FgHandle | null>(null);
+  const fittedRef = React.useRef(false);
   const [width, setWidth] = React.useState(0);
 
   // Track container width so the canvas fills its frame responsively.
@@ -164,6 +177,26 @@ export function KnowledgeGraph({
     (entityType: string) => colorMap[entityToken(entityType)] || colorMap[FALLBACK_TOKEN],
     [colorMap],
   );
+
+  // Re-fit the view the next time the engine settles whenever the data changes.
+  React.useEffect(() => {
+    fittedRef.current = false;
+  }, [nodes, edges]);
+
+  // Bound the charge force so disconnected / low-degree nodes don't drift to the
+  // far edges — keeps the layout compact so zoomToFit frames it tightly.
+  React.useEffect(() => {
+    fgRef.current?.d3Force?.("charge")?.distanceMax?.(240);
+  }, [width, nodes]);
+
+  // Backstop: onEngineStop can fire before node positions stabilise (leaving the
+  // graph clustered off-centre), so also fit on a short timer ladder after mount.
+  React.useEffect(() => {
+    if (width <= 0 || nodes.length === 0) return;
+    const fit = () => fgRef.current?.zoomToFit?.(400, 64);
+    const timers = [600, 1400, 2400].map((ms) => setTimeout(fit, ms));
+    return () => timers.forEach(clearTimeout);
+  }, [width, nodes, edges]);
 
   // Fresh, plain copies the force engine can mutate; drop dangling edges.
   const graphData = React.useMemo(() => {
@@ -281,6 +314,7 @@ export function KnowledgeGraph({
     >
       {width > 0 && (
         <ForceGraph2D
+          ref={fgRef}
           graphData={graphData}
           width={width}
           height={height}
@@ -307,6 +341,12 @@ export function KnowledgeGraph({
           maxZoom={8}
           enableNodeDrag
           onNodeClick={(n) => onSelectNode?.(n)}
+          onEngineStop={() => {
+            if (!fittedRef.current) {
+              fgRef.current?.zoomToFit?.(420, 64);
+              fittedRef.current = true;
+            }
+          }}
         />
       )}
     </div>
