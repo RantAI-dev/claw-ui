@@ -141,6 +141,57 @@ export interface KbDocument {
   updated_at?: number | string | null;
 }
 
+// ---- KB Document Intelligence (SP-2 entity/relation graph) ----
+// Whole-KB knowledge graph — GET /api/v1/kb/graph?group=&limit=
+export interface KbGraphNode {
+  id: string;
+  name: string;
+  entity_type: string;
+  degree: number;
+  doc_count: number;
+}
+export interface KbGraphEdge {
+  source: string;
+  target: string;
+  relation_type: string;
+}
+export interface KbGraph {
+  nodes: KbGraphNode[];
+  edges: KbGraphEdge[];
+  stats?: { total_nodes?: number; total_edges?: number };
+}
+
+// Per-document extracted intelligence — GET /api/v1/kb/documents/{id}/intelligence
+export interface KbEntity {
+  id: string;
+  name: string;
+  entity_type: string;
+  confidence: number;
+}
+export interface KbRelation {
+  id: string;
+  source: string;
+  target: string;
+  relation_type: string;
+  confidence: number;
+}
+export interface KbDocumentIntelligence {
+  entities: KbEntity[];
+  relations: KbRelation[];
+  stats?: {
+    total_entities?: number;
+    total_relations?: number;
+    entity_types?: Record<string, number>;
+    relation_types?: Record<string, number>;
+  };
+}
+// POST /api/v1/kb/documents/{id}/re-extract → re-run extraction (returns counts)
+export interface KbReExtractResult {
+  document_id: string;
+  entities: number;
+  relations: number;
+}
+
 export interface ChannelsInfo {
   configured: string[];
   count: number;

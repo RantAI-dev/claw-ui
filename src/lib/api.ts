@@ -7,7 +7,10 @@ import type {
   DoctorResult,
   Insights,
   KbDocument,
+  KbDocumentIntelligence,
+  KbGraph,
   KbGroup,
+  KbReExtractResult,
   MemoryEntry,
   MemoryStats,
   ModelCatalog,
@@ -200,4 +203,16 @@ export const api = {
       `kb/groups/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}`,
       { method: "DELETE" },
     ),
+  // ---- KB Document Intelligence (SP-2 entity/relation graph) ----
+  kbGraph: (opts?: { group?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (opts?.group) q.set("group", opts.group);
+    if (opts?.limit) q.set("limit", String(opts.limit));
+    const qs = q.toString();
+    return rc<KbGraph>(`kb/graph${qs ? `?${qs}` : ""}`);
+  },
+  kbDocumentIntelligence: (docId: string) =>
+    rc<KbDocumentIntelligence>(`kb/documents/${encodeURIComponent(docId)}/intelligence`),
+  kbReExtractDocument: (docId: string) =>
+    rc<KbReExtractResult>(`kb/documents/${encodeURIComponent(docId)}/re-extract`, { method: "POST" }),
 };
