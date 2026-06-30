@@ -12,6 +12,7 @@ import {
   Library,
   type LucideIcon,
   MessagesSquare,
+  Network,
   Radio,
   Send,
   Server,
@@ -35,6 +36,7 @@ export type Route =
   | "cron"
   | "skills"
   | "kb"
+  | "kbgraph"
   | "memory"
   | "persona"
   | "config";
@@ -55,6 +57,7 @@ export const NAV: NavDef[] = [
   { id: "cron", label: "Schedules", icon: CalendarClock },
   { id: "skills", label: "ClawHub Skills", icon: Blocks },
   { id: "kb", label: "Knowledge Bases", icon: Library },
+  { id: "kbgraph", label: "Knowledge Graph", icon: Network },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "persona", label: "Persona", icon: UserCog },
   { id: "config", label: "Configuration", icon: SlidersHorizontal },
@@ -109,6 +112,12 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; dot: st
     eyebrow: "Retrieval",
     dot: "var(--brand-sky)",
     blurb: "Grouped document collections the agent can retrieve from — upload files, organize, and pick which bases a chat draws on.",
+  },
+  kbgraph: {
+    title: "Knowledge Graph",
+    eyebrow: "Entity relationships",
+    dot: "var(--accent-purple)",
+    blurb: "The entity-and-relation graph extracted across your knowledge bases — explore how people, organizations, and concepts connect.",
   },
   memory: {
     title: "Memory",

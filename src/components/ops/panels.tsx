@@ -1069,6 +1069,10 @@ export function PersonaPanel() {
 // (ops-view.tsx imports KbPanel from panels.tsx) keep resolving unchanged.
 export { KbPanel } from "./kb-panel";
 
+// ── Knowledge Graph ───────────────────────────────────────────────────────────
+// Whole-KB entity/relation explorer (SP-3); lives in ./kb-graph-panel.tsx.
+export { KbGraphPanel } from "./kb-graph-panel";
+
 // ── Config ──────────────────────────────────────────────────────────────────
 export function ConfigPanel() {
   const cfg = useAsync(() => api.config(), []);

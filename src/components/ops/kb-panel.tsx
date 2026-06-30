@@ -18,6 +18,7 @@ import {
   List,
   UploadCloud,
   Upload,
+  Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
@@ -36,6 +37,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
 import { PanelFrame } from "./shared";
+import { DocIntelligenceDrawer } from "./doc-intelligence-drawer";
 import { toast } from "sonner";
 
 const PRESET_COLORS = [
@@ -454,6 +456,9 @@ function KbDetail({
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  // Per-document intelligence drawer target (SP-3).
+  const [intelDoc, setIntelDoc] = React.useState<KbDocument | null>(null);
+  const closeIntel = React.useCallback(() => setIntelDoc(null), []);
 
   const uploading = uploads.some((u) => u.status === "uploading");
 
@@ -813,6 +818,7 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onRemove={() => remove(d.id)}
+                onIntel={() => setIntelDoc(d)}
               />
             ))}
           </div>
@@ -824,6 +830,7 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onRemove={() => remove(d.id)}
+                onIntel={() => setIntelDoc(d)}
               />
             ))}
           </div>
@@ -871,6 +878,14 @@ function KbDetail({
           </>
         }
       />
+
+      {intelDoc && (
+        <DocIntelligenceDrawer
+          documentId={intelDoc.id}
+          documentTitle={intelDoc.title || intelDoc.id.slice(0, 8)}
+          onClose={closeIntel}
+        />
+      )}
     </div>
   );
 }
@@ -910,10 +925,12 @@ function DocCard({
   doc,
   busy,
   onRemove,
+  onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onRemove: () => void;
+  onIntel: () => void;
 }) {
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
   const retrievals = doc.retrieval_count ?? 0;
@@ -923,14 +940,23 @@ function DocCard({
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
-      <button
-        onClick={onRemove}
-        disabled={busy}
-        title="Remove from this knowledge base"
-        className="absolute right-2 top-2 z-10 rounded-md bg-background/80 p-1.5 text-muted-foreground opacity-0 shadow-sm backdrop-blur-sm transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 cursor-pointer disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
-      </button>
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={onIntel}
+          title="Document intelligence"
+          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-accent/10 hover:text-accent cursor-pointer"
+        >
+          <Sparkles className="size-3.5" />
+        </button>
+        <button
+          onClick={onRemove}
+          disabled={busy}
+          title="Remove from this knowledge base"
+          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+        </button>
+      </div>
 
       <div className="flex flex-col items-center gap-2.5 py-2">
         <div className={cn("rounded-xl p-3", bgColor)} aria-hidden>
@@ -968,10 +994,12 @@ function DocRow({
   doc,
   busy,
   onRemove,
+  onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onRemove: () => void;
+  onIntel: () => void;
 }) {
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
   const retrievals = doc.retrieval_count ?? 0;
@@ -995,6 +1023,13 @@ function DocRow({
           {formatNumber(retrievals)} retrieval{retrievals === 1 ? "" : "s"}
         </Badge>
       )}
+      <button
+        onClick={onIntel}
+        title="Document intelligence"
+        className="shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-accent/10 hover:text-accent group-hover:opacity-100 cursor-pointer"
+      >
+        <Sparkles className="size-3.5" />
+      </button>
       <button
         onClick={onRemove}
         disabled={busy}
