@@ -456,6 +456,9 @@ function KbDetail({
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  // Per-document delete confirmation target (deletes the document, not just the link).
+  const [deleteDoc, setDeleteDoc] = React.useState<KbDocument | null>(null);
+  const [deletingDoc, setDeletingDoc] = React.useState(false);
   // Per-document intelligence drawer target (SP-3).
   const [intelDoc, setIntelDoc] = React.useState<KbDocument | null>(null);
   const closeIntel = React.useCallback(() => setIntelDoc(null), []);
@@ -553,16 +556,21 @@ function KbDetail({
     }, 2500);
   };
 
-  const remove = async (docId: string) => {
-    setWorking(docId);
+  const confirmDeleteDoc = async () => {
+    if (!deleteDoc) return;
+    const target = deleteDoc;
+    setDeletingDoc(true);
+    setWorking(target.id);
     try {
-      await api.kbRemoveDocFromGroup(group.id, docId);
-      toast.success("Removed from knowledge base");
+      await api.kbDeleteDocument(target.id);
+      toast.success(`Deleted “${target.title || target.id.slice(0, 8)}”`);
+      setDeleteDoc(null);
       docs.refresh();
       onChanged();
     } catch (e) {
-      toast.error(`Remove failed: ${errMsg(e)}`);
+      toast.error(`Delete failed: ${errMsg(e)}`);
     } finally {
+      setDeletingDoc(false);
       setWorking(null);
     }
   };
@@ -817,7 +825,7 @@ function KbDetail({
                 key={d.id}
                 doc={d}
                 busy={working === d.id}
-                onRemove={() => remove(d.id)}
+                onDelete={() => setDeleteDoc(d)}
                 onIntel={() => setIntelDoc(d)}
               />
             ))}
@@ -829,7 +837,7 @@ function KbDetail({
                 key={d.id}
                 doc={d}
                 busy={working === d.id}
-                onRemove={() => remove(d.id)}
+                onDelete={() => setDeleteDoc(d)}
                 onIntel={() => setIntelDoc(d)}
               />
             ))}
@@ -869,6 +877,42 @@ function KbDetail({
               disabled={deleting}
             >
               {deleting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Trash2 className="size-4" />
+              )}
+              Delete
+            </Button>
+          </>
+        }
+      />
+
+      <Modal
+        open={!!deleteDoc}
+        onClose={() => !deletingDoc && setDeleteDoc(null)}
+        title="Delete document"
+        description={
+          deleteDoc
+            ? `Delete “${deleteDoc.title || deleteDoc.id.slice(0, 8)}” from the library? It leaves every knowledge base and stops being used for retrieval.`
+            : ""
+        }
+        footer={
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteDoc(null)}
+              disabled={deletingDoc}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={confirmDeleteDoc}
+              disabled={deletingDoc}
+            >
+              {deletingDoc ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <Trash2 className="size-4" />
@@ -924,12 +968,12 @@ function DocsEmpty({
 function DocCard({
   doc,
   busy,
-  onRemove,
+  onDelete,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
-  onRemove: () => void;
+  onDelete: () => void;
   onIntel: () => void;
 }) {
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
@@ -949,12 +993,12 @@ function DocCard({
           <Sparkles className="size-3.5" />
         </button>
         <button
-          onClick={onRemove}
+          onClick={onDelete}
           disabled={busy}
-          title="Remove from this knowledge base"
+          title="Delete document"
           className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer disabled:opacity-50"
         >
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
         </button>
       </div>
 
@@ -993,12 +1037,12 @@ function DocCard({
 function DocRow({
   doc,
   busy,
-  onRemove,
+  onDelete,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
-  onRemove: () => void;
+  onDelete: () => void;
   onIntel: () => void;
 }) {
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
@@ -1031,12 +1075,12 @@ function DocRow({
         <Sparkles className="size-3.5" />
       </button>
       <button
-        onClick={onRemove}
+        onClick={onDelete}
         disabled={busy}
-        title="Remove from this knowledge base"
+        title="Delete document"
         className="shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 cursor-pointer disabled:opacity-50"
       >
-        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
       </button>
     </div>
   );
