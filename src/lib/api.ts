@@ -7,6 +7,7 @@ import type {
   DoctorResult,
   Insights,
   KbDocument,
+  KbDocumentDetail,
   KbDocumentIntelligence,
   KbGraph,
   KbGroup,
@@ -193,6 +194,10 @@ export const api = {
     }),
   kbGroupDocuments: (id: string) =>
     rc<KbDocument[]>(`kb/groups/${encodeURIComponent(id)}/documents`),
+  // Fetch a single document's full record (including `content`, the full
+  // extracted text) for the viewer's Preview tab.
+  kbGetDocument: (docId: string) =>
+    rc<KbDocumentDetail>(`kb/documents/${encodeURIComponent(docId)}`),
   kbAddDocToGroup: (id: string, docId: string) =>
     rc<{ ok: boolean }>(`kb/groups/${encodeURIComponent(id)}/documents`, {
       method: "POST",

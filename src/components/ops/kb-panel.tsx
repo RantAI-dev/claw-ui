@@ -19,6 +19,7 @@ import {
   UploadCloud,
   Upload,
   Sparkles,
+  Eye,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
@@ -37,7 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
 import { PanelFrame } from "./shared";
-import { DocIntelligenceDrawer } from "./doc-intelligence-drawer";
+import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { toast } from "sonner";
 
 const PRESET_COLORS = [
@@ -459,9 +460,9 @@ function KbDetail({
   // Per-document delete confirmation target (deletes the document, not just the link).
   const [deleteDoc, setDeleteDoc] = React.useState<KbDocument | null>(null);
   const [deletingDoc, setDeletingDoc] = React.useState(false);
-  // Per-document intelligence drawer target (SP-3).
-  const [intelDoc, setIntelDoc] = React.useState<KbDocument | null>(null);
-  const closeIntel = React.useCallback(() => setIntelDoc(null), []);
+  // Per-document viewer drawer target + which tab it opens on (Preview/Intelligence).
+  const [viewerDoc, setViewerDoc] = React.useState<KbDocument | null>(null);
+  const [viewerTab, setViewerTab] = React.useState<"preview" | "intelligence">("preview");
 
   const uploading = uploads.some((u) => u.status === "uploading");
 
@@ -826,7 +827,14 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onDelete={() => setDeleteDoc(d)}
-                onIntel={() => setIntelDoc(d)}
+                onView={() => {
+                  setViewerDoc(d);
+                  setViewerTab("preview");
+                }}
+                onIntel={() => {
+                  setViewerDoc(d);
+                  setViewerTab("intelligence");
+                }}
               />
             ))}
           </div>
@@ -838,7 +846,14 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onDelete={() => setDeleteDoc(d)}
-                onIntel={() => setIntelDoc(d)}
+                onView={() => {
+                  setViewerDoc(d);
+                  setViewerTab("preview");
+                }}
+                onIntel={() => {
+                  setViewerDoc(d);
+                  setViewerTab("intelligence");
+                }}
               />
             ))}
           </div>
@@ -923,11 +938,12 @@ function KbDetail({
         }
       />
 
-      {intelDoc && (
-        <DocIntelligenceDrawer
-          documentId={intelDoc.id}
-          documentTitle={intelDoc.title || intelDoc.id.slice(0, 8)}
-          onClose={closeIntel}
+      {viewerDoc && (
+        <DocViewerDrawer
+          documentId={viewerDoc.id}
+          documentTitle={viewerDoc.title || viewerDoc.id.slice(0, 8)}
+          initialTab={viewerTab}
+          onClose={() => setViewerDoc(null)}
         />
       )}
     </div>
@@ -969,11 +985,13 @@ function DocCard({
   doc,
   busy,
   onDelete,
+  onView,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onDelete: () => void;
+  onView: () => void;
   onIntel: () => void;
 }) {
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
@@ -985,6 +1003,13 @@ function DocCard({
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
       <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+        <button
+          onClick={onView}
+          title="View document"
+          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-accent/10 hover:text-accent cursor-pointer"
+        >
+          <Eye className="size-3.5" />
+        </button>
         <button
           onClick={onIntel}
           title="Document intelligence"
@@ -1038,11 +1063,13 @@ function DocRow({
   doc,
   busy,
   onDelete,
+  onView,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onDelete: () => void;
+  onView: () => void;
   onIntel: () => void;
 }) {
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
@@ -1067,6 +1094,13 @@ function DocRow({
           {formatNumber(retrievals)} retrieval{retrievals === 1 ? "" : "s"}
         </Badge>
       )}
+      <button
+        onClick={onView}
+        title="View document"
+        className="shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-accent/10 hover:text-accent group-hover:opacity-100 cursor-pointer"
+      >
+        <Eye className="size-3.5" />
+      </button>
       <button
         onClick={onIntel}
         title="Document intelligence"
