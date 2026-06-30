@@ -17,12 +17,6 @@ function entityVar(entityType: string): string {
   return `var(${entityToken(entityType)})`;
 }
 
-function pct(confidence: number | null | undefined): string {
-  if (typeof confidence !== "number" || !Number.isFinite(confidence)) return "—";
-  const v = confidence <= 1 ? confidence * 100 : confidence;
-  return `${Math.round(v)}%`;
-}
-
 function EntityTypeBadge({ type }: { type: string }) {
   return (
     <Badge
@@ -149,9 +143,6 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
                 >
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{e.name}</span>
                   <EntityTypeBadge type={e.entity_type} />
-                  <Badge variant="secondary" className="shrink-0 font-mono text-[10px]">
-                    {pct(e.confidence)}
-                  </Badge>
                 </div>
               ))}
             </div>
@@ -174,9 +165,6 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
                       <span className="font-mono text-accent">{r.relation_type}</span>
                       <span aria-hidden className="text-muted-foreground">→</span>
                       <span className="font-medium">{nameById.get(r.target) ?? r.target}</span>
-                      <Badge variant="secondary" className="ml-auto shrink-0 font-mono text-[10px]">
-                        {pct(r.confidence)}
-                      </Badge>
                     </div>
                   </div>
                 ))}
