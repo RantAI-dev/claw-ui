@@ -141,6 +141,23 @@ export interface KbDocument {
   updated_at?: number | string | null;
 }
 
+// Full document record — GET /api/v1/kb/documents/{id}. Mirrors the Rust
+// `Document` struct: `id` is a serde newtype (plain string), the timestamps
+// serialize as ISO 8601 strings, and `content` carries the full extracted text.
+export interface KbDocumentDetail {
+  id: string;
+  title: string | null;
+  content: string;
+  file_type: string | null;
+  file_size: number | null;
+  created_at: number | string | null;
+  categories?: string[];
+  subcategory?: string | null;
+  mime_type?: string | null;
+  retrieval_count?: number;
+  updated_at?: number | string | null;
+}
+
 // ---- KB Document Intelligence (SP-2 entity/relation graph) ----
 // Whole-KB knowledge graph — GET /api/v1/kb/graph?group=&limit=
 export interface KbGraphNode {
