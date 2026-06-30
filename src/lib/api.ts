@@ -203,6 +203,13 @@ export const api = {
       `kb/groups/${encodeURIComponent(id)}/documents/${encodeURIComponent(docId)}`,
       { method: "DELETE" },
     ),
+  // Delete a document from the library entirely (soft-delete by default: it stops
+  // being retrieved and leaves every KB). Distinct from kbRemoveDocFromGroup, which
+  // only unlinks the doc from one group and leaves the row active.
+  kbDeleteDocument: (docId: string) =>
+    rc<{ id: string; mode: string }>(`kb/documents/${encodeURIComponent(docId)}`, {
+      method: "DELETE",
+    }),
   // ---- KB Document Intelligence (SP-2 entity/relation graph) ----
   kbGraph: (opts?: { group?: string; limit?: number }) => {
     const q = new URLSearchParams();
