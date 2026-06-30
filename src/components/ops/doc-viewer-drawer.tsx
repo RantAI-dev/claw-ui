@@ -9,6 +9,7 @@ import { formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Markdown } from "@/components/chat/markdown";
 import { DocIntelligenceBody } from "./doc-intelligence-drawer";
 
 type ViewerTab = "preview" | "intelligence";
@@ -213,9 +214,9 @@ function DocPreview({ documentId }: { documentId: string }) {
         </div>
       ) : (
         <div className="rounded-lg border border-border/60 bg-background/50 p-4">
-          <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-foreground/90">
-            {content}
-          </pre>
+          {/* The stored content is the extracted text, which is markdown — render
+              it as a document rather than a raw monospace dump. */}
+          <Markdown content={content} className="text-sm" />
         </div>
       )}
     </div>
