@@ -214,11 +214,12 @@ export interface ChannelsInfo {
   count: number;
 }
 
-/** Result of the experimental "connect Telegram" flow (validate + persist). */
+/** Result of the "connect Telegram" / allowlist-update flow (validate + persist). */
 export interface TelegramConnectResult {
   connected: boolean;
   channel: string;
-  bot_username: string;
+  /** Bot username from the live `getMe` probe — null on an allowlist-only update. */
+  bot_username: string | null;
   allowed_users: number;
   experimental?: boolean;
   warning?: string | null;
