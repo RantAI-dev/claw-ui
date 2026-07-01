@@ -92,6 +92,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ bot_token, allowed_users }),
     }),
+  // Update the allowlist of an already-connected Telegram channel without
+  // re-sending the bot token (the gateway keeps the saved token).
+  updateTelegramAllowlist: (allowed_users: string[]) =>
+    rc<TelegramConnectResult>("channels/telegram", {
+      method: "POST",
+      body: JSON.stringify({ allowed_users }),
+    }),
   disconnectTelegram: () =>
     rc<{ disconnected: boolean; channel: string }>("channels/telegram", {
       method: "DELETE",
