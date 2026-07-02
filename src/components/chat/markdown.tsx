@@ -89,6 +89,16 @@ export const Markdown = React.memo(function Markdown({
           pre({ children }) {
             return <>{children}</>;
           },
+          ol({ start, node, ...props }) {
+            // The CSS numbering uses a counter (globals.css), which ignores the
+            // `start` attribute react-markdown emits for continued/non-1 lists.
+            // Seed the counter from `start` so numbering matches the source.
+            const style =
+              typeof start === "number" && start !== 1
+                ? { counterReset: `li ${start - 1}` }
+                : undefined;
+            return <ol style={style} {...props} />;
+          },
           a({ children, ...props }) {
             return (
               <a target="_blank" rel="noopener noreferrer" {...props}>

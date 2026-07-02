@@ -2234,7 +2234,9 @@ pre.toml {
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
-.markdown-body h4 {
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
   font-weight: 500;
   margin: 18px 0 8px;
   line-height: 1.25;
@@ -2248,6 +2250,13 @@ pre.toml {
 }
 .markdown-body h3 {
   font-size: 15px;
+}
+.markdown-body h5 {
+  font-size: 14px;
+}
+.markdown-body h6 {
+  font-size: 13px;
+  color: var(--muted-foreground);
 }
 .markdown-body ul,
 .markdown-body ol {
@@ -2274,6 +2283,18 @@ pre.toml {
   height: 5px;
   border-radius: 999px;
   background: var(--brand-sky);
+}
+/* GFM task lists: drop the bullet dot, use the checkbox as the marker. */
+.markdown-body li.task-list-item {
+  padding-left: 2px;
+}
+.markdown-body li.task-list-item::before {
+  display: none;
+}
+.markdown-body li.task-list-item input[type="checkbox"] {
+  margin-right: 7px;
+  vertical-align: middle;
+  accent-color: var(--brand-sky);
 }
 .markdown-body ol li {
   counter-increment: li;
@@ -2334,4 +2355,10 @@ pre.toml {
   border: 0;
   border-top: 1px solid var(--border);
   margin: 16px 0;
+}
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0 0 11px;
 }
