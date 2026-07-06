@@ -129,6 +129,13 @@ export interface KbGroup {
   updated_at?: number | string | null;
 }
 
+export interface KnowledgeStatus {
+  embedding_configured: boolean;
+  vision_configured: boolean;
+  /** Effective source of the embedding key, reported without revealing it. */
+  source: "config" | "env" | "none";
+}
+
 export interface KbDocument {
   id: string;
   title: string | null;
