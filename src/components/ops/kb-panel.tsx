@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
 import { PanelFrame } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
+import { KnowledgeSettingsCard } from "./knowledge-settings-card";
 import { toast } from "sonner";
 
 const PRESET_COLORS = [
@@ -75,17 +76,21 @@ export function KbPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups.data]);
 
-  if (selected) {
-    return (
-      <KbDetail
-        group={selected}
-        onBack={() => setSelected(null)}
-        onChanged={() => groups.refresh()}
-      />
-    );
-  }
-
-  return <KbList groups={groups} onOpen={setSelected} />;
+  return (
+    <div className="space-y-4">
+      {/* Self-refreshes on save via its own useAsync — no parent state needed. */}
+      <KnowledgeSettingsCard />
+      {selected ? (
+        <KbDetail
+          group={selected}
+          onBack={() => setSelected(null)}
+          onChanged={() => groups.refresh()}
+        />
+      ) : (
+        <KbList groups={groups} onOpen={setSelected} />
+      )}
+    </div>
+  );
 }
 
 // ── KB list view ──────────────────────────────────────────────────────────────
