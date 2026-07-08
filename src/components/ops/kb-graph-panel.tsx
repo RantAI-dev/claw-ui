@@ -13,6 +13,7 @@ import { IconButton, PanelFrame, StatTile } from "./shared";
 import { KnowledgeGraph, entityToken } from "./knowledge-graph";
 
 const GRAPH_LIMIT = 200;
+const GRAPH_HEIGHT = 520;
 
 function entityVar(entityType: string): string {
   return `var(${entityToken(entityType)})`;
@@ -100,7 +101,7 @@ export function KbGraphPanel() {
             <KnowledgeGraph
               nodes={nodes}
               edges={edges}
-              height={520}
+              height={GRAPH_HEIGHT}
               selectedId={selected?.id}
               onSelectNode={(n) => setSelected(n)}
             />
@@ -124,8 +125,8 @@ export function KbGraphPanel() {
             )}
           </div>
 
-          {/* Entity detail */}
-          <div className="lg:min-h-[520px]">
+          {/* Entity detail — grid stretch keeps this column at the graph row's height. */}
+          <div>
             {selected ? (
               <EntityDetail
                 node={selected}
@@ -192,11 +193,11 @@ function EntityDetail({
         <StatTile size="sm" label="documents" value={node.doc_count} />
       </div>
 
-      <div className="min-h-0 flex-1 border-t border-border/60">
+      <div className="flex min-h-0 flex-1 flex-col border-t border-border/60">
         <div className="px-3 pt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           Relationships · {relations.length}
         </div>
-        <div className="max-h-[360px] space-y-1.5 overflow-auto p-3 scrollbar-thin">
+        <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-3 scrollbar-thin">
           {relations.length === 0 ? (
             <p className="text-xs text-muted-foreground">No relationships recorded.</p>
           ) : (
