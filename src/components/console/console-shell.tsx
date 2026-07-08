@@ -33,6 +33,7 @@ import type { KbGroup, Personality, ProviderInfo, SessionSummary } from "@/lib/t
 import { kbSearch } from "@/lib/attachments";
 import { useChat } from "@/hooks/use-chat";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
+import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ChatPane } from "./chat-pane";
 import { OpsView } from "./ops-view";
@@ -568,7 +569,7 @@ export function ConsoleShell({
             alwaysOnKbIds={personality?.always_on_kbs || []}
           />
         ) : (
-          <OpsView route={route} />
+          <OpsView route={route} connection={connection} />
         )}
       </main>
 
@@ -608,51 +609,26 @@ export function ConsoleShell({
         }
         footer={
           chat.pendingApproval ? (
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
+            <>
+              <Button
+                variant="destructive"
+                size="sm"
                 onClick={() => chat.resolveApproval(chat.pendingApproval!.id, false)}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: 9,
-                  border: 0,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  background: "#ef4444",
-                  color: "#fff",
-                }}
               >
                 Deny
-              </button>
-              <button
+              </Button>
+              <Button
+                size="sm"
                 onClick={() => chat.resolveApproval(chat.pendingApproval!.id, true)}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: 9,
-                  border: 0,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  background: "#10b981",
-                  color: "#fff",
-                }}
               >
                 Approve
-              </button>
-            </div>
+              </Button>
+            </>
           ) : null
         }
       >
         {chat.pendingApproval ? (
-          <pre
-            style={{
-              margin: 0,
-              padding: 12,
-              borderRadius: 8,
-              background: "rgba(0,0,0,0.25)",
-              fontSize: 12.5,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
-          >
+          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 font-mono text-xs">
             {JSON.stringify(chat.pendingApproval.args, null, 2)}
           </pre>
         ) : null}

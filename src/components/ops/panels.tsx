@@ -13,6 +13,7 @@ import {
   Eye,
   EyeOff,
   Search,
+  Server,
   Download,
   Star,
   X,
@@ -28,8 +29,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { PanelFrame, StatCard, KeyVal, SeverityBadge } from "./shared";
+import { EmptyState, IconButton, KeyVal, PanelFrame, SeverityBadge, StatTile } from "./shared";
 
 const PERSONA_PRESETS = [
   { value: "default", label: "Default" },
@@ -41,9 +44,9 @@ const PERSONA_PRESETS = [
 
 function RefreshButton({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="gbtn">
+    <Button variant="outline" size="sm" onClick={onClick}>
       <RefreshCw /> Refresh
-    </button>
+    </Button>
   );
 }
 
@@ -72,10 +75,10 @@ export function StatusPanel() {
           {s && (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <StatCard label="Version" value={s.version} />
-                <StatCard label="Provider" value={s.provider || "—"} tone="accent" />
-                <StatCard label="Paired" value={s.paired ? "Yes" : "No"} tone={s.paired ? "success" : "warning"} />
-                <StatCard label="Autonomy" value={s.autonomy || "—"} />
+                <StatTile label="Version" value={s.version} />
+                <StatTile label="Provider" value={s.provider || "—"} tone="accent" />
+                <StatTile label="Paired" value={s.paired ? "Yes" : "No"} tone={s.paired ? "success" : "warning"} />
+                <StatTile label="Autonomy" value={s.autonomy || "—"} />
               </div>
               <Card className="mt-3 p-4">
                 <KeyVal k="Model" v={s.model || "—"} mono />
@@ -153,10 +156,10 @@ export function UsagePanel() {
         <PanelFrame loading={insights.loading} error={insights.error} onRefresh={insights.refresh}>
           {i && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <StatCard label="Sessions" value={formatNumber(i.total_sessions)} />
-              <StatCard label="Messages" value={formatNumber(i.total_messages)} />
-              <StatCard label="Avg / session" value={i.avg_messages_per_session.toFixed(1)} />
-              <StatCard label="Latest" value={relativeTime(i.latest_session_started_at)} tone="accent" />
+              <StatTile label="Sessions" value={formatNumber(i.total_sessions)} />
+              <StatTile label="Messages" value={formatNumber(i.total_messages)} />
+              <StatTile label="Avg / session" value={i.avg_messages_per_session.toFixed(1)} />
+              <StatTile label="Latest" value={relativeTime(i.latest_session_started_at)} tone="accent" />
             </div>
           )}
         </PanelFrame>
@@ -166,9 +169,9 @@ export function UsagePanel() {
         <PanelFrame loading={memStats.loading} error={memStats.error} onRefresh={memStats.refresh}>
           {memStats.data && (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              <StatCard label="Backend" value={memStats.data.backend} />
-              <StatCard label="Entries" value={formatNumber(memStats.data.total_entries)} />
-              <StatCard
+              <StatTile label="Backend" value={memStats.data.backend} />
+              <StatTile label="Entries" value={formatNumber(memStats.data.total_entries)} />
+              <StatTile
                 label="Health"
                 value={memStats.data.healthy ? "Healthy" : "Degraded"}
                 tone={memStats.data.healthy ? "success" : "destructive"}
@@ -268,18 +271,16 @@ export function ProvidersPanel() {
             defaultModel={info.data?.model}
           />
         </div>
-        <input
+        <Input
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="API base URL (optional)"
-          className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
-        <input
+        <Input
           value={key}
           onChange={(e) => setKey(e.target.value)}
           type="password"
           placeholder="API key for this provider (leave blank to keep current)"
-          className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
         />
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={save} disabled={busy || !provider}>
@@ -372,7 +373,7 @@ export function ChannelsPanel() {
         />
 
         <div className="mt-4">
-          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             More channels
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -687,24 +688,21 @@ export function SkillsPanel() {
                     {s.version && <span className="text-[10px] text-muted-foreground">v{s.version}</span>}
                     {!enabled && <Badge variant="warning" className="text-[10px]">disabled</Badge>}
                     <div className="ml-auto flex items-center gap-1">
-                      <button
+                      <IconButton
                         onClick={() => toggle(s.name, !enabled)}
                         title={enabled ? "Disable" : "Enable"}
-                        className={cn(
-                          "rounded-md p-1.5 cursor-pointer",
-                          enabled ? "text-success hover:bg-success/10" : "text-muted-foreground hover:bg-secondary",
-                        )}
+                        className={cn(enabled && "text-success hover:bg-success/10 hover:text-success")}
                       >
                         <Power className="size-3.5" />
-                      </button>
-                      <button
+                      </IconButton>
+                      <IconButton
                         onClick={() => uninstall(s.name)}
                         disabled={busy}
                         title="Uninstall"
-                        className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer disabled:opacity-50"
+                        className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                       >
                         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                      </button>
+                      </IconButton>
                     </div>
                   </div>
                   {s.description && <p className="mt-1 text-xs text-muted-foreground">{s.description}</p>}
@@ -725,18 +723,18 @@ export function SkillsPanel() {
         <div className="space-y-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search ClawHub skills…"
-              className="h-9 w-full rounded-md border border-border bg-background pl-8 pr-8 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="pl-8 pr-8"
             />
             {hubLoading && (
               <Loader2 className="absolute right-2.5 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
             )}
           </div>
           {hubError ? (
-            <div className="py-8 text-center text-sm text-destructive">ClawHub: {hubError}</div>
+            <EmptyState tone="destructive" title="ClawHub unavailable" hint={hubError} />
           ) : (
             <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {(hub || []).map((s) => {
@@ -784,9 +782,7 @@ export function SkillsPanel() {
                 );
               })}
               {!hubLoading && hub && hub.length === 0 && (
-                <div className="col-span-full py-8 text-center text-sm text-muted-foreground">
-                  No skills found.
-                </div>
+                <EmptyState className="col-span-full" title="No skills found." />
               )}
             </div>
           )}
@@ -844,25 +840,24 @@ export function MemoryPanel() {
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           Store a fact
         </div>
-        <textarea
+        <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="A durable fact or preference the agent should remember…"
           rows={2}
-          className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring scrollbar-thin"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <Select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="h-8 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+            className="h-8 font-mono text-xs"
           >
             {MEMORY_CATEGORIES.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
-          </select>
+          </Select>
           <Button size="sm" onClick={add} disabled={busy || !content.trim()}>
             <Plus className="size-4" /> Store
           </Button>
@@ -881,14 +876,14 @@ export function MemoryPanel() {
                     <Badge variant="secondary" className="text-[10px]">
                       {e.category}
                     </Badge>
-                    <button
+                    <IconButton
                       onClick={() => del(e.key)}
                       disabled={w}
                       title="Forget"
-                      className="rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer disabled:opacity-50"
+                      className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                     >
                       {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                    </button>
+                    </IconButton>
                   </div>
                 </div>
                 <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">
@@ -984,25 +979,24 @@ export function CronPanel() {
         <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           New agent job
         </div>
-        <textarea
+        <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Prompt the agent runs on schedule…"
           rows={2}
-          className="w-full resize-none rounded-md border border-border bg-background px-2 py-1.5 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring scrollbar-thin"
         />
         <div className="flex flex-wrap items-center gap-2">
-          <input
+          <Input
             value={expr}
             onChange={(e) => setExpr(e.target.value)}
             placeholder="0 9 * * *"
-            className="h-8 w-32 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 w-32 font-mono text-xs"
           />
-          <input
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="name (optional)"
-            className="h-8 min-w-[120px] flex-1 rounded-md border border-border bg-background px-2 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 min-w-[120px] flex-1 text-xs"
           />
           <Button size="sm" onClick={create} disabled={busy || !prompt.trim() || !expr.trim()}>
             <Plus className="size-4" /> Create
@@ -1025,30 +1019,23 @@ export function CronPanel() {
                   {j.last_status ? ` · last: ${j.last_status}` : ""}
                 </div>
               </div>
-              <button
+              <IconButton
                 onClick={() => toggle(j.id, !j.enabled)}
                 title={j.enabled ? "Disable" : "Enable"}
-                className={cn(
-                  "rounded-md p-1.5 cursor-pointer",
-                  j.enabled ? "text-success hover:bg-success/10" : "text-muted-foreground hover:bg-secondary",
-                )}
+                className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
               >
                 <Power className="size-3.5" />
-              </button>
-              <button
-                onClick={() => run(j.id)}
-                title="Run now"
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-foreground cursor-pointer"
-              >
+              </IconButton>
+              <IconButton onClick={() => run(j.id)} title="Run now">
                 <Play className="size-3.5" />
-              </button>
-              <button
+              </IconButton>
+              <IconButton
                 onClick={() => del(j.id)}
                 title="Delete"
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+                className="hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
-              </button>
+              </IconButton>
             </div>
           ))}
         </Card>
@@ -1123,10 +1110,10 @@ export function PersonaPanel() {
             {data.timezone && <KeyVal k="Timezone" v={data.timezone} />}
             {data.avoid && <KeyVal k="Avoid" v={data.avoid} />}
             <div className="mt-4 flex items-center gap-2 border-t border-border/60 pt-4">
-              <select
+              <Select
                 value={preset}
                 onChange={(e) => setPreset(e.target.value)}
-                className="h-9 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer"
+                className="min-w-0 flex-1"
               >
                 <option value="" disabled>
                   Choose a preset…
@@ -1136,7 +1123,7 @@ export function PersonaPanel() {
                     {p.label}
                   </option>
                 ))}
-              </select>
+              </Select>
               <Button
                 onClick={apply}
                 disabled={saving || !preset || preset === data.preset}
@@ -1240,25 +1227,23 @@ export function ConfigPanel() {
           Default model
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <input
+          <Input
             value={provider}
             onChange={(e) => setProvider(e.target.value)}
             placeholder="provider"
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
-          <input
+          <Input
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder="model"
-            className="h-9 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="font-mono text-xs"
           />
-          <input
+          <Input
             value={temp}
             onChange={(e) => setTemp(e.target.value)}
             placeholder="temperature"
             type="number"
             step="0.1"
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
         <Button size="sm" onClick={save} disabled={busy}>
@@ -1344,23 +1329,23 @@ export function McpPanel() {
           Add a stdio MCP server
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input
+          <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="name (e.g. github)"
-            className="h-8 w-40 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 w-40 font-mono text-xs"
           />
-          <input
+          <Input
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             placeholder="command (e.g. npx)"
-            className="h-8 w-32 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 w-32 font-mono text-xs"
           />
-          <input
+          <Input
             value={args}
             onChange={(e) => setArgs(e.target.value)}
             placeholder="args (space-separated, e.g. -y @modelcontextprotocol/server-github)"
-            className="h-8 min-w-[200px] flex-1 rounded-md border border-border bg-background px-2 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-8 min-w-[200px] flex-1 font-mono text-xs"
           />
           <Button size="sm" onClick={add} disabled={busy || !name.trim() || !command.trim()}>
             <Plus className="size-4" /> Add
@@ -1373,35 +1358,40 @@ export function McpPanel() {
 
       <PanelFrame loading={cfg.loading} error={cfg.error} onRefresh={cfg.refresh}>
         {servers.length === 0 ? (
-          <div className="card" style={{ padding: "28px 18px", textAlign: "center" }}>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--muted-foreground)", lineHeight: 1.6 }}>
-              No MCP servers configured yet — add one above.
-            </div>
-          </div>
+          <EmptyState
+            icon={<Server className="size-6" />}
+            title="No MCP servers configured yet"
+            hint="Add one above — it connects on the next daemon restart."
+          />
         ) : (
-          <div className="rows">
+          <Card className="divide-y divide-border">
             {servers.map(([n, s]) => {
               const sArgs = Array.isArray(s?.args) ? (s.args as string[]) : [];
               const cmd = [s?.command as string, ...sArgs].filter(Boolean).join(" ");
               const w = working === n;
               return (
-                <div className="row" key={n}>
-                  <span className="r-dot" style={{ background: "var(--accent-teal)" }} />
-                  <span className="r-name">{n}</span>
-                  <span className="r-proto">stdio</span>
-                  <span className="r-note">{cmd || "—"}</span>
-                  <button
+                <div key={n} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate font-mono text-sm font-medium">{n}</span>
+                      <Badge variant="secondary" className="text-[10px]">stdio</Badge>
+                    </div>
+                    <div className="truncate font-mono text-[11px] text-muted-foreground" title={cmd}>
+                      {cmd || "—"}
+                    </div>
+                  </div>
+                  <IconButton
                     onClick={() => remove(n)}
                     disabled={w}
                     title="Remove"
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive cursor-pointer disabled:opacity-50"
+                    className="shrink-0 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                   >
                     {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                  </button>
+                  </IconButton>
                 </div>
               );
             })}
-          </div>
+          </Card>
         )}
       </PanelFrame>
     </div>
@@ -1468,153 +1458,139 @@ export function ToolsPanel() {
     <div className="space-y-5">
       <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>Policy</SectionTitle>
       <PanelFrame loading={cfg.loading} error={cfg.error} onRefresh={cfg.refresh}>
-        {/* Autonomy level — editable */}
-        <div style={{ marginBottom: 20 }}>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>
-            Autonomy level
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {AUTONOMY_LEVELS.map((l) => {
-              const on = normLevel(l.id) === normLevel(level);
-              return (
-                <button
-                  key={l.id}
-                  className="gbtn"
-                  disabled={busy}
-                  onClick={() => patch({ level: l.id }, `Autonomy level → ${l.label}`)}
-                  style={
-                    on
-                      ? { borderColor: l.dot, color: l.dot, background: "oklch(1 0 0 / 3%)" }
-                      : undefined
-                  }
-                >
-                  <span style={{ width: 7, height: 7, borderRadius: 999, background: l.dot, display: "inline-block" }} />
-                  {l.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="auto-blurb" style={{ minHeight: 0, marginTop: 8 }}>
-            {activeLevel?.blurb || ""}
-          </div>
-        </div>
-
-        {/* Limits — read-only */}
-        <div className="stat-strip">
-          <div className="stat-cell">
-            <div className="s-fig" style={{ textTransform: "capitalize" }}>
-              {activeLevel?.label || level}
+        <div className="space-y-5">
+          {/* Autonomy level — editable */}
+          <div>
+            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Autonomy level
             </div>
-            <div className="s-lab">autonomy level</div>
-          </div>
-          <div className="stat-cell">
-            <div className="s-fig">
-              {maxActions ?? "—"} <small>/ hr</small>
-            </div>
-            <div className="s-lab">action cap</div>
-          </div>
-          <div className="stat-cell">
-            <div className="s-fig">{maxCostCents != null ? `$${(maxCostCents / 100).toFixed(2)}` : "—"}</div>
-            <div className="s-lab">cost / day</div>
-          </div>
-          <div className="stat-cell">
-            <div className="s-fig" style={{ color: bool("workspace_only") ? "var(--accent-green)" : "var(--foreground)" }}>
-              {bool("workspace_only") ? "On" : "Off"}
-            </div>
-            <div className="s-lab">workspace only</div>
-          </div>
-        </div>
-
-        {/* Per-tool auto-approve — editable switches */}
-        <div style={{ marginTop: 20 }}>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>
-            Tool policy · auto-approve runs without asking
-          </div>
-          <div className="rows">
-            {BUILTIN_TOOLS.map((tool) => {
-              const auto = autoApprove.includes(tool);
-              const ask = alwaysAsk.includes(tool);
-              return (
-                <div className="row" key={tool}>
-                  <span className="r-name" style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>
-                    {tool}
-                  </span>
-                  <span className="r-note">
-                    {ask ? "always prompts (Manual)" : auto ? "runs without asking" : "follows level default"}
-                  </span>
-                  <div
-                    className={"switch" + (auto ? " on" : "")}
-                    onClick={() => !busy && toggleTool(tool)}
-                    role="switch"
-                    aria-checked={auto}
-                    title={auto ? "Auto-approved" : "Requires approval"}
+            <div className="flex flex-wrap gap-2">
+              {AUTONOMY_LEVELS.map((l) => {
+                const on = normLevel(l.id) === normLevel(level);
+                return (
+                  <Button
+                    key={l.id}
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => patch({ level: l.id }, `Autonomy level → ${l.label}`)}
+                    style={on ? { borderColor: l.dot, color: l.dot } : undefined}
                   >
-                    <i />
+                    <span
+                      className="inline-block size-[7px] rounded-full"
+                      style={{ background: l.dot }}
+                    />
+                    {l.label}
+                  </Button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{activeLevel?.blurb || ""}</p>
+          </div>
+
+          {/* Limits — read-only */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatTile label="autonomy level" value={activeLevel?.label || level} />
+            <StatTile label="action cap" value={maxActions != null ? `${maxActions} / hr` : "—"} />
+            <StatTile
+              label="cost / day"
+              value={maxCostCents != null ? `$${(maxCostCents / 100).toFixed(2)}` : "—"}
+            />
+            <StatTile
+              label="workspace only"
+              value={bool("workspace_only") ? "On" : "Off"}
+              tone={bool("workspace_only") ? "success" : "default"}
+            />
+          </div>
+
+          {/* Per-tool auto-approve — editable switches */}
+          <div>
+            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Tool policy · auto-approve runs without asking
+            </div>
+            <Card className="divide-y divide-border">
+              {BUILTIN_TOOLS.map((tool) => {
+                const auto = autoApprove.includes(tool);
+                const ask = alwaysAsk.includes(tool);
+                return (
+                  <div key={tool} className="flex items-center gap-3 px-3 py-2.5">
+                    <span className="font-mono text-[13px]">{tool}</span>
+                    <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+                      {ask ? "always prompts (Manual)" : auto ? "runs without asking" : "follows level default"}
+                    </span>
+                    <div
+                      className={"switch" + (auto ? " on" : "")}
+                      onClick={() => !busy && toggleTool(tool)}
+                      role="switch"
+                      aria-checked={auto}
+                      title={auto ? "Auto-approved" : "Requires approval"}
+                    >
+                      <i />
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </Card>
           </div>
-        </div>
 
-        {/* Shell allowlist — editable chips */}
-        <div style={{ marginTop: 20 }}>
-          <div className="eyebrow" style={{ marginBottom: 10 }}>
-            Shell allowlist · {allowed.length}
+          {/* Shell allowlist — editable chips */}
+          <div>
+            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Shell allowlist · {allowed.length}
+            </div>
+            {allowed.length > 0 && (
+              <div className="mb-2.5 flex flex-wrap gap-1.5">
+                {allowed.map((c) => (
+                  <Badge key={c} variant="secondary" className="gap-1.5 font-mono">
+                    {c}
+                    <button
+                      onClick={() => !busy && removeCmd(c)}
+                      title="Remove"
+                      className="inline-flex cursor-pointer text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input
+                value={cmd}
+                onChange={(e) => setCmd(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addCmd();
+                }}
+                placeholder="add command (e.g. docker)"
+                className="max-w-60"
+              />
+              <Button size="sm" onClick={addCmd} disabled={busy || !cmd.trim()}>
+                <Plus className="size-4" /> Add
+              </Button>
+            </div>
           </div>
-          {allowed.length > 0 && (
-            <div className="chips" style={{ marginBottom: 10 }}>
-              {allowed.map((c) => (
-                <span className="lchip" key={c}>
-                  {c}
-                  <span
-                    onClick={() => !busy && removeCmd(c)}
-                    style={{ cursor: "pointer", color: "var(--muted-foreground)", display: "inline-flex" }}
-                    title="Remove"
-                  >
-                    <X style={{ width: 12, height: 12 }} />
-                  </span>
-                </span>
-              ))}
+
+          {/* Forbidden paths — read-only */}
+          {forbidden.length > 0 && (
+            <div>
+              <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                Forbidden paths · {forbidden.length} (read-only)
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {forbidden.map((p) => (
+                  <Badge key={p} variant="outline" className="font-mono text-muted-foreground">
+                    {p}
+                  </Badge>
+                ))}
+              </div>
             </div>
           )}
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={cmd}
-              onChange={(e) => setCmd(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") addCmd();
-              }}
-              placeholder="add command (e.g. docker)"
-              className="field-input"
-              style={{ maxWidth: 240 }}
-            />
-            <Button size="sm" onClick={addCmd} disabled={busy || !cmd.trim()}>
-              <Plus className="size-4" /> Add
-            </Button>
-          </div>
-        </div>
 
-        {/* Forbidden paths — read-only */}
-        {forbidden.length > 0 && (
-          <div style={{ marginTop: 20 }}>
-            <div className="eyebrow" style={{ marginBottom: 10 }}>
-              Forbidden paths · {forbidden.length} (read-only)
-            </div>
-            <div className="chips">
-              {forbidden.map((p) => (
-                <span className="lchip dim" key={p}>
-                  {p}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="auto-blurb" style={{ minHeight: 0, marginTop: 16 }}>
-          {bool("block_high_risk_commands") ? "High-risk commands blocked. " : ""}
-          {bool("require_approval_for_medium_risk") ? "Medium-risk requires approval. " : ""}
-          Changes apply to new agent runs; the daemon reloads policy on restart.
+          <p className="text-xs text-muted-foreground">
+            {bool("block_high_risk_commands") ? "High-risk commands blocked. " : ""}
+            {bool("require_approval_for_medium_risk") ? "Medium-risk requires approval. " : ""}
+            Changes apply to new agent runs; the daemon reloads policy on restart.
+          </p>
         </div>
       </PanelFrame>
     </div>

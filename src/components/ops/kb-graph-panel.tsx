@@ -7,7 +7,9 @@ import { useAsync } from "@/hooks/use-async";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import { PanelFrame } from "./shared";
+import { Button } from "@/components/ui/button";
+import { Select } from "@/components/ui/select";
+import { IconButton, PanelFrame, StatTile } from "./shared";
 import { KnowledgeGraph, entityToken } from "./knowledge-graph";
 
 const GRAPH_LIMIT = 200;
@@ -61,11 +63,11 @@ export function KbGraphPanel() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Network className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-            <select
+            <Select
               value={group}
               onChange={(e) => setGroup(e.target.value)}
               aria-label="Filter by knowledge base"
-              className="h-9 cursor-pointer rounded-md border border-border bg-background pl-8 pr-7 text-sm shadow-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+              className="pl-8 pr-7"
             >
               <option value="">All knowledge bases</option>
               {(groups.data ?? []).map((g) => (
@@ -73,22 +75,22 @@ export function KbGraphPanel() {
                   {g.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <Badge variant="secondary" className="text-[10px]">
             top {GRAPH_LIMIT} nodes
           </Badge>
         </div>
-        <button className="gbtn" onClick={() => { graph.refresh(); groups.refresh(); }}>
+        <Button variant="outline" size="sm" onClick={() => { graph.refresh(); groups.refresh(); }}>
           <RefreshCw /> Refresh
-        </button>
+        </Button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatCell label="entities" value={formatNumber(totalNodes)} />
-        <StatCell label="relations" value={formatNumber(totalEdges)} />
-        <StatCell label="entity types" value={formatNumber(typeCounts.length)} />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile label="entities" value={formatNumber(totalNodes)} />
+        <StatTile label="relations" value={formatNumber(totalEdges)} />
+        <StatTile label="entity types" value={formatNumber(typeCounts.length)} />
       </div>
 
       <PanelFrame loading={graph.loading} error={graph.error} onRefresh={graph.refresh}>
@@ -146,27 +148,6 @@ export function KbGraphPanel() {
   );
 }
 
-function StatCell({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="card" style={{ padding: "14px 16px" }}>
-      <div
-        style={{
-          fontFamily: "var(--font-mono)",
-          fontSize: 10,
-          letterSpacing: "0.12em",
-          textTransform: "uppercase",
-          color: "var(--muted-foreground)",
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ marginTop: 4, fontSize: 22, fontWeight: 500, letterSpacing: "-0.02em" }}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function EntityDetail({
   node,
   relations,
@@ -201,18 +182,14 @@ function EntityDetail({
             </Badge>
           </div>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
-        >
+        <IconButton onClick={onClose} aria-label="Close" className="shrink-0">
           <X className="size-4" />
-        </button>
+        </IconButton>
       </div>
 
       <div className="grid grid-cols-2 gap-2 p-3">
-        <MiniStat label="degree" value={node.degree} />
-        <MiniStat label="documents" value={node.doc_count} />
+        <StatTile size="sm" label="degree" value={node.degree} />
+        <StatTile size="sm" label="documents" value={node.doc_count} />
       </div>
 
       <div className="min-h-0 flex-1 border-t border-border/60">
@@ -252,11 +229,3 @@ function EntityDetail({
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="rounded-md border border-border/60 bg-background/40 px-2.5 py-2">
-      <div className="text-[18px] font-medium leading-none">{value}</div>
-      <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-    </div>
-  );
-}

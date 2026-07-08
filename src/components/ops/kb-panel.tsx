@@ -137,21 +137,18 @@ function KbList({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="space-y-1.5">
-          <h3 className="text-xl font-semibold tracking-tight">Knowledge Bases</h3>
-          <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <Database className="size-3.5" />
-              {formatNumber(list.length)} knowledge base{list.length === 1 ? "" : "s"}
-            </span>
-            <span className="text-muted-foreground/40">·</span>
-            <span className="flex items-center gap-1.5">
-              <BookOpen className="size-3.5" />
-              {formatNumber(totalDocs)} document{totalDocs === 1 ? "" : "s"}
-            </span>
-          </div>
+      {/* Header — the page title comes from the ops header; this row is stats + action */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <Database className="size-3.5" />
+            {formatNumber(list.length)} knowledge base{list.length === 1 ? "" : "s"}
+          </span>
+          <span className="text-muted-foreground/40">·</span>
+          <span className="flex items-center gap-1.5">
+            <BookOpen className="size-3.5" />
+            {formatNumber(totalDocs)} document{totalDocs === 1 ? "" : "s"}
+          </span>
         </div>
         <Button size="sm" onClick={openCreate}>
           <Plus className="size-4" /> New knowledge base
