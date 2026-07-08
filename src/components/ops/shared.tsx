@@ -1,7 +1,63 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, Inbox, Loader2, RefreshCw } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+
+/**
+ * Canonical centered empty/error block: icon tile + title + optional hint and
+ * action. Every panel-level empty, error, and "nothing yet" state should render
+ * this instead of hand-rolling the markup.
+ */
+export function EmptyState({
+  icon,
+  title,
+  hint,
+  action,
+  tone = "default",
+  className,
+}: {
+  icon?: React.ReactNode;
+  title: React.ReactNode;
+  hint?: React.ReactNode;
+  action?: React.ReactNode;
+  tone?: "default" | "destructive";
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-3 py-14 text-center",
+        className,
+      )}
+    >
+      {icon && (
+        <div
+          className={cn(
+            "flex size-12 items-center justify-center rounded-xl",
+            tone === "destructive"
+              ? "bg-destructive/10 text-destructive"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {icon}
+        </div>
+      )}
+      <div>
+        <p className={cn("text-sm font-medium", tone === "destructive" && "text-destructive")}>
+          {title}
+        </p>
+        {hint && (
+          <p className="mx-auto mt-0.5 max-w-xs text-xs text-muted-foreground">{hint}</p>
+        )}
+      </div>
+      {action}
+    </div>
+  );
+}
 
 export function PanelFrame({
   loading,
@@ -18,123 +74,100 @@ export function PanelFrame({
 }) {
   if (loading) {
     return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          padding: "64px 0",
-          color: "var(--muted-foreground)",
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-        }}
-      >
+      <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
         <Loader2 className="size-4 animate-spin" /> Loading…
       </div>
     );
   }
   if (error) {
     return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 12,
-          padding: "56px 0",
-          textAlign: "center",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            color: "var(--destructive)",
-            fontSize: 13,
-          }}
-        >
-          <AlertTriangle className="size-4" /> {error}
-        </div>
-        {onRefresh && (
-          <button className="gbtn" onClick={onRefresh}>
-            <RefreshCw /> Retry
-          </button>
-        )}
-      </div>
+      <EmptyState
+        tone="destructive"
+        icon={<AlertTriangle className="size-6" />}
+        title="Couldn't load this panel"
+        hint={error}
+        action={
+          onRefresh && (
+            <Button variant="outline" size="sm" onClick={onRefresh}>
+              <RefreshCw /> Retry
+            </Button>
+          )
+        }
+      />
     );
   }
   if (empty) {
-    return (
-      <div
-        style={{
-          padding: "56px 0",
-          textAlign: "center",
-          color: "var(--muted-foreground)",
-          fontFamily: "var(--font-mono)",
-          fontSize: 12,
-        }}
-      >
-        Nothing here yet.
-      </div>
-    );
+    return <EmptyState icon={<Inbox className="size-6" />} title="Nothing here yet." />;
   }
   return <>{children}</>;
 }
 
-export function StatCard({
+/**
+ * The one stat tile. `md` is the dashboard tile (StatusPanel, graph stats);
+ * `sm` is the compact in-detail variant (entity degree/documents).
+ */
+export function StatTile({
   label,
   value,
   hint,
   tone = "default",
+  size = "md",
 }: {
   label: string;
   value: React.ReactNode;
   hint?: string;
   tone?: "default" | "success" | "warning" | "destructive" | "accent";
+  size?: "sm" | "md";
 }) {
-  const color = {
-    default: "var(--foreground)",
-    success: "var(--accent-green)",
-    warning: "var(--accent-orange)",
-    destructive: "var(--destructive)",
-    accent: "var(--brand-sky)",
+  const toneCls = {
+    default: "text-foreground",
+    success: "text-[var(--accent-green)]",
+    warning: "text-[var(--accent-orange)]",
+    destructive: "text-destructive",
+    accent: "text-[var(--brand-sky)]",
   }[tone];
+  const title =
+    typeof value === "string" || typeof value === "number" ? String(value) : undefined;
   return (
-    <div className="card" style={{ padding: "16px 18px" }}>
-      <div className="s-lab" style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted-foreground)" }}>
+    <Card className={size === "sm" ? "px-3 py-2.5" : "px-4 py-3.5"}>
+      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </div>
       <div
-        className="s-fig"
-        title={typeof value === "string" ? value : undefined}
-        style={{
-          marginTop: 6,
-          fontSize: 22,
-          fontWeight: 500,
-          letterSpacing: "-0.02em",
-          color,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
+        title={title}
+        className={cn(
+          "truncate font-medium tracking-tight",
+          size === "sm" ? "mt-1 text-lg" : "mt-1.5 text-[22px]",
+          toneCls,
+        )}
       >
         {value}
       </div>
-      {hint && (
-        <div style={{ marginTop: 3, fontSize: 11, color: "var(--muted-foreground)" }}>{hint}</div>
-      )}
-    </div>
+      {hint && <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>}
+    </Card>
   );
 }
 
+/** Small ghost icon button — the repeated view/intel/delete/close affordance. */
+export const IconButton = React.forwardRef<
+  HTMLButtonElement,
+  React.ButtonHTMLAttributes<HTMLButtonElement>
+>(({ className, ...props }, ref) => (
+  <button
+    ref={ref}
+    type="button"
+    className={cn(
+      "cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+      className,
+    )}
+    {...props}
+  />
+));
+IconButton.displayName = "IconButton";
+
 export function KeyVal({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
   return (
-    <div
-      className="kv-row"
-      style={{ padding: "8px 0", borderBottom: "1px solid color-mix(in oklab, var(--border) 60%, transparent)" }}
-    >
+    <div className="kv-row border-b border-border/60 py-2">
       <span className="k">{k}</span>
       <span className="v" style={mono ? undefined : { fontFamily: "var(--font-sans)" }}>
         {v}
@@ -145,25 +178,19 @@ export function KeyVal({ k, v, mono }: { k: string; v: React.ReactNode; mono?: b
 
 export function SeverityBadge({ severity }: { severity: string }) {
   const s = severity.toLowerCase();
-  const cls =
+  const variant =
     s.includes("err") || s.includes("crit") || s.includes("fail")
-      ? "red"
+      ? "destructive"
       : s.includes("warn")
-        ? "amber"
+        ? "warning"
         : s.includes("ok") || s.includes("pass") || s.includes("healthy")
-          ? "green"
-          : "dim";
-  return (
-    <span className={"badge " + cls}>
-      <span className="bd" /> {severity}
-    </span>
-  );
+          ? "success"
+          : "secondary";
+  return <Badge variant={variant}>{severity}</Badge>;
 }
 
 export function CountBadge({ n }: { n: number }) {
   return (
-    <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--muted-foreground)" }}>
-      {n.toLocaleString()}
-    </span>
+    <span className="font-mono text-xs text-muted-foreground">{n.toLocaleString()}</span>
   );
 }
