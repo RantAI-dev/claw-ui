@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ROUTE_META, type Route } from "@/lib/console";
+import type { Connection } from "@/hooks/use-gateway-status";
 import {
   ChannelsPanel,
   ConfigPanel,
@@ -32,14 +33,22 @@ const PANELS: Partial<Record<Route, React.ReactNode>> = {
   config: <ConfigPanel />,
 };
 
-export function OpsView({ route }: { route: Route }) {
+export function OpsView({ route, connection }: { route: Route; connection: Connection }) {
   const meta = ROUTE_META[route];
+  // The eyebrow dot is a real health indicator (matching the topbar pill), not a
+  // per-route decoration — a green dot must never appear while the gateway is down.
+  const dot =
+    connection === "online"
+      ? "var(--accent-green)"
+      : connection === "connecting"
+        ? "var(--accent-orange)"
+        : "var(--destructive)";
   return (
     <div className="ops">
       <div className="ops-inner">
         <div className="ops-head">
           <div className="eyebrow">
-            <span className="cdot" style={{ background: meta.dot }} />
+            <span className="cdot" style={{ background: dot }} />
             {meta.eyebrow}
           </div>
           <h2>{meta.title}</h2>

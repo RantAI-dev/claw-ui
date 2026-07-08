@@ -63,78 +63,66 @@ export const NAV: NavDef[] = [
   { id: "config", label: "Configuration", icon: SlidersHorizontal },
 ];
 
-export const ROUTE_META: Record<Route, { title: string; eyebrow: string; dot: string; blurb: string }> = {
-  chat: { title: "Chat", eyebrow: "Conversation", dot: "var(--brand-sky)", blurb: "" },
+export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: string }> = {
+  chat: { title: "Chat", eyebrow: "Conversation", blurb: "" },
   status: {
     title: "Status",
     eyebrow: "Runtime health",
-    dot: "var(--accent-green)",
     blurb: "Daemon health, doctor checks, and the runtime the agent is bound to.",
   },
   channels: {
     title: "Channels",
     eyebrow: "Connectivity",
-    dot: "var(--accent-purple)",
     blurb: "Messaging surfaces the agent is reachable on — Slack, Discord, Telegram, email and more.",
   },
   mcp: {
     title: "MCP Servers",
     eyebrow: "Model Context Protocol",
-    dot: "var(--accent-teal)",
     blurb: "MCP servers wired into the runtime via config — each exposes its own tool surface to the agent.",
   },
   tools: {
     title: "Tools & Autonomy",
     eyebrow: "Permissions",
-    dot: "var(--accent-orange)",
     blurb: "The autonomy level and the policy that governs it — auto-approved tools, the shell allowlist, rate and cost caps, and forbidden paths.",
   },
   providers: {
     title: "Providers",
     eyebrow: "Models & keys",
-    dot: "var(--brand-sky)",
     blurb: "Pick the active model provider and store its API key — encrypted at rest, never shown back.",
   },
   cron: {
     title: "Schedules",
     eyebrow: "Automation",
-    dot: "var(--accent-orange)",
     blurb: "Recurring agent jobs on cron expressions — create, pause, run now, or delete.",
   },
   skills: {
     title: "ClawHub Skills",
     eyebrow: "Capabilities",
-    dot: "var(--accent-cornflower)",
     blurb: "Installed skills and the ClawHub marketplace — install, enable, and remove capabilities.",
   },
   kb: {
     title: "Knowledge Bases",
     eyebrow: "Retrieval",
-    dot: "var(--brand-sky)",
     blurb: "Grouped document collections the agent can retrieve from — upload files, organize, and pick which bases a chat draws on.",
   },
   kbgraph: {
     title: "Knowledge Graph",
     eyebrow: "Entity relationships",
-    dot: "var(--accent-purple)",
     blurb: "The entity-and-relation graph extracted across your knowledge bases — explore how people, organizations, and concepts connect.",
   },
   memory: {
     title: "Memory",
     eyebrow: "Long-term recall",
-    dot: "var(--accent-purple)",
     blurb: "Facts and preferences the agent has persisted across conversations.",
   },
   persona: {
     title: "Persona",
     eyebrow: "Voice & behavior",
-    dot: "var(--accent-teal)",
     blurb: "The personality preset that shapes the agent's tone and defaults.",
   },
   config: {
     title: "Configuration",
     eyebrow: "Live config",
-    dot: "var(--accent-green)",
     blurb: "Hot-swap the default model and inspect the running config (secrets redacted).",
   },
 };
