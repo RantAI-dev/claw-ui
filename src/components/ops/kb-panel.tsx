@@ -34,10 +34,13 @@ import { cn, relativeTime, formatNumber } from "@/lib/utils";
 import { getFileTypeIcon, formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
+import { Segmented } from "@/components/ui/segmented";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
-import { PanelFrame } from "./shared";
+import { EmptyState, PanelFrame } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { KnowledgeSettingsCard } from "./knowledge-settings-card";
 import { toast } from "sonner";
@@ -184,36 +187,17 @@ function KbList({
         }}
       />
 
-      <Modal
+      <ConfirmModal
         open={!!deleteTarget}
-        onClose={() => !deleting && setDeleteTarget(null)}
+        onClose={() => setDeleteTarget(null)}
         title="Delete knowledge base"
         description={
           deleteTarget
             ? `Delete “${deleteTarget.name}”? Documents stay in the library but are unlinked.`
             : undefined
         }
-        footer={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteTarget(null)}
-              disabled={deleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={confirmDelete}
-              disabled={deleting}
-            >
-              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-              Delete
-            </Button>
-          </>
-        }
+        busy={deleting}
+        onConfirm={confirmDelete}
       />
     </div>
   );
@@ -649,7 +633,7 @@ function KbDetail({
         type="file"
         multiple
         accept={acceptAttr()}
-        style={{ display: "none" }}
+        className="hidden"
         onChange={(e) => {
           void upload(e.target.files);
           e.target.value = "";
@@ -660,7 +644,7 @@ function KbDetail({
         type="file"
         multiple
         accept={imageAcceptAttr()}
-        style={{ display: "none" }}
+        className="hidden"
         onChange={(e) => {
           void upload(e.target.files);
           e.target.value = "";
@@ -767,46 +751,26 @@ function KbDetail({
         </div>
         <div className="relative">
           <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <select
+          <Select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOption)}
             aria-label="Sort documents"
-            className="h-9 cursor-pointer rounded-md border border-border bg-background pl-8 pr-7 text-sm shadow-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+            className="pl-8 pr-7"
           >
             <option value="newest">Newest</option>
             <option value="oldest">Oldest</option>
             <option value="name">Name A–Z</option>
             <option value="retrieved">Most retrieved</option>
-          </select>
+          </Select>
         </div>
-        <div className="flex items-center rounded-md border border-border bg-muted/30 p-0.5">
-          <button
-            onClick={() => setView("grid")}
-            aria-label="Grid view"
-            aria-pressed={view === "grid"}
-            className={cn(
-              "rounded-sm p-1.5 transition-colors cursor-pointer",
-              view === "grid"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <LayoutGrid className="size-4" />
-          </button>
-          <button
-            onClick={() => setView("list")}
-            aria-label="List view"
-            aria-pressed={view === "list"}
-            className={cn(
-              "rounded-sm p-1.5 transition-colors cursor-pointer",
-              view === "list"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <List className="size-4" />
-          </button>
-        </div>
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[
+            { value: "grid", label: <LayoutGrid className="size-4" />, ariaLabel: "Grid view" },
+            { value: "list", label: <List className="size-4" />, ariaLabel: "List view" },
+          ]}
+        />
       </div>
 
       {/* Documents */}
@@ -872,72 +836,26 @@ function KbDetail({
         }}
       />
 
-      <Modal
+      <ConfirmModal
         open={deleteOpen}
-        onClose={() => !deleting && setDeleteOpen(false)}
+        onClose={() => setDeleteOpen(false)}
         title="Delete knowledge base"
         description={`Delete “${group.name}”? Documents stay in the library but are unlinked.`}
-        footer={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteOpen(false)}
-              disabled={deleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={confirmDelete}
-              disabled={deleting}
-            >
-              {deleting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Delete
-            </Button>
-          </>
-        }
+        busy={deleting}
+        onConfirm={confirmDelete}
       />
 
-      <Modal
+      <ConfirmModal
         open={!!deleteDoc}
-        onClose={() => !deletingDoc && setDeleteDoc(null)}
+        onClose={() => setDeleteDoc(null)}
         title="Delete document"
         description={
           deleteDoc
             ? `Delete “${deleteDoc.title || deleteDoc.id.slice(0, 8)}” from the library? It leaves every knowledge base and stops being used for retrieval.`
             : ""
         }
-        footer={
-          <>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setDeleteDoc(null)}
-              disabled={deletingDoc}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={confirmDeleteDoc}
-              disabled={deletingDoc}
-            >
-              {deletingDoc ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Trash2 className="size-4" />
-              )}
-              Delete
-            </Button>
-          </>
-        }
+        busy={deletingDoc}
+        onConfirm={confirmDeleteDoc}
       />
 
       {viewerDoc && (
@@ -960,26 +878,60 @@ function DocsEmpty({
   onUpload: () => void;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 py-14 text-center">
-      <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
-        <BookOpen className="size-6 text-muted-foreground" />
-      </div>
-      <div>
-        <p className="text-sm font-medium">
-          {searching ? "No matching documents" : "No documents yet"}
-        </p>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {searching
+    <div className="rounded-xl border border-dashed border-border bg-muted/20">
+      <EmptyState
+        icon={<BookOpen className="size-6" />}
+        title={searching ? "No matching documents" : "No documents yet"}
+        hint={
+          searching
             ? "Try a different search."
-            : "Upload files above to add them to this knowledge base."}
-        </p>
-      </div>
-      {!searching && (
-        <Button size="sm" variant="outline" onClick={onUpload}>
-          <Upload className="size-3.5" /> Upload documents
-        </Button>
-      )}
+            : "Upload files above to add them to this knowledge base."
+        }
+        action={
+          !searching && (
+            <Button size="sm" variant="outline" onClick={onUpload}>
+              <Upload className="size-3.5" /> Upload documents
+            </Button>
+          )
+        }
+      />
     </div>
+  );
+}
+
+/** The View / Intelligence / Delete icon cluster shared by DocCard and DocRow. */
+function DocActions({
+  busy,
+  onView,
+  onIntel,
+  onDelete,
+  buttonClassName,
+}: {
+  busy: boolean;
+  onView: () => void;
+  onIntel: () => void;
+  onDelete: () => void;
+  buttonClassName?: string;
+}) {
+  const btn = (hover: string) =>
+    cn("cursor-pointer rounded-md p-1.5 text-muted-foreground transition-all", buttonClassName, hover);
+  return (
+    <>
+      <button onClick={onView} title="View document" className={btn("hover:bg-accent/10 hover:text-accent")}>
+        <Eye className="size-3.5" />
+      </button>
+      <button onClick={onIntel} title="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
+        <Sparkles className="size-3.5" />
+      </button>
+      <button
+        onClick={onDelete}
+        disabled={busy}
+        title="Delete document"
+        className={btn("hover:bg-destructive/10 hover:text-destructive disabled:opacity-50")}
+      >
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+      </button>
+    </>
   );
 }
 
@@ -1005,28 +957,13 @@ function DocCard({
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
       <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <button
-          onClick={onView}
-          title="View document"
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-accent/10 hover:text-accent cursor-pointer"
-        >
-          <Eye className="size-3.5" />
-        </button>
-        <button
-          onClick={onIntel}
-          title="Document intelligence"
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-accent/10 hover:text-accent cursor-pointer"
-        >
-          <Sparkles className="size-3.5" />
-        </button>
-        <button
-          onClick={onDelete}
-          disabled={busy}
-          title="Delete document"
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer disabled:opacity-50"
-        >
-          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-        </button>
+        <DocActions
+          busy={busy}
+          onView={onView}
+          onIntel={onIntel}
+          onDelete={onDelete}
+          buttonClassName="bg-background/80 shadow-sm backdrop-blur-sm"
+        />
       </div>
 
       <div className="flex flex-col items-center gap-2.5 py-2">
@@ -1096,28 +1033,13 @@ function DocRow({
           {formatNumber(retrievals)} retrieval{retrievals === 1 ? "" : "s"}
         </Badge>
       )}
-      <button
-        onClick={onView}
-        title="View document"
-        className="shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-accent/10 hover:text-accent group-hover:opacity-100 cursor-pointer"
-      >
-        <Eye className="size-3.5" />
-      </button>
-      <button
-        onClick={onIntel}
-        title="Document intelligence"
-        className="shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-accent/10 hover:text-accent group-hover:opacity-100 cursor-pointer"
-      >
-        <Sparkles className="size-3.5" />
-      </button>
-      <button
-        onClick={onDelete}
-        disabled={busy}
-        title="Delete document"
-        className="shrink-0 rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 cursor-pointer disabled:opacity-50"
-      >
-        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-      </button>
+      <DocActions
+        busy={busy}
+        onView={onView}
+        onIntel={onIntel}
+        onDelete={onDelete}
+        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100"
+      />
     </div>
   );
 }
