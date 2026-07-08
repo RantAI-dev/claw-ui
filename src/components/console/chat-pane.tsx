@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import type { Attachment, ChatMessage, KbGroup, ProviderInfo } from "@/lib/types";
+import { Button } from "@/components/ui/button";
 import { ModelPicker } from "@/components/ui/model-picker";
 import { brand } from "@/lib/branding";
 import { acceptAttr, imageAcceptAttr, ingestFile, MAX_BYTES, MAX_FILES } from "@/lib/attachments";
@@ -83,24 +84,17 @@ function ConnectionBanner({
 }) {
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: 8,
-        padding: "9px 28px",
-        fontFamily: "var(--font-mono)",
-        fontSize: 11,
-        borderBottom: "1px solid var(--border)",
-        color: needsAuth ? "var(--accent-orange)" : "var(--destructive)",
-        background: needsAuth
-          ? "color-mix(in oklab, var(--accent-orange) 8%, transparent)"
-          : "color-mix(in oklab, var(--destructive) 8%, transparent)",
-      }}
+      className={
+        "flex items-start gap-2 border-b border-border px-7 py-2 font-mono text-[11px] " +
+        (needsAuth
+          ? "bg-[color-mix(in_oklab,var(--accent-orange)_8%,transparent)] text-[var(--accent-orange)]"
+          : "bg-destructive/10 text-destructive")
+      }
     >
       {needsAuth ? (
-        <KeyRound style={{ width: 14, height: 14, flex: "none", marginTop: 1 }} />
+        <KeyRound className="mt-px size-3.5 flex-none" />
       ) : (
-        <AlertTriangle style={{ width: 14, height: 14, flex: "none", marginTop: 1 }} />
+        <AlertTriangle className="mt-px size-3.5 flex-none" />
       )}
       <span>
         {needsAuth ? (
@@ -273,7 +267,7 @@ export function ChatPane(props: ChatPaneProps) {
         {empty ? (
           <div className="chat-empty">
             <div className="ce-mark">
-              <Sparkles style={{ width: 24, height: 24 }} />
+              <Sparkles className="size-6" />
             </div>
             <div>
               <h2>How can I help?</h2>
@@ -302,10 +296,10 @@ export function ChatPane(props: ChatPaneProps) {
         )}
 
         {canRegenerate && (
-          <div style={{ maxWidth: 780, margin: "0 auto", padding: "0 28px 8px", display: "flex", justifyContent: "center" }}>
-            <button className="gbtn" onClick={onRegenerate}>
+          <div className="mx-auto flex max-w-[780px] justify-center px-7 pb-2">
+            <Button variant="outline" size="sm" onClick={onRegenerate}>
               <RotateCcw /> Regenerate
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -357,7 +351,7 @@ export function ChatPane(props: ChatPaneProps) {
               type="file"
               multiple
               accept={acceptAttr()}
-              style={{ display: "none" }}
+              className="hidden"
               onChange={(e) => {
                 void pickFiles(e.target.files);
                 e.target.value = ""; // allow re-picking the same file
@@ -368,7 +362,7 @@ export function ChatPane(props: ChatPaneProps) {
               type="file"
               multiple
               accept={imageAcceptAttr()}
-              style={{ display: "none" }}
+              className="hidden"
               onChange={(e) => {
                 void pickFiles(e.target.files);
                 e.target.value = "";
@@ -380,8 +374,8 @@ export function ChatPane(props: ChatPaneProps) {
                 className="cchip"
                 title={
                   attachments.length >= MAX_FILES
-                    ? `Maks. ${MAX_FILES} lampiran`
-                    : "Lampirkan dokumen"
+                    ? `Max ${MAX_FILES} attachments`
+                    : "Attach a document"
                 }
                 onClick={() => fileRef.current?.click()}
                 disabled={attachments.length >= MAX_FILES}
@@ -393,8 +387,8 @@ export function ChatPane(props: ChatPaneProps) {
                 className="cchip"
                 title={
                   attachments.length >= MAX_FILES
-                    ? `Maks. ${MAX_FILES} lampiran`
-                    : "Lampirkan gambar"
+                    ? `Max ${MAX_FILES} attachments`
+                    : "Attach an image"
                 }
                 onClick={() => imageRef.current?.click()}
                 disabled={attachments.length >= MAX_FILES}
@@ -460,7 +454,7 @@ export function ChatPane(props: ChatPaneProps) {
                     </option>
                   ))}
                 </select>
-                <ChevronDown style={{ width: 12, height: 12, opacity: 0.6 }} />
+                <ChevronDown className="size-3 opacity-60" />
               </span>
               <ModelPicker
                 provider={provider || defaultProvider || ""}
@@ -489,7 +483,7 @@ export function ChatPane(props: ChatPaneProps) {
             <span>
               <span className="kbd">⏎</span> send
             </span>
-            <span style={{ marginLeft: "auto" }}>
+            <span className="ml-auto">
               {providerLabel} · {modelTag || defaultModel || "default"}
             </span>
           </div>

@@ -194,3 +194,27 @@ export function CountBadge({ n }: { n: number }) {
     <span className="font-mono text-xs text-muted-foreground">{n.toLocaleString()}</span>
   );
 }
+
+export function RefreshButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="outline" size="sm" onClick={onClick}>
+      <RefreshCw /> Refresh
+    </Button>
+  );
+}
+
+/** Panel section heading — one scale for every ops section label. */
+export function SectionTitle({
+  children,
+  action,
+}: {
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-3 flex items-center justify-between">
+      <h3 className="text-[13px] font-medium tracking-tight">{children}</h3>
+      {action}
+    </div>
+  );
+}

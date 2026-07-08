@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Markdown } from "@/components/chat/markdown";
 
 /* A lightweight OpenUI-style generative-UI renderer: the agent emits a fenced
@@ -32,8 +35,14 @@ const TONE_VAR: Record<string, string> = {
   dim: "var(--muted-foreground)",
 };
 const toneVar = (t?: string) => TONE_VAR[t || ""] || TONE_VAR.sky;
-const toneBadge = (t?: string) =>
-  (["green", "sky", "amber", "red", "dim"] as const).includes(t as never) ? (t as string) : "sky";
+const TONE_BADGE_VARIANT: Record<string, "success" | "warning" | "destructive" | "accent" | "secondary"> = {
+  green: "success",
+  amber: "warning",
+  red: "destructive",
+  sky: "accent",
+  dim: "secondary",
+};
+const toneBadge = (t?: string) => TONE_BADGE_VARIANT[t || ""] || "accent";
 
 /** Split content into markdown segments, parsed ```ui blocks, and (while
  * streaming) a trailing not-yet-closed ```ui block rendered as a placeholder. */
@@ -105,7 +114,7 @@ function Component({
     case "text":
       return <Markdown content={asText(c.text)} />;
     case "divider":
-      return <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "4px 0" }} />;
+      return <hr className="my-1 border-0 border-t border-border" />;
     case "card":
       return (
         <div
@@ -125,16 +134,24 @@ function Component({
       );
     case "metrics":
       return (
-        <div className="stat-strip" style={{ gridTemplateColumns: `repeat(${Math.max(1, (c.items || []).length)}, 1fr)` }}>
+        <div
+          className="grid gap-2"
+          style={{ gridTemplateColumns: `repeat(${Math.max(1, (c.items || []).length)}, 1fr)` }}
+        >
           {(c.items || []).map((it, i) => {
             const item = it as { label?: string; value?: string; tone?: string };
             return (
-              <div className="stat-cell" key={i}>
-                <div className="s-fig" style={{ color: item.tone ? toneVar(item.tone) : undefined }}>
+              <Card key={i} className="px-3 py-2.5">
+                <div
+                  className="truncate text-lg font-medium tracking-tight"
+                  style={{ color: item.tone ? toneVar(item.tone) : undefined }}
+                >
                   {asText(item.value)}
                 </div>
-                <div className="s-lab">{asText(item.label)}</div>
-              </div>
+                <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                  {asText(item.label)}
+                </div>
+              </Card>
             );
           })}
         </div>
@@ -188,13 +205,13 @@ function Component({
       );
     case "badges":
       return (
-        <div className="chips">
+        <div className="flex flex-wrap gap-1.5">
           {(c.items || []).map((it, i) => {
             const item = it as { label?: string; tone?: string };
             return (
-              <span className={"badge " + toneBadge(item.tone)} key={i}>
-                <span className="bd" /> {asText(item.label)}
-              </span>
+              <Badge key={i} variant={toneBadge(item.tone)}>
+                {asText(item.label)}
+              </Badge>
             );
           })}
         </div>
@@ -214,14 +231,15 @@ function Component({
           {c.prompt && <div className="gu-choice-prompt">{c.prompt}</div>}
           <div className="gu-choices">
             {(c.options || []).map((o, i) => (
-              <button
+              <Button
                 key={i}
-                className="gbtn"
+                variant="outline"
+                size="sm"
                 onClick={() => onAction?.(o.value || o.label)}
                 disabled={!onAction}
               >
                 {o.label}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -260,7 +278,7 @@ export function GenerativeMessage({
           return streaming ? (
             <UiComposing key={i} />
           ) : seg.text.trim() ? (
-            <pre key={i} className="toml" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
+            <pre key={i} className="toml rounded-md border border-border">
               {seg.text}
             </pre>
           ) : (
@@ -269,7 +287,7 @@ export function GenerativeMessage({
         }
         if (seg.kind === "code") {
           return (
-            <pre key={i} className="toml" style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-md)" }}>
+            <pre key={i} className="toml rounded-md border border-border">
               {seg.text}
             </pre>
           );

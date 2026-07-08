@@ -222,10 +222,16 @@ export function ConsoleShell({
     if (chat.sessionId) setActiveId(chat.sessionId);
   }, [chat.sessionId]);
 
-  // Deep-link routes via the URL hash (e.g. /ops#tools), and keep it in sync.
+  // Deep-link routes via the URL hash (e.g. /ops#tools) — on load AND on later
+  // hash changes (our own route sync uses replaceState, which doesn't fire this).
   React.useEffect(() => {
-    const h = window.location.hash.replace("#", "");
-    if (h && NAV.some((n) => n.id === h)) setRoute(h as Route);
+    const applyHash = () => {
+      const h = window.location.hash.replace("#", "");
+      if (h && NAV.some((n) => n.id === h)) setRoute(h as Route);
+    };
+    applyHash();
+    window.addEventListener("hashchange", applyHash);
+    return () => window.removeEventListener("hashchange", applyHash);
   }, []);
   // Reflect the active conversation in the URL so chats are deep-linkable and
   // survive a refresh: /chat/<sessionId> in chat, #<tab> for ops routes.
@@ -387,18 +393,13 @@ export function ConsoleShell({
 
             {route === "chat" && (
               <div className="nav-group">
-                <div className="nav-cap eyebrow" style={{ display: "flex", alignItems: "center" }}>
+                <div className="nav-cap eyebrow flex items-center">
                   <span>Recent Sessions</span>
-                  <button
-                    className="sess-x"
-                    style={{ marginLeft: "auto", opacity: 1 }}
-                    title="New chat"
-                    onClick={handleNew}
-                  >
-                    <Plus style={{ width: 14, height: 14 }} />
+                  <button className="sess-x shown" title="New chat" onClick={handleNew}>
+                    <Plus className="size-3.5" />
                   </button>
                 </div>
-                <div className="search" style={{ margin: "0 8px 8px" }}>
+                <div className="search mx-2 mb-2">
                   <Search />
                   <input
                     value={sessQuery}
@@ -408,11 +409,9 @@ export function ConsoleShell({
                 </div>
                 <div className="sess">
                   {loadingSessions ? (
-                    <div className="auto-blurb" style={{ padding: "4px 10px" }}>
-                      Loading sessions…
-                    </div>
+                    <div className="auto-blurb px-2.5 py-1">Loading sessions…</div>
                   ) : filteredSessions.length === 0 ? (
-                    <div className="auto-blurb" style={{ padding: "4px 10px" }}>
+                    <div className="auto-blurb px-2.5 py-1">
                       {sessions.length === 0 ? "No sessions yet." : "No matches."}
                     </div>
                   ) : (
@@ -426,7 +425,7 @@ export function ConsoleShell({
                           <span className="chan-dot" style={{ background: channelDot(s.model || "") }} />
                           <span className="sess-title">{s.title || "Untitled session"}</span>
                           <span className="sess-x" onClick={(e) => handleDelete(s.id, e)} title="Delete">
-                            <X style={{ width: 13, height: 13 }} />
+                            <X className="size-[13px]" />
                           </span>
                         </div>
                         <div className="sess-meta">

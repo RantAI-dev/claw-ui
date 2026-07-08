@@ -5,6 +5,7 @@ import { AlertTriangle, ChevronRight, FileText } from "lucide-react";
 import type { ChatMessage, ToolCall } from "@/lib/types";
 import { toolIcon } from "@/lib/console";
 import { formatNumber, formatUsd } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Markdown } from "@/components/chat/markdown";
 import { GenerativeMessage } from "./generative-ui";
 
@@ -34,13 +35,11 @@ function Activity({ tools, defaultOpen }: { tools: ToolCall[]; defaultOpen: bool
         </span>
         <span className="spark">
           {running ? (
-            <span className="badge sky" style={{ padding: "2px 7px" }}>
-              <span className="bd" /> RUNNING
-            </span>
+            <Badge variant="accent" className="px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+              <span className="size-1.5 animate-pulse rounded-full bg-current" /> Running
+            </Badge>
           ) : (
-            <span className="act-sub" style={{ color: "var(--accent-green)" }}>
-              ✓ done
-            </span>
+            <span className="act-sub text-success">✓ done</span>
           )}
         </span>
       </button>

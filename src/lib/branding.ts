@@ -1,13 +1,6 @@
-/** Centralized, brand-switchable branding.
- *
- * Select the brand at build/run time with `NEXT_PUBLIC_BRAND`:
- *   NEXT_PUBLIC_BRAND=nexus  → NQRust Console (NexusQuantum, light, orange)
- *   (unset / anything else)  → RantaiClaw Console (dark, blue)
- *
- * The CSS theme is keyed off `data-brand` on <html> (see globals.css), so the
- * whole console reskins from one flag. */
+/** Centralized branding for the RantaiClaw Console (dark, blue). */
 
-export type BrandId = "rantaiclaw" | "nexus";
+export type BrandId = "rantaiclaw";
 
 export interface Brand {
   id: BrandId;
@@ -39,19 +32,6 @@ const BRANDS: Record<BrandId, Brand> = {
     favicon: "/favicon-32x32.png",
     theme: "dark",
   },
-  nexus: {
-    id: "nexus",
-    name: "NQRust",
-    productName: "NQRust Console",
-    wordmark: ["NQ", "Rust"],
-    sub: "Console",
-    tagline: "Your microVM agent console.",
-    logo: "/nqrust-mark.svg",
-    favicon: "/nqrust-mark.svg",
-    theme: "light",
-  },
 };
 
-const SELECTED: BrandId = process.env.NEXT_PUBLIC_BRAND === "nexus" ? "nexus" : "rantaiclaw";
-
-export const brand: Brand = BRANDS[SELECTED];
+export const brand: Brand = BRANDS.rantaiclaw;

@@ -4,6 +4,7 @@ import * as React from "react";
 import { PanelRight, PanelRightClose } from "lucide-react";
 import { autonomyPreset, channelDot } from "@/lib/console";
 import { formatNumber, formatUsd } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 
 export interface RightPanelData {
   model: string;
@@ -25,15 +26,10 @@ export function RightPanel({ data, onCollapse }: { data: RightPanelData; onColla
   return (
     <aside className="right">
       <div className="right-head">
-        <PanelRight style={{ width: 15, height: 15, color: "var(--muted-foreground)" }} />
+        <PanelRight className="size-[15px] text-muted-foreground" />
         <div className="eyebrow">Session Context</div>
         {onCollapse && (
-          <button
-            className="icon-btn"
-            onClick={onCollapse}
-            title="Collapse panel"
-            style={{ marginLeft: "auto" }}
-          >
+          <button className="icon-btn ml-auto" onClick={onCollapse} title="Collapse panel">
             <PanelRightClose />
           </button>
         )}
@@ -93,9 +89,7 @@ export function RightPanel({ data, onCollapse }: { data: RightPanelData; onColla
               ))}
             </div>
           ) : (
-            <div className="auto-blurb" style={{ minHeight: 0 }}>
-              No channels configured.
-            </div>
+            <div className="auto-blurb min-h-0">No channels configured.</div>
           )}
         </div>
 
@@ -132,28 +126,15 @@ export function RightPanel({ data, onCollapse }: { data: RightPanelData; onColla
             <span className="more">{data.skills.length}</span>
           </div>
           {data.skills.length > 0 ? (
-            <div className="chips" style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            <div className="flex flex-wrap gap-1.5">
               {data.skills.map((s) => (
-                <span
-                  key={s}
-                  style={{
-                    fontFamily: "var(--font-mono)",
-                    fontSize: 11,
-                    color: "var(--foreground)",
-                    padding: "5px 10px",
-                    borderRadius: "var(--radius-md)",
-                    border: "1px solid var(--border)",
-                    background: "oklch(1 0 0 / 2.5%)",
-                  }}
-                >
+                <Badge key={s} variant="outline" className="font-mono text-[11px]">
                   {s}
-                </span>
+                </Badge>
               ))}
             </div>
           ) : (
-            <div className="auto-blurb" style={{ minHeight: 0 }}>
-              No skills installed.
-            </div>
+            <div className="auto-blurb min-h-0">No skills installed.</div>
           )}
         </div>
       </div>

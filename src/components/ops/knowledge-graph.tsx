@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
 import { Loader2, Network } from "lucide-react";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
+import { EmptyState } from "./shared";
 
 // ── Entity-type → design token ──────────────────────────────────────────────
 // Each entity colour resolves to a console accent CSS var so the graph stays
@@ -42,7 +43,19 @@ const TOKEN_HEX: Record<string, string> = {
   "--accent-red": "#bb5153",
   "--accent-cornflower": "#517fbb",
   "--muted-foreground": "#9aa6ad",
+  // Theme surfaces for canvas text/halo (dark-canonical fallbacks; light brands
+  // resolve their own hex values via getComputedStyle).
+  "--foreground": "#f4f8fb",
+  "--background": "#0f1419",
 };
+
+/** `#rrggbb` → `rgba(r,g,b,a)`; non-hex values pass through unchanged. */
+function withAlpha(color: string, alpha: number): string {
+  const m = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!m) return color;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
 
 /** Stable design token for an entity type (lowercased lookup, neutral fallback). */
 export function entityToken(entityType: string | null | undefined): string {
@@ -167,7 +180,13 @@ export function KnowledgeGraph({
   // Resolve accent tokens → hex once (re-resolves when the node set changes).
   const colorMap = React.useMemo(() => {
     const m: Record<string, string> = {};
-    const tokens = new Set<string>([FALLBACK_TOKEN, ...Object.values(ENTITY_TOKEN)]);
+    const tokens = new Set<string>([
+      FALLBACK_TOKEN,
+      "--foreground",
+      "--background",
+      "--brand-sky",
+      ...Object.values(ENTITY_TOKEN),
+    ]);
     tokens.forEach((t) => (m[t] = resolveToken(t)));
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,17 +264,18 @@ export function KnowledgeGraph({
       const show = selected || node.degree >= 5 || scale > 1.3;
       if (show && node.name) {
         const fontSize = Math.max(10 / scale, 3);
+        const fg = colorMap["--foreground"];
         ctx.font = `${fontSize}px ui-sans-serif, system-ui, -apple-system, sans-serif`;
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.shadowColor = "rgba(0,0,0,0.65)";
+        ctx.shadowColor = withAlpha(colorMap["--background"], 0.65);
         ctx.shadowBlur = 3;
-        ctx.fillStyle = selected ? "#f4f8fb" : dimmed ? "rgba(210,220,228,0.35)" : "rgba(214,224,232,0.86)";
+        ctx.fillStyle = selected ? fg : withAlpha(fg, dimmed ? 0.35 : 0.85);
         ctx.fillText(node.name, x + r + 2.5, y);
         ctx.shadowBlur = 0;
       }
     },
-    [colorFor, selectedId],
+    [colorFor, colorMap, selectedId],
   );
 
   const paintPointer = React.useCallback(
@@ -285,19 +305,20 @@ export function KnowledgeGraph({
     return (
       <div
         ref={wrapRef}
-        className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border bg-muted/20 text-center"
+        className="flex items-center justify-center rounded-xl border border-dashed border-border bg-muted/20"
         style={{ height }}
       >
-        <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
-          <Network className="size-6 text-muted-foreground" />
-        </div>
-        <div>
-          <p className="text-sm font-medium">No graph to show</p>
-          <p className="mt-0.5 max-w-xs text-xs text-muted-foreground">
-            No entities have been extracted yet. Intelligence extraction may be disabled
-            (<code>KB_INTELLIGENCE_ENABLED</code>) or not yet run for these documents.
-          </p>
-        </div>
+        <EmptyState
+          className="py-0"
+          icon={<Network className="size-6" />}
+          title="No graph to show"
+          hint={
+            <>
+              No entities have been extracted yet. Intelligence extraction may be disabled
+              (<code>KB_INTELLIGENCE_ENABLED</code>) or not yet run for these documents.
+            </>
+          }
+        />
       </div>
     );
   }
@@ -325,14 +346,20 @@ export function KnowledgeGraph({
           nodeColor={(n) => colorFor(n.entity_type)}
           nodeCanvasObject={drawNode}
           nodePointerAreaPaint={paintPointer}
-          linkColor={(l) => (touchesSelected(l) ? "rgba(94,182,250,0.55)" : "rgba(150,165,180,0.16)")}
+          linkColor={(l) =>
+            touchesSelected(l)
+              ? withAlpha(colorMap["--brand-sky"], 0.55)
+              : withAlpha(colorMap[FALLBACK_TOKEN], 0.16)
+          }
           linkWidth={(l) => (touchesSelected(l) ? 1.7 : 0.6)}
           linkLabel={(l) => l.relation_type}
           linkCurvature={0.06}
           linkDirectionalArrowLength={3.4}
           linkDirectionalArrowRelPos={0.92}
           linkDirectionalArrowColor={(l) =>
-            touchesSelected(l) ? "rgba(94,182,250,0.7)" : "rgba(150,165,180,0.3)"
+            touchesSelected(l)
+              ? withAlpha(colorMap["--brand-sky"], 0.7)
+              : withAlpha(colorMap[FALLBACK_TOKEN], 0.3)
           }
           cooldownTicks={120}
           warmupTicks={8}
