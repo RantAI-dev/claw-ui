@@ -23,7 +23,6 @@ import {
   Wrench,
   Activity as ActivityIcon,
 } from "lucide-react";
-import { brand } from "@/lib/branding";
 
 /** The console's left-rail routes — Chat plus the real-wired ops views. */
 export type Route =
@@ -167,22 +166,13 @@ export function autonomyPreset(id: string | null | undefined): AutonomyPreset {
   return AUTONOMY.find((p) => p.id === norm) || AUTONOMY[1];
 }
 
-/** Accent palettes for the Tweaks panel (brand-sky + deep-blue pair).
- * Brand-aware so the default accent matches the active brand (Nexus = orange). */
-export const ACCENTS: Record<string, { sky: string; deep: string }> =
-  brand.id === "nexus"
-    ? {
-        Orange: { sky: "#ff5001", deep: "#b83800" },
-        Amber: { sky: "#f59e0b", deep: "#b45309" },
-        Crimson: { sky: "#ef4444", deep: "#991b1b" },
-        Violet: { sky: "#8b5cf6", deep: "#5b21b6" },
-      }
-    : {
-        Sky: { sky: "#5eb6fa", deep: "#055794" },
-        Cobalt: { sky: "#3b82f6", deep: "#0d3b8a" },
-        Teal: { sky: "#4fb8c9", deep: "#1f5563" },
-        Violet: { sky: "#8b7ee8", deep: "#574399" },
-      };
+/** Accent palettes for the Tweaks panel (brand-sky + deep-blue pair). */
+export const ACCENTS: Record<string, { sky: string; deep: string }> = {
+  Sky: { sky: "#5eb6fa", deep: "#055794" },
+  Cobalt: { sky: "#3b82f6", deep: "#0d3b8a" },
+  Teal: { sky: "#4fb8c9", deep: "#1f5563" },
+  Violet: { sky: "#8b7ee8", deep: "#574399" },
+};
 
 /** The default accent key for the active brand (first swatch). */
 export const DEFAULT_ACCENT = Object.keys(ACCENTS)[0];
