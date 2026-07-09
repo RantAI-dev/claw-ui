@@ -1,68 +1,57 @@
 # Web UI Authentication
 
-The web UI has an optional password gate. It is **off by default** and turns on
-the moment a password is configured. It protects the UI at the Next.js edge; the
-gateway bearer token is a separate, server-side-only credential.
+The web UI has an optional login gate. **RantaiClaw is the single source of
+truth** — the credential lives in the gateway (`config.gateway.login`), not in
+the UI. The UI *follows* the connected gateway: if console login is enabled
+there, the web console requires it too; if not, the UI is open.
 
-## Two credentials (do not confuse them)
-
-| Env var | Purpose | Seen by browser? |
-|---|---|---|
-| `RANTAICLAW_UI_PASSWORD` | Human login to the web UI | No (typed at `/login`) |
-| `RANTAICLAW_UI_SECRET`   | Signs the `rc_session` cookie | No |
-| `RANTAICLAW_TOKEN`       | Next.js → gateway bearer auth | No (server-side only) |
+The gate protects the UI at the Next.js edge; the gateway bearer token
+(`RANTAICLAW_TOKEN`) stays server-side and never reaches the browser (BFF).
 
 ## Enable the gate
 
-Set these in `~/.rantaiclaw/ui/.env.local` (never commit them):
+Enable it on the RantaiClaw side — not here:
 
 ```
-RANTAICLAW_UI_PASSWORD=<a strong password>
-RANTAICLAW_UI_SECRET=<a long random string, e.g. `openssl rand -hex 32`>
+rantaiclaw setup login      # sets a username + argon2 password hash in config.gateway.login
 ```
 
-- Setting `RANTAICLAW_UI_PASSWORD` enables the gate (`authEnabled()` becomes true).
-- `RANTAICLAW_UI_SECRET` signs sessions independently of the password. If unset,
-  the password is used as the signing secret (changing the password then also
-  invalidates existing sessions).
-- Keep `.env.local` at mode `0600` — it also holds the gateway bearer token.
+The web UI detects this via the gateway's `GET /api/v1/auth/info`
+(`{ login_required }`), cached ~30 s and **fail-closed** (if the gateway is
+unreachable it assumes login is required — a down gateway makes the console
+non-functional anyway, so the gate is never silently dropped).
 
-When no password is set, the gate is disabled (convenient for loopback-only dev)
-and every request is accepted.
+## Credentials (do not confuse them)
+
+| Env var | Purpose | Seen by browser? |
+|---|---|---|
+| `RANTAICLAW_UI_SECRET` | Signs the `rc_session` cookie | No |
+| `RANTAICLAW_TOKEN`     | Next.js → gateway bearer auth | No (server-side only) |
+
+The **login credential** (username + password) is not an env var — it lives in
+RantaiClaw's `config.gateway.login` and is verified server-side against the
+gateway's verify-only `POST /login`. Set `RANTAICLAW_UI_SECRET` to a long random
+string in production (`openssl rand -hex 32`); rotating it invalidates sessions.
+
+## Login flow
+
+1. Browser posts `{ username, password }` to the UI's `POST /api/auth/login`.
+2. The UI (server-side) calls the gateway `POST /login` to verify — no token is
+   returned to the browser.
+3. On success the UI mints a signed `rc_session` HttpOnly cookie (24 h TTL).
 
 ## Brute-force lockout
 
-`POST /api/auth/login` allows **5 failed attempts per 300 seconds per client**.
-The 5th failure returns **HTTP 429** with a `Retry-After` header; further
-attempts stay 429 until the window clears. A successful login resets the counter.
-State is in-memory and per-process (it resets on restart, and applies per single
-`next start` instance).
-
-By default all clients share one global lockout counter. If the UI runs behind a
-trusted reverse proxy that sets `X-Forwarded-For` / `X-Real-IP`, set
-`RANTAICLAW_UI_TRUST_PROXY=1` to key the lockout per client IP instead. Do **not**
-enable it for a directly-reachable server — a client could forge the header and
-evade the lockout.
-
-## Verify
-
-With the server running and a password set (use a throwaway value for testing):
-
-```bash
-BASE=http://127.0.0.1:3939
-# Wrong password x6 -> 401 x4 then 429
-for i in 1 2 3 4 5 6; do
-  curl -s -o /dev/null -w "%{http_code}\n" -X POST "$BASE/api/auth/login" \
-    -H 'content-type: application/json' -d '{"password":"wrong"}'
-done
-# Correct password (after restart to clear the lock) -> 200 + Set-Cookie
-curl -si -X POST "$BASE/api/auth/login" -H 'content-type: application/json' \
-  -d '{"password":"<your password>"}' | grep -i 'HTTP/\|set-cookie'
-```
+Two layers: the UI's own limiter (`src/lib/login-guard.ts`, 5 failures / 300 s,
+keyed per client when `RANTAICLAW_UI_TRUST_PROXY=1`) and the gateway's `/login`
+lockout (a coarse backstop — it sees the UI server's IP for web logins, but still
+protects direct `/login` callers). The 5th UI failure returns **HTTP 429** with
+`Retry-After`; a successful login resets the counter. UI state is in-memory,
+per-process.
 
 ## Limitations
 
-- Single shared password (single operator). No per-user accounts or roles.
-- Sessions are stateless HMAC tokens (24h TTL); they cannot be revoked
-  server-side before expiry other than by rotating `RANTAICLAW_UI_SECRET`.
-- Lockout is per-process; running the UI multi-instance would need a shared store.
+- Single operator (single username + password). No per-user accounts or roles.
+- `rc_session` is a stateless HMAC token (24 h TTL); revoke early only by
+  rotating `RANTAICLAW_UI_SECRET`.
+- UI lockout is per-process; a multi-instance UI would need a shared store.
