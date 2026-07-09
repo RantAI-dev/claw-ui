@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Lock } from "lucide-react";
+import { Lock, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { brand } from "@/lib/branding";
 
 export default function LoginPage() {
   const router = useRouter();
+  const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -23,7 +24,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ username, password }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
@@ -37,7 +38,10 @@ export default function LoginPage() {
         return;
       }
       const next = new URLSearchParams(window.location.search).get("next") || "/chat";
-      router.replace(next.startsWith("/") ? next : "/chat");
+      // Only same-origin absolute paths. Reject "//host" / "/\\host" (protocol-
+      // relative) which would be an open redirect off-site.
+      const safeNext = next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\");
+      router.replace(safeNext ? next : "/chat");
       router.refresh();
     } catch {
       setError("Network error — is the server reachable?");
@@ -56,10 +60,22 @@ export default function LoginPage() {
         </div>
         <form onSubmit={submit} className="space-y-3">
           <div className="relative">
+            <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="text"
+              autoFocus
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Username"
+              className="pl-9"
+            />
+          </div>
+          <div className="relative">
             <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               type="password"
-              autoFocus
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
@@ -67,7 +83,7 @@ export default function LoginPage() {
             />
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={busy || !password}>
+          <Button type="submit" className="w-full" disabled={busy || !username || !password}>
             {busy ? "Signing in…" : "Sign in"}
           </Button>
         </form>

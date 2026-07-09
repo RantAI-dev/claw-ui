@@ -3,6 +3,8 @@
 // (Web Crypto only, no Node Buffer). When no password is configured the gate
 // is disabled (convenient for loopback dev).
 
+import { isLoginRequired } from "./auth-required";
+
 export const SESSION_COOKIE = "rc_session";
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h, matching Hermes
 
@@ -15,19 +17,31 @@ function src(u: Uint8Array): BufferSource {
   return u as unknown as BufferSource;
 }
 
-function password(): string {
-  return process.env.RANTAICLAW_UI_PASSWORD || "";
-}
-
-/** Auth is enforced only when a password is configured. */
-export function authEnabled(): boolean {
-  return password().length > 0;
+/**
+ * Auth is enforced when the connected RantaiClaw gateway has console login
+ * enabled (`config.gateway.login`). The gateway is the single source of truth;
+ * the check is cached + fail-closed (see `auth-required.ts`).
+ */
+export async function authEnabled(): Promise<boolean> {
+  return isLoginRequired();
 }
 
 function secret(): string {
-  // Prefer a dedicated signing secret; fall back to the password so a password
-  // change invalidates existing sessions.
-  return process.env.RANTAICLAW_UI_SECRET || password() || "rantaiclaw-ui-insecure-dev";
+  // Signs the rc_session cookie. The credential itself now lives in the gateway,
+  // so there is no UI password to fall back to — set RANTAICLAW_UI_SECRET to a
+  // long random string in production. `rantaiclaw ui start` generates one
+  // automatically; the dev fallback below is insecure by design and is refused
+  // (fail-closed) whenever login is enabled — see `sessionSecretConfigured`.
+  return process.env.RANTAICLAW_UI_SECRET || "rantaiclaw-ui-insecure-dev";
+}
+
+/**
+ * Whether a real cookie-signing secret is configured. When login is enabled
+ * without one, the gate cannot be trusted — an attacker could forge an
+ * `rc_session` with the built-in dev fallback. Callers MUST fail closed.
+ */
+export function sessionSecretConfigured(): boolean {
+  return (process.env.RANTAICLAW_UI_SECRET ?? "").length > 0;
 }
 
 function b64urlEncode(bytes: Uint8Array): string {
@@ -52,19 +66,6 @@ async function hmacKey(): Promise<CryptoKey> {
     false,
     ["sign", "verify"],
   );
-}
-
-/** Constant-time string comparison. */
-export function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
-
-export function checkPassword(input: string): boolean {
-  const expected = password();
-  return expected.length > 0 && constantTimeEqual(input, expected);
 }
 
 /** Mint a signed session token: `<b64url(payload)>.<b64url(hmac)>`. */
