@@ -113,22 +113,24 @@ Exact semantics (documented so it is unambiguous):
 ```
 POST(req):
   if !authEnabled(): return { ok:true, authDisabled:true }   // unchanged
+  password = parse body            // parse BEFORE the check/record block, so...
   key = clientKey(req); now = Date.now()
   lockedFor = loginGuard.retryAfter(key, now)
   if lockedFor > 0: return 429 (Retry-After: lockedFor)
-  password = parse body
-  if !checkPassword(password):
-      retryAfter = loginGuard.recordFailure(key, now)
-      return retryAfter>0 ? 429(Retry-After) : 401
+  if !checkPassword(password):     // ...retryAfter/checkPassword/recordFailure run
+      retryAfter = loginGuard.recordFailure(key, now)   // with no await between them
+      return retryAfter>0 ? 429(Retry-After) : 401       // (atomic in single-threaded JS)
   loginGuard.clearAttempts(key)
   token = createSessionToken(); return 200 + Set-Cookie   // unchanged
 ```
 
-`clientKey(req)`: first IP of `x-forwarded-for`, else `x-real-ip`, else the
-constant `"local"`. When no forwarding header exists (typical loopback), all
-requests share the `"local"` bucket → a **global** lockout, which is the
-conservative/safe direction. `Date.now()` is read in the route and passed into
-the pure functions (keeps the module deterministic for tests).
+`clientKey(req)`: by default returns a single constant `"global"` bucket — the
+fail-safe choice, because a directly-reachable client can forge `x-forwarded-for`
+and mint unlimited fresh keys, evading the lockout entirely. Only when
+`RANTAICLAW_UI_TRUST_PROXY` is set (`1`/`true`) does it key per client
+(`x-forwarded-for` first hop, else `x-real-ip`). This mirrors the Rust gateway's
+`trust_forwarded_headers = false` default. `Date.now()` is read in the route and
+passed into the pure functions (keeps the module deterministic for tests).
 
 Lockout only runs when `authEnabled()` is true (disabled auth returns early).
 
@@ -146,9 +148,13 @@ Lockout only runs when `authEnabled()` is true (disabled auth returns early).
 - Dev mode (`next dev`, Turbopack HMR) may reset module state on hot reload —
   acceptable for a dev-time convenience; lockout still holds within a stable
   process.
-- IP attribution is best-effort. Behind a trusted reverse proxy that sets
-  `x-forwarded-for`, per-client lockout works; on bare loopback it degrades to a
-  single global bucket (safe).
+- IP attribution is OFF by default. The lockout keys all clients into one global
+  bucket unless `RANTAICLAW_UI_TRUST_PROXY` is set for a trusted reverse proxy
+  that populates `x-forwarded-for`/`x-real-ip`; a directly-reachable server must
+  not trust those headers (they are client-forgeable, which would evade the
+  lockout). Trade-off of the global default: an attacker spamming wrong passwords
+  can lock the operator out for up to `windowMs` (a mild DoS, far preferable to no
+  brute-force protection).
 
 ## 7. Verification / success criteria
 
@@ -173,8 +179,10 @@ Automated (chosen: **both** unit + e2e):
   4. `RANTAICLAW_UI_PASSWORD` unset → login returns `authDisabled:true`, gate off
      (old dev behavior unchanged).
 
-Regression gate before commit (repo uses bun): `bun run lint`, `bun run test`,
-`bun run build` (npm equivalents also work).
+Regression gate before commit (repo uses bun): `bunx tsc --noEmit` and
+`bun run test`. Note: `bun run lint` is unavailable in this repo (Next 16 removed
+the `next lint` subcommand and no eslint dependency exists) — `tsc --noEmit` is
+the type gate instead.
 
 ## 8. Rollback
 
@@ -191,8 +199,10 @@ Regression gate before commit (repo uses bun): `bun run lint`, `bun run test`,
 | `src/lib/login-guard.ts` | **new** — pure lockout module + singleton |
 | `src/lib/login-guard.test.ts` | **new** — vitest unit tests |
 | `vitest.config.ts` | **new** — vitest node env + include glob |
-| `src/app/api/auth/login/route.ts` | **edit** — wire guard, `clientKey`, 429 |
+| `src/app/api/auth/login/route.ts` | **edit** — wire guard, `clientKey` (trust-proxy-gated), 429 |
+| `src/app/login/page.tsx` | **edit** — surface the `Retry-After` time on 429 |
 | `docs/auth.md` | **new** — enable + behavior + verification |
+| `.env.example` | **edit** — document `RANTAICLAW_UI_TRUST_PROXY` |
 | `package.json` / `bun.lock` | **edit** — add `vitest` devDep + `test` script |
 | `.env.local` | operator-set, **not committed** |
 
