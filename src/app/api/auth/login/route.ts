@@ -4,13 +4,23 @@ import { loginGuard } from "@/lib/login-guard";
 
 export const runtime = "nodejs";
 
-// Best-effort client identity: first XFF hop, then X-Real-IP, else a shared
-// "local" bucket (loopback). Absent forwarding headers => one global bucket,
-// which is the conservative direction.
+// Honor forwarding headers only behind an explicitly trusted proxy. Otherwise
+// every direct client shares one global bucket — the fail-safe default, since a
+// directly-reachable client can forge X-Forwarded-For and mint unlimited fresh
+// keys. Mirrors the Rust gateway's `trust_forwarded_headers = false` default.
+function trustProxy(): boolean {
+  const v = process.env.RANTAICLAW_UI_TRUST_PROXY;
+  return v === "1" || v === "true";
+}
+
 function clientKey(req: NextRequest): string {
+  if (!trustProxy()) return "global";
   const xff = req.headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0].trim();
-  return req.headers.get("x-real-ip") ?? "local";
+  if (xff) {
+    const first = xff.split(",")[0].trim();
+    if (first) return first;
+  }
+  return req.headers.get("x-real-ip") ?? "global";
 }
 
 function lockedResponse(retryAfterSecs: number): Response {
@@ -26,18 +36,21 @@ function lockedResponse(retryAfterSecs: number): Response {
 export async function POST(req: NextRequest) {
   if (!authEnabled()) return Response.json({ ok: true, authDisabled: true });
 
-  const key = clientKey(req);
-  const now = Date.now();
-
-  const lockedFor = loginGuard.retryAfter(key, now);
-  if (lockedFor > 0) return lockedResponse(lockedFor);
-
+  // Parse the body first so the lock check and failure recording run as one
+  // synchronous section — no await between retryAfter, checkPassword, and
+  // recordFailure, so concurrent requests can't slip past the 5-attempt bound.
   let password = "";
   try {
     password = (await req.json())?.password ?? "";
   } catch {
     /* ignore malformed body */
   }
+
+  const key = clientKey(req);
+  const now = Date.now();
+
+  const lockedFor = loginGuard.retryAfter(key, now);
+  if (lockedFor > 0) return lockedResponse(lockedFor);
 
   if (!checkPassword(password)) {
     const retry = loginGuard.recordFailure(key, now);
