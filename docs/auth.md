@@ -38,6 +38,12 @@ attempts stay 429 until the window clears. A successful login resets the counter
 State is in-memory and per-process (it resets on restart, and applies per single
 `next start` instance).
 
+By default all clients share one global lockout counter. If the UI runs behind a
+trusted reverse proxy that sets `X-Forwarded-For` / `X-Real-IP`, set
+`RANTAICLAW_UI_TRUST_PROXY=1` to key the lockout per client IP instead. Do **not**
+enable it for a directly-reachable server — a client could forge the header and
+evade the lockout.
+
 ## Verify
 
 With the server running and a password set (use a throwaway value for testing):
