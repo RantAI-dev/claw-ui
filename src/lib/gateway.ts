@@ -43,3 +43,34 @@ export class GatewayError extends Error {
     this.status = status;
   }
 }
+
+/**
+ * Verify console credentials against the gateway's **verify-only** `POST /login`.
+ * The gateway returns 200 (ok) / 401 (wrong) / 404 (login disabled) / 429
+ * (locked out). We surface only the outcome — no gateway token ever reaches the
+ * browser (the BFF holds the bearer token server-side). Network failures map to
+ * 502 so the caller treats them as "not verified".
+ */
+export async function verifyLoginViaGateway(
+  username: string,
+  password: string,
+): Promise<{ ok: boolean; status: number; retryAfter?: number }> {
+  let res: Response;
+  try {
+    res = await fetch(`${GATEWAY_URL}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, status: 502 };
+  }
+  if (res.ok) return { ok: true, status: res.status };
+  const ra = Number(res.headers.get("retry-after"));
+  return {
+    ok: false,
+    status: res.status,
+    retryAfter: Number.isFinite(ra) && ra > 0 ? ra : undefined,
+  };
+}
