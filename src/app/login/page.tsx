@@ -27,7 +27,13 @@ export default function LoginPage() {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        setError(j.error || "Login failed");
+        const retry = Number(res.headers.get("retry-after"));
+        if (res.status === 429 && Number.isFinite(retry) && retry > 0) {
+          const when = retry >= 60 ? `${Math.ceil(retry / 60)} min` : `${retry}s`;
+          setError(`Too many attempts — try again in ${when}.`);
+        } else {
+          setError(j.error || "Login failed");
+        }
         return;
       }
       const next = new URLSearchParams(window.location.search).get("next") || "/chat";
