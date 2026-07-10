@@ -358,7 +358,9 @@ export function KnowledgeGraph({
               : withAlpha(colorMap[FALLBACK_TOKEN], 0.16)
           }
           linkWidth={(l) =>
-            touchesSelected(l) ? 1.7 : 0.4 + Math.min(2, Math.log2(1 + (l.weight ?? 1)))
+            // Non-selected width scales with weight but stays below the selected
+            // width (1.7) so selection emphasis is never inverted.
+            touchesSelected(l) ? 1.7 : 0.4 + Math.min(1, Math.log2(1 + (l.weight ?? 1)) / 3)
           }
           linkLabel={(l) => l.relation_type}
           linkCurvature={0.06}

@@ -90,7 +90,15 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
   const totalEntities = data?.stats?.corpus_entities ?? nodes.length;
   const totalRelations = data?.stats?.corpus_relations ?? edges.length;
 
-  const graphState = deriveGraphState(data?.capability, data?.stats?.corpus_entities, loading, !!data);
+  // Fall back to the returned node count when the backend predates `corpus_entities`
+  // — otherwise a populated group/all graph would render as "empty" (graceful
+  // degradation: the frontend may ship before the backend field).
+  const graphState = deriveGraphState(
+    data?.capability,
+    data?.stats?.corpus_entities ?? nodes.length,
+    loading,
+    !!data,
+  );
 
   const narrowLabel = narrowScopeLabel(narrowScope);
   const toggleValue: "narrow" | "all" = activeScope.kind === "all" ? "all" : "narrow";

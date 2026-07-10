@@ -63,7 +63,7 @@ export interface IngestResult {
  * gateway links the document to the knowledge-base group(s) at ingest time —
  * no separate link round-trip and no UUID-in-`categories` pollution.
  */
-export type IngestScope = string | { categories: string } | { groups: string[] };
+export type IngestScope = string | { groups: string[] };
 
 /**
  * Upload one file to the KB ingest proxy. Throws a clear Error on any non-ok
@@ -76,10 +76,8 @@ export async function ingestFile(file: File, scope: IngestScope): Promise<Ingest
   // verbatim (no server-side re-parse/rename) — see /api/rc/kb/ingest.
   if (typeof scope === "string") {
     form.append("categories", scope);
-  } else if ("groups" in scope) {
-    form.append("groups", scope.groups.join(","));
   } else {
-    form.append("categories", scope.categories);
+    form.append("groups", scope.groups.join(","));
   }
 
   const res = await fetch("/api/rc/kb/ingest", { method: "POST", body: form });
