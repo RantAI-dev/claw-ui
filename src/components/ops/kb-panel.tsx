@@ -512,10 +512,9 @@ function KbDetail({
         continue;
       }
       try {
-        // Ingest scoped to the group id (the KB category), then link the
-        // resulting document to this group.
-        const { document_id } = await ingestFile(file, group.id);
-        if (document_id) await api.kbAddDocToGroup(group.id, document_id);
+        // Link to this group at ingest via the gateway's `groups` field — no
+        // separate kbAddDocToGroup round-trip and no UUID category pollution.
+        await ingestFile(file, { groups: [group.id] });
         ok += 1;
         setUploads((prev) =>
           prev.map((u) => (u.id === entryId ? { ...u, status: "ready" } : u)),
