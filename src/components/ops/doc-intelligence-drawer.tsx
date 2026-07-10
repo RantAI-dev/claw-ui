@@ -5,7 +5,6 @@ import { Loader2, Network, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
-import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +12,8 @@ import { Drawer } from "@/components/ui/drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "./shared";
-import { KnowledgeGraph, entityToken } from "./knowledge-graph";
+import { entityToken } from "./knowledge-graph";
+import { GraphLens } from "./graph-lens";
 
 function entityVar(entityType: string): string {
   return `var(${entityToken(entityType)})`;
@@ -52,27 +52,6 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
     for (const e of entities) m.set(e.id, e.name);
     return m;
   }, [entities]);
-
-  // Build a compact graph from this document's entities + relations.
-  const graphNodes: KbGraphNode[] = React.useMemo(() => {
-    const degree = new Map<string, number>();
-    for (const r of relations) {
-      degree.set(r.source, (degree.get(r.source) ?? 0) + 1);
-      degree.set(r.target, (degree.get(r.target) ?? 0) + 1);
-    }
-    return entities.map((e) => ({
-      id: e.id,
-      name: e.name,
-      entity_type: e.entity_type,
-      degree: degree.get(e.id) ?? 0,
-      doc_count: 1,
-    }));
-  }, [entities, relations]);
-
-  const graphEdges: KbGraphEdge[] = React.useMemo(
-    () => relations.map((r) => ({ source: r.source, target: r.target, relation_type: r.relation_type })),
-    [relations],
-  );
 
   const reextract = async () => {
     setReextracting(true);
@@ -173,7 +152,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           </TabsContent>
 
           <TabsContent value="graph">
-            <KnowledgeGraph nodes={graphNodes} edges={graphEdges} height={380} />
+            <GraphLens scope={{ kind: "document", documentId }} />
           </TabsContent>
         </Tabs>
       )}
