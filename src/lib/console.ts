@@ -12,7 +12,6 @@ import {
   Library,
   type LucideIcon,
   MessagesSquare,
-  Network,
   Radio,
   Send,
   Server,
@@ -56,11 +55,21 @@ export const NAV: NavDef[] = [
   { id: "cron", label: "Schedules", icon: CalendarClock },
   { id: "skills", label: "ClawHub Skills", icon: Blocks },
   { id: "kb", label: "Knowledge Bases", icon: Library },
-  { id: "kbgraph", label: "Knowledge Graph", icon: Network },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "persona", label: "Persona", icon: UserCog },
   { id: "config", label: "Configuration", icon: SlidersHorizontal },
 ];
+
+/** Legacy hash ids that resolve to a current route — the Knowledge Graph is now
+ *  a lens inside Knowledge Bases, not a top-level route. */
+const ROUTE_ALIASES: Record<string, Route> = { kbgraph: "kb" };
+
+/** Map a URL hash to a live route: alias legacy ids, else the id if it is a real
+ *  route, else null. */
+export function resolveHashRoute(h: string): Route | null {
+  if (h in ROUTE_ALIASES) return ROUTE_ALIASES[h];
+  return NAV.some((n) => n.id === h) || h in ROUTE_META ? (h as Route) : null;
+}
 
 export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: string }> = {
   chat: { title: "Chat", eyebrow: "Conversation", blurb: "" },

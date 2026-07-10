@@ -10,4 +10,3 @@ export { ConfigPanel } from "./config-panel";
 export { McpPanel } from "./mcp-panel";
 export { ToolsPanel } from "./tools-panel";
 export { KbPanel } from "./kb-panel";
-export { KbGraphPanel } from "./kb-graph-panel";

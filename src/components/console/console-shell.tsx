@@ -27,6 +27,7 @@ import {
   NAV,
   ROUTE_META,
   type Route,
+  resolveHashRoute,
   rungToAutonomyPayload,
 } from "@/lib/console";
 import type { KbGroup, Personality, ProviderInfo, SessionSummary } from "@/lib/types";
@@ -226,8 +227,8 @@ export function ConsoleShell({
   // hash changes (our own route sync uses replaceState, which doesn't fire this).
   React.useEffect(() => {
     const applyHash = () => {
-      const h = window.location.hash.replace("#", "");
-      if (h && NAV.some((n) => n.id === h)) setRoute(h as Route);
+      const r = resolveHashRoute(window.location.hash.replace("#", ""));
+      if (r) setRoute(r);
     };
     applyHash();
     window.addEventListener("hashchange", applyHash);
