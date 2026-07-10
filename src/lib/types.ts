@@ -178,11 +178,26 @@ export interface KbGraphEdge {
   source: string;
   target: string;
   relation_type: string;
+  /** Number of source relation rows collapsed into this deduped edge. */
+  weight?: number;
+}
+/** Whether intelligence extraction is on, and the model it uses. */
+export interface KbCapability {
+  intelligence_enabled: boolean;
+  extraction_model: string;
 }
 export interface KbGraph {
   nodes: KbGraphNode[];
   edges: KbGraphEdge[];
-  stats?: { total_nodes?: number; total_edges?: number };
+  stats?: {
+    total_nodes?: number;
+    total_edges?: number;
+    /** Scope-wide totals (before the top-N cap); `truncated` when capped below. */
+    corpus_entities?: number;
+    corpus_relations?: number;
+    truncated?: boolean;
+  };
+  capability?: KbCapability;
 }
 
 // Per-document extracted intelligence — GET /api/v1/kb/documents/{id}/intelligence
@@ -208,6 +223,7 @@ export interface KbDocumentIntelligence {
     entity_types?: Record<string, number>;
     relation_types?: Record<string, number>;
   };
+  capability?: KbCapability;
 }
 // POST /api/v1/kb/documents/{id}/re-extract → re-run extraction (returns counts)
 export interface KbReExtractResult {
