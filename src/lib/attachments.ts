@@ -58,15 +58,27 @@ export interface IngestResult {
 }
 
 /**
- * Upload one file to the KB ingest proxy, scoped to `conversationId`.
- * Throws a clear Error on any non-ok response.
+ * Ingest scope. Chat attachments pass a conversation id (sent as `categories`
+ * for per-conversation retrieval scoping); KB uploads pass `{ groups }` so the
+ * gateway links the document to the knowledge-base group(s) at ingest time —
+ * no separate link round-trip and no UUID-in-`categories` pollution.
  */
-export async function ingestFile(file: File, conversationId: string): Promise<IngestResult> {
+export type IngestScope = string | { groups: string[] };
+
+/**
+ * Upload one file to the KB ingest proxy. Throws a clear Error on any non-ok
+ * response.
+ */
+export async function ingestFile(file: File, scope: IngestScope): Promise<IngestResult> {
   const form = new FormData();
   form.append("file", file, file.name);
-  // Send the gateway's own field name so the proxy can forward the body
+  // Send the gateway's own field names so the proxy can forward the body
   // verbatim (no server-side re-parse/rename) — see /api/rc/kb/ingest.
-  form.append("categories", conversationId);
+  if (typeof scope === "string") {
+    form.append("categories", scope);
+  } else {
+    form.append("groups", scope.groups.join(","));
+  }
 
   const res = await fetch("/api/rc/kb/ingest", { method: "POST", body: form });
   const text = await res.text();

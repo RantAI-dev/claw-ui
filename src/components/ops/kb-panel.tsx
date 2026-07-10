@@ -16,6 +16,7 @@ import {
   ArrowUpDown,
   LayoutGrid,
   List,
+  Network,
   UploadCloud,
   Upload,
   Sparkles,
@@ -42,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState, PanelFrame } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
+import { GraphLens } from "./graph-lens";
 import { KnowledgeSettingsCard } from "./knowledge-settings-card";
 import { toast } from "sonner";
 
@@ -65,9 +67,12 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+type LibraryView = "documents" | "graph";
+
 export function KbPanel() {
   const groups = useAsync(() => api.kbGroups(), []);
   const [selected, setSelected] = React.useState<KbGroup | null>(null);
+  const [view, setView] = React.useState<LibraryView>("documents");
 
   // Keep the selected group's metadata fresh after the list refreshes.
   React.useEffect(() => {
@@ -83,14 +88,42 @@ export function KbPanel() {
     <div className="space-y-4">
       {/* Self-refreshes on save via its own useAsync — no parent state needed. */}
       <KnowledgeSettingsCard />
-      {selected ? (
-        <KbDetail
-          group={selected}
-          onBack={() => setSelected(null)}
-          onChanged={() => groups.refresh()}
-        />
+
+      <Segmented
+        value={view}
+        onChange={setView}
+        options={[
+          {
+            value: "documents",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                <BookOpen className="size-4" /> Documents
+              </span>
+            ),
+          },
+          {
+            value: "graph",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                <Network className="size-4" /> Graph
+              </span>
+            ),
+          },
+        ]}
+      />
+
+      {view === "documents" ? (
+        selected ? (
+          <KbDetail
+            group={selected}
+            onBack={() => setSelected(null)}
+            onChanged={() => groups.refresh()}
+          />
+        ) : (
+          <KbList groups={groups} onOpen={setSelected} />
+        )
       ) : (
-        <KbList groups={groups} onOpen={setSelected} />
+        <GraphLens scope={selected ? { kind: "group", groupId: selected.id } : { kind: "all" }} />
       )}
     </div>
   );
@@ -512,10 +545,9 @@ function KbDetail({
         continue;
       }
       try {
-        // Ingest scoped to the group id (the KB category), then link the
-        // resulting document to this group.
-        const { document_id } = await ingestFile(file, group.id);
-        if (document_id) await api.kbAddDocToGroup(group.id, document_id);
+        // Link to this group at ingest via the gateway's `groups` field — no
+        // separate kbAddDocToGroup round-trip and no UUID category pollution.
+        await ingestFile(file, { groups: [group.id] });
         ok += 1;
         setUploads((prev) =>
           prev.map((u) => (u.id === entryId ? { ...u, status: "ready" } : u)),
