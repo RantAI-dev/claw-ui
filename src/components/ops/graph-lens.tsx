@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, IconButton, PanelFrame, StatTile } from "./shared";
 import { KnowledgeGraph, entityToken } from "./knowledge-graph";
-import { deriveGraphState, fromIntelligence } from "./graph-lens-helpers";
+import { deriveGraphState, fromIntelligence, isSmallModel } from "./graph-lens-helpers";
 
 const GRAPH_LIMIT = 200;
 const GRAPH_HEIGHT = 480;
@@ -110,7 +110,15 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
 
       {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatTile label="entities" value={formatNumber(totalEntities)} />
+        <StatTile
+          label="entities"
+          value={formatNumber(totalEntities)}
+          hint={
+            data?.stats?.truncated
+              ? `showing ${formatNumber(nodes.length)} of ${formatNumber(totalEntities)}`
+              : undefined
+          }
+        />
         <StatTile label="relations" value={formatNumber(totalRelations)} />
         <StatTile label="entity types" value={formatNumber(typeCounts.length)} />
       </div>
@@ -122,8 +130,12 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
             title="Intelligence extraction is disabled"
             hint={
               <>
-                Set <code>KB_INTELLIGENCE_ENABLED</code> to extract entities and relations for
-                this graph.
+                Set <code>KB_INTELLIGENCE_ENABLED</code> to extract entities and relations across
+                your knowledge bases — a document&apos;s <em>Re-extract</em> also works while
+                disabled.
+                {data?.capability?.extraction_model && (
+                  <ModelNote model={data.capability.extraction_model} />
+                )}
               </>
             }
           />
@@ -131,7 +143,15 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
           <EmptyState
             icon={<Network className="size-6" />}
             title="No graph yet"
-            hint="No entities have been extracted for this scope yet."
+            hint={
+              <>
+                No entities have been extracted for this scope yet — try a document&apos;s{" "}
+                <em>Re-extract</em>.
+                {data?.capability?.extraction_model && (
+                  <ModelNote model={data.capability.extraction_model} />
+                )}
+              </>
+            }
           />
         ) : (
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -189,6 +209,16 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
         )}
       </PanelFrame>
     </div>
+  );
+}
+
+/** Surfaces the extraction model with a subtle quality note when it's small. */
+function ModelNote({ model }: { model: string }) {
+  return (
+    <span className="mt-2 block text-[11px] text-muted-foreground">
+      Extraction model: <code>{model}</code>
+      {isSmallModel(model) && " — small; the extracted graph may be sparse or noisy."}
+    </span>
   );
 }
 

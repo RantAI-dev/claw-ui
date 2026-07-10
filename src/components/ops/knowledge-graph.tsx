@@ -82,6 +82,7 @@ type RTLink = {
   source: string | RTNode;
   target: string | RTNode;
   relation_type: string;
+  weight?: number;
 };
 
 interface ForceGraph2DProps {
@@ -224,7 +225,12 @@ export function KnowledgeGraph({
       nodes: nodes.map((n): RTNode => ({ ...n })),
       links: edges
         .filter((e) => ids.has(e.source) && ids.has(e.target))
-        .map((e) => ({ source: e.source, target: e.target, relation_type: e.relation_type })),
+        .map((e) => ({
+          source: e.source,
+          target: e.target,
+          relation_type: e.relation_type,
+          weight: e.weight,
+        })),
     };
   }, [nodes, edges]);
 
@@ -351,7 +357,9 @@ export function KnowledgeGraph({
               ? withAlpha(colorMap["--brand-sky"], 0.55)
               : withAlpha(colorMap[FALLBACK_TOKEN], 0.16)
           }
-          linkWidth={(l) => (touchesSelected(l) ? 1.7 : 0.6)}
+          linkWidth={(l) =>
+            touchesSelected(l) ? 1.7 : 0.4 + Math.min(2, Math.log2(1 + (l.weight ?? 1)))
+          }
           linkLabel={(l) => l.relation_type}
           linkCurvature={0.06}
           linkDirectionalArrowLength={3.4}
