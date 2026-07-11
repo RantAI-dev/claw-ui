@@ -1970,7 +1970,7 @@ pre.toml {
   position: relative;
   padding-left: 18px;
 }
-.markdown-body ul li::before {
+.markdown-body ul > li::before {
   content: "";
   position: absolute;
   left: 2px;
@@ -1992,10 +1992,10 @@ pre.toml {
   vertical-align: middle;
   accent-color: var(--brand-sky);
 }
-.markdown-body ol li {
+.markdown-body ol > li {
   counter-increment: li;
 }
-.markdown-body ol li::before {
+.markdown-body ol > li::before {
   content: counter(li) ".";
   position: absolute;
   left: 0;
