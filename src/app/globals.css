@@ -1088,7 +1088,10 @@
   border-radius: var(--radius-xl);
   background: var(--card);
   transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
-  overflow: hidden;
+  /* Not `hidden`: the model picker's popover opens upward out of the composer
+     box and would be clipped. Children are inset and transparent, so the
+     rounded corners still read cleanly without clipping. */
+  overflow: visible;
 }
 .composer:focus-within {
   border-color: color-mix(in oklab, var(--brand-sky) 55%, transparent);
@@ -1140,6 +1143,15 @@
 }
 .cchip.input {
   border-color: var(--border);
+}
+/* Read-only info chip (e.g. the provider label): looks like a chip but is not
+   interactive — no pointer, no hover emphasis. */
+.cchip.readonly {
+  cursor: default;
+  border-color: var(--border);
+}
+.cchip.readonly:hover {
+  color: var(--muted-foreground);
 }
 .cchip select,
 .cchip input {
@@ -1970,7 +1982,7 @@ pre.toml {
   position: relative;
   padding-left: 18px;
 }
-.markdown-body ul li::before {
+.markdown-body ul > li::before {
   content: "";
   position: absolute;
   left: 2px;
@@ -1992,10 +2004,10 @@ pre.toml {
   vertical-align: middle;
   accent-color: var(--brand-sky);
 }
-.markdown-body ol li {
+.markdown-body ol > li {
   counter-increment: li;
 }
-.markdown-body ol li::before {
+.markdown-body ol > li::before {
   content: counter(li) ".";
   position: absolute;
   left: 0;

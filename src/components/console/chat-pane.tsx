@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   ArrowUp,
   Check,
-  ChevronDown,
   ImageIcon,
   KeyRound,
   Library,
@@ -129,8 +128,6 @@ export function ChatPane(props: ChatPaneProps) {
     connection,
     needsAuth,
     connError,
-    providers,
-    onProviderChange,
     model,
     onModelChange,
     defaultProvider,
@@ -444,17 +441,11 @@ export function ChatPane(props: ChatPaneProps) {
                 )}
               </div>
 
-              <span className="cchip input" title="Provider override">
-                <select value={provider} onChange={(e) => onProviderChange(e.target.value)}>
-                  <option value="">{defaultProvider ? `${defaultProvider}` : "provider"}</option>
-                  {providers.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.display_name}
-                      {p.local ? " · local" : ""}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="size-3 opacity-60" />
+              <span
+                className="cchip readonly"
+                title="Provider is set on the agent — switch it in Configuration"
+              >
+                {defaultProvider || providerLabel}
               </span>
               <ModelPicker
                 provider={provider || defaultProvider || ""}

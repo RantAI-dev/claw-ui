@@ -19,6 +19,10 @@ export async function streamChat(
   req: ChatRequest,
   onEvent: (ev: ChatEvent) => void,
   signal?: AbortSignal,
+  // Bail if no bytes (not even a keep-alive) arrive for this long. The gateway
+  // sends SSE keep-alives (~15s), so a longer silence means the connection is
+  // dead (crash / sleep / network partition) rather than a slow tool.
+  inactivityMs = 60_000,
 ): Promise<void> {
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -44,9 +48,24 @@ export async function streamChat(
   const decoder = new TextDecoder();
   let buffer = "";
 
+  // Read one chunk, but never wait longer than `inactivityMs` for it, so a dead
+  // connection can't hang the "streaming" bubble forever.
+  const readChunk = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    if (inactivityMs <= 0) return reader.read();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stall = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error("Response stream stalled — no data received.")), inactivityMs);
+    });
+    try {
+      return await Promise.race([reader.read(), stall]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readChunk();
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
 
@@ -82,11 +101,19 @@ export async function streamChat(
         }
       }
     }
+    // Reached only when the stream closed without a `done` event — the server
+    // dropped the connection mid-turn. Synthesize a terminal pair so the
+    // assistant bubble stops "streaming" and the interruption is visible.
+    onEvent({ type: "error", message: "The response stream ended before completing." });
+    onEvent({ type: "done", text: "", cancelled: false });
   } catch (err) {
     if ((err as Error)?.name === "AbortError") {
       onEvent({ type: "done", text: "", cancelled: true });
       return;
     }
+    // Release the reader (e.g. on the inactivity timeout, where the underlying
+    // read is still pending) so the dead connection is torn down.
+    await reader.cancel().catch(() => {});
     onEvent({ type: "error", message: String(err instanceof Error ? err.message : err) });
     onEvent({ type: "done", text: "", cancelled: false });
   }
