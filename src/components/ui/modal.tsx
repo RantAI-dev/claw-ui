@@ -60,7 +60,7 @@ export function Modal({
     >
       <div
         className={cn(
-          "relative w-full max-w-md rounded-xl border border-border bg-card text-card-foreground shadow-xl animate-in zoom-in-95 fade-in-0",
+          "relative flex max-h-[calc(100dvh_-_2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl animate-in zoom-in-95 fade-in-0",
           className,
         )}
       >
@@ -73,7 +73,7 @@ export function Modal({
         </button>
 
         {(title || description) && (
-          <div className="border-b border-border/60 px-5 pb-4 pt-5 pr-12">
+          <div className="shrink-0 border-b border-border/60 px-5 pb-4 pt-5 pr-12">
             {title && <h2 className="text-base font-semibold tracking-tight">{title}</h2>}
             {description && (
               <p className="mt-1 text-sm text-muted-foreground">{description}</p>
@@ -81,10 +81,10 @@ export function Modal({
           </div>
         )}
 
-        {children && <div className="px-5 py-4">{children}</div>}
+        {children && <div className="min-h-0 overflow-y-auto px-5 py-4">{children}</div>}
 
         {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-border/60 px-5 py-3">
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/60 px-5 py-3">
             {footer}
           </div>
         )}
