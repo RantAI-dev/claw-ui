@@ -44,6 +44,16 @@ const nextConfig = {
   ...(devOrigins.length ? { allowedDevOrigins: devOrigins } : {}),
   // Lean container image: bundle a minimal standalone server.
   output: "standalone",
+  // No server-side image optimization: every <Image> already uses `unoptimized`.
+  images: { unoptimized: true },
+  // `sharp` is an optionalDependency of `next` itself (lazily required inside
+  // next's image optimizer) and stays a candidate for the standalone trace even
+  // when images.unoptimized is set, since Next's tracer works off static
+  // require() analysis, not runtime config. Exclude it explicitly so the
+  // standalone artifact stays pure-JS / platform-independent.
+  outputFileTracingExcludes: {
+    "*": ["node_modules/sharp/**", "node_modules/@img/**"],
+  },
   // This app lives inside the RantAI-Agents monorepo tree but is its own project.
   // Pin the workspace root so Next.js doesn't infer the parent dir.
   turbopack: {
