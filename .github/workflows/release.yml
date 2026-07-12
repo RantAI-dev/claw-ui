@@ -19,6 +19,18 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: scripts/package-standalone.sh "${GITHUB_REF_NAME}"
+      - name: Smoke test — artifact boots on loopback
+        run: |
+          tmp="$(mktemp -d)"
+          tar xzf "dist/claw-ui-${GITHUB_REF_NAME}.tar.gz" -C "$tmp"
+          HOSTNAME=127.0.0.1 PORT=3939 RANTAICLAW_UI_SECRET="ci-smoke-test-secret" node "$tmp/server.js" &
+          pid=$!
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null "http://127.0.0.1:3939/login" && ok=1 && break
+            sleep 1
+          done
+          kill "$pid" || true
+          test "${ok:-0}" = "1" || { echo "artifact failed to serve" >&2; exit 1; }
       - uses: sigstore/cosign-installer@d7d6bc7722e3daa8354c50bcb52f4837da5e9b6a  # v3.8.1
       - name: cosign sign the archive (keyless)
         run: |
