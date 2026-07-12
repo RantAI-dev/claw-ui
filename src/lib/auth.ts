@@ -94,9 +94,14 @@ export async function verifySessionToken(token: string | undefined | null): Prom
   }
 }
 
-export function sessionCookie(token: string): string {
-  const secure = process.env.NODE_ENV === "production" ? " Secure;" : "";
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax;${secure} Max-Age=${Math.floor(TTL_MS / 1000)}`;
+export function sessionCookie(token: string, secure: boolean): string {
+  // `Secure` requires an HTTPS (or localhost) context, so the browser silently
+  // drops the cookie when the console is served over plain http:// at a LAN IP —
+  // login then appears to succeed but never persists. The caller decides based
+  // on the request's real protocol, not NODE_ENV (the prebuilt release is always
+  // NODE_ENV=production yet is routinely served over http on a loopback/LAN bind).
+  const secureFlag = secure ? " Secure;" : "";
+  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax;${secureFlag} Max-Age=${Math.floor(TTL_MS / 1000)}`;
 }
 
 export function clearedCookie(): string {

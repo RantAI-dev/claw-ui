@@ -77,8 +77,17 @@ export async function POST(req: NextRequest) {
 
   loginGuard.clearAttempts(key);
   const token = await createSessionToken();
+  // The standalone server serves plain HTTP directly; HTTPS only reaches it
+  // behind a trusted reverse proxy (which sets x-forwarded-proto). Only mark the
+  // session cookie Secure when the request is actually HTTPS — otherwise the
+  // browser drops it over http:// (e.g. the console opened at a LAN IP) and login
+  // silently fails to persist.
+  const secureCookie = trustProxy() && req.headers.get("x-forwarded-proto") === "https";
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
-    headers: { "content-type": "application/json", "set-cookie": sessionCookie(token) },
+    headers: {
+      "content-type": "application/json",
+      "set-cookie": sessionCookie(token, secureCookie),
+    },
   });
 }
