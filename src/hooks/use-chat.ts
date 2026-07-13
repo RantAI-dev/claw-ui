@@ -123,6 +123,14 @@ function stripDecorations(content: string): string {
   return c.replace(/\s+$/, "");
 }
 
+/** Mark any still-running tool chip as finished — used when a turn ends without
+ *  a `tool_call_end` (cancelled/aborted, or a dropped end frame) so the Activity
+ *  disclosure doesn't pulse "Running" forever. */
+function finalizeToolCalls(tools?: ToolCall[]): ToolCall[] | undefined {
+  if (!tools?.length) return tools;
+  return tools.map((t) => (t.done ? t : { ...t, done: true, ok: t.ok ?? false }));
+}
+
 export function useChat(opts: UseChatOptions) {
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = React.useState(false);
@@ -226,12 +234,24 @@ export function useChat(opts: UseChatOptions) {
             }));
             break;
           case "tool_call_end":
-            patch(assistantId, (m) => ({
-              ...m,
-              toolCalls: (m.toolCalls || []).map((t) =>
+            patch(assistantId, (m) => {
+              const existing = m.toolCalls || [];
+              const matched = existing.some((t) => t.id === ev.id);
+              const updated = existing.map((t) =>
                 t.id === ev.id ? { ...t, ok: ev.ok, outputPreview: ev.output_preview, done: true } : t,
-              ),
-            }));
+              );
+              // An end with no matching start (dropped/reordered frame) would
+              // otherwise vanish — surface it as a completed chip instead.
+              return {
+                ...m,
+                toolCalls: matched
+                  ? updated
+                  : [
+                      ...updated,
+                      { id: ev.id, name: "tool", ok: ev.ok, outputPreview: ev.output_preview, done: true } as ToolCall,
+                    ],
+              };
+            });
             break;
           case "usage":
             patch(assistantId, (m) => ({ ...m, usage: { total: ev.total, cost_usd: ev.cost_usd } }));
@@ -259,6 +279,7 @@ export function useChat(opts: UseChatOptions) {
               ...m,
               streaming: false,
               cancelled: ev.cancelled || m.cancelled,
+              toolCalls: finalizeToolCalls(m.toolCalls),
               content: m.content || (ev.cancelled ? "_(stopped)_" : ev.text || ""),
             }));
             break;
@@ -288,6 +309,7 @@ export function useChat(opts: UseChatOptions) {
         patch(assistantId, (m) => ({
           ...m,
           streaming: false,
+          toolCalls: finalizeToolCalls(m.toolCalls),
           ...(aborted
             ? { cancelled: true, content: m.content || "_(stopped)_" }
             : { error: m.error || String(err instanceof Error ? err.message : err) }),
