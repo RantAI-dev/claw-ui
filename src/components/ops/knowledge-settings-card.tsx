@@ -63,7 +63,24 @@ export function KnowledgeSettingsCard() {
     }
   };
 
-  if (status.loading || status.error) return null;
+  if (status.loading) return null;
+
+  // Never silently vanish on error — that hides the only place to enter an
+  // embedding key. Surface it with a retry instead.
+  if (status.error) {
+    return (
+      <Card className="flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <BookOpen className="size-4 text-muted-foreground" />
+          <span className="font-medium">Couldn&apos;t load Knowledge Base settings</span>
+          <span className="truncate text-xs text-muted-foreground">{status.error}</span>
+        </div>
+        <Button size="sm" variant="outline" onClick={status.refresh}>
+          Retry
+        </Button>
+      </Card>
+    );
+  }
 
   if (configured && !editing) {
     const envManaged = source === "env";

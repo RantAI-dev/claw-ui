@@ -59,7 +59,14 @@ export function ChannelsPanel() {
       <SectionTitle action={<RefreshButton onClick={refreshNow} />}>
         Channels {data && <span className="text-muted-foreground">· {data.count} configured</span>}
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} onRefresh={refreshNow}>
+      {/* Gate on the config fetch too: the allowlist editor is seeded from
+          GET /config, so rendering it before config loads (or after it fails)
+          would let "Save allowlist" persist an empty deny-all list. */}
+      <PanelFrame
+        loading={loading || cfg.loading}
+        error={error || cfg.error}
+        onRefresh={refreshNow}
+      >
         <TelegramCard
           connected={tgConnected}
           allowedUsers={telegramAllowlist(cfg.data)}
