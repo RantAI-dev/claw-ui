@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
@@ -23,6 +24,7 @@ export function McpPanel() {
   const [args, setArgs] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [working, setWorking] = React.useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = React.useState<string | null>(null);
 
   const add = async () => {
     if (!name.trim() || !command.trim()) return;
@@ -44,11 +46,14 @@ export function McpPanel() {
     }
   };
 
-  const remove = async (n: string) => {
+  const remove = async () => {
+    const n = pendingRemove;
+    if (!n) return;
     setWorking(n);
     try {
       await api.deleteMcpServer(n);
       toast.success(`Removed “${n}” · applies on daemon restart`);
+      setPendingRemove(null);
       cfg.refresh();
     } catch (e) {
       toast.error(`Remove failed: ${e instanceof Error ? e.message : e}`);
@@ -120,9 +125,10 @@ export function McpPanel() {
                     </div>
                   </div>
                   <IconButton
-                    onClick={() => remove(n)}
+                    onClick={() => setPendingRemove(n)}
                     disabled={w}
                     title="Remove"
+                    aria-label={`Remove MCP server ${n}`}
                     className="shrink-0 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                   >
                     {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -133,6 +139,20 @@ export function McpPanel() {
           </Card>
         )}
       </PanelFrame>
+
+      <ConfirmModal
+        open={!!pendingRemove}
+        onClose={() => setPendingRemove(null)}
+        title="Remove MCP server?"
+        description={
+          pendingRemove
+            ? `“${pendingRemove}” will be removed from the config; the runtime drops it on the next daemon restart.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        busy={!!working}
+        onConfirm={remove}
+      />
     </div>
   );
 }

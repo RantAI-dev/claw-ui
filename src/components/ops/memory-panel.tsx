@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
@@ -21,6 +22,9 @@ export function MemoryPanel() {
   const [category, setCategory] = React.useState("core");
   const [busy, setBusy] = React.useState(false);
   const [working, setWorking] = React.useState<string | null>(null);
+  const [pendingForget, setPendingForget] = React.useState<{ key: string; content: string } | null>(
+    null,
+  );
 
   const add = async () => {
     if (!content.trim()) return;
@@ -37,11 +41,14 @@ export function MemoryPanel() {
     }
   };
 
-  const del = async (key: string) => {
+  const del = async () => {
+    const key = pendingForget?.key;
+    if (!key) return;
     setWorking(key);
     try {
       await api.deleteMemory(key);
       toast.success("Fact forgotten");
+      setPendingForget(null);
       refresh();
     } catch (e) {
       toast.error(`Delete failed: ${e instanceof Error ? e.message : e}`);
@@ -97,9 +104,10 @@ export function MemoryPanel() {
                       {e.category}
                     </Badge>
                     <IconButton
-                      onClick={() => del(e.key)}
+                      onClick={() => setPendingForget({ key: e.key, content: e.content })}
                       disabled={w}
                       title="Forget"
+                      aria-label="Forget this memory"
                       className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                     >
                       {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -115,6 +123,22 @@ export function MemoryPanel() {
           })}
         </div>
       </PanelFrame>
+
+      <ConfirmModal
+        open={!!pendingForget}
+        onClose={() => setPendingForget(null)}
+        title="Forget this memory?"
+        description={
+          pendingForget
+            ? `The agent will no longer recall: “${pendingForget.content.slice(0, 140)}${
+                pendingForget.content.length > 140 ? "…" : ""
+              }”`
+            : undefined
+        }
+        confirmLabel="Forget"
+        busy={!!working}
+        onConfirm={del}
+      />
     </div>
   );
 }

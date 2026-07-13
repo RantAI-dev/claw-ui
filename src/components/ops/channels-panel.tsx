@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
@@ -96,6 +97,7 @@ function TelegramCard({
   const [token, setToken] = React.useState("");
   const [users, setUsers] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
 
   // Prefill the allowlist editor with the saved list once connected.
   const savedAllowlist = allowedUsers.join(", ");
@@ -146,17 +148,12 @@ function TelegramCard({
   };
 
   const disconnect = async () => {
-    if (
-      !window.confirm(
-        "Disconnect Telegram? The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect.",
-      )
-    )
-      return;
     setBusy(true);
     try {
       await api.disconnectTelegram();
       toast.success("Disconnected Telegram");
       setUsers("");
+      setConfirmDisconnect(false);
       onReload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -166,6 +163,7 @@ function TelegramCard({
   };
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
@@ -200,7 +198,12 @@ function TelegramCard({
                 <Button size="sm" variant="outline" onClick={saveAllowlist} disabled={busy}>
                   {busy ? "Saving…" : "Save allowlist"}
                 </Button>
-                <Button size="sm" variant="destructive" onClick={disconnect} disabled={busy}>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setConfirmDisconnect(true)}
+                  disabled={busy}
+                >
                   Disconnect
                 </Button>
               </div>
@@ -233,6 +236,16 @@ function TelegramCard({
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={confirmDisconnect}
+      onClose={() => setConfirmDisconnect(false)}
+      title="Disconnect Telegram?"
+      description="The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect."
+      confirmLabel="Disconnect"
+      busy={busy}
+      onConfirm={disconnect}
+    />
+    </>
   );
 }
 

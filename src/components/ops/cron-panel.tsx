@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
@@ -30,6 +31,8 @@ export function CronPanel() {
   const [expr, setExpr] = React.useState("0 9 * * *");
   const [name, setName] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
 
   const create = async () => {
     if (!prompt.trim() || !expr.trim()) return;
@@ -72,13 +75,18 @@ export function CronPanel() {
       toast.error(`Run failed: ${e instanceof Error ? e.message : e}`, { id: t });
     }
   };
-  const del = async (id: string) => {
+  const del = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      await api.deleteCron(id);
+      await api.deleteCron(pendingDelete.id);
       toast.success("Job deleted");
+      setPendingDelete(null);
       refresh();
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -143,8 +151,9 @@ export function CronPanel() {
                 <Play className="size-3.5" />
               </IconButton>
               <IconButton
-                onClick={() => del(j.id)}
+                onClick={() => setPendingDelete({ id: j.id, name: j.name || j.id.slice(0, 8) })}
                 title="Delete"
+                aria-label={`Delete job ${j.name || j.id.slice(0, 8)}`}
                 className="hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
@@ -153,6 +162,20 @@ export function CronPanel() {
           ))}
         </Card>
       </PanelFrame>
+
+      <ConfirmModal
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        title="Delete scheduled job?"
+        description={
+          pendingDelete
+            ? `“${pendingDelete.name}” and its prompt will be removed. This can't be undone.`
+            : undefined
+        }
+        confirmLabel="Delete job"
+        busy={deleting}
+        onConfirm={del}
+      />
     </div>
   );
 }
