@@ -129,7 +129,11 @@ export function ConsoleShell({
     } catch {
       /* ignore */
     }
-    setRailCollapsed(localStorage.getItem(RAIL_KEY) === "1");
+    // On a narrow (phone) viewport the rail is an off-canvas drawer — start it
+    // closed regardless of the persisted desktop preference so it doesn't cover
+    // the conversation on first paint.
+    const isMobile = window.matchMedia("(max-width: 820px)").matches;
+    setRailCollapsed(isMobile ? true : localStorage.getItem(RAIL_KEY) === "1");
     fetch("/api/auth/status")
       .then((r) => r.json())
       .then((d) => setAuthOn(!!d.enabled))
@@ -154,6 +158,15 @@ export function ConsoleShell({
       localStorage.setItem(RAIL_KEY, next ? "1" : "0");
       return next;
     });
+
+  // On mobile the rail is an overlay drawer — collapse it after a navigation so
+  // the selected view isn't left hidden behind it. No-op on desktop.
+  const closeRailOnMobile = React.useCallback(() => {
+    if (window.matchMedia("(max-width: 820px)").matches) {
+      setRailCollapsed(true);
+      localStorage.setItem(RAIL_KEY, "1");
+    }
+  }, []);
 
   // ---- data ----
   const refreshSessions = React.useCallback(async () => {
@@ -249,6 +262,17 @@ export function ConsoleShell({
     const order = AUTONOMY.map((p) => p.id);
     const onKey = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key === "Tab") {
+        // Shift+Tab is the universal "focus previous" key — do NOT hijack it while
+        // the user is typing or a dialog is open (that would break reverse-tab and
+        // could flip autonomy by accident). Only cycle from a non-editable context.
+        const el = document.activeElement as HTMLElement | null;
+        const editable =
+          !!el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.tagName === "SELECT" ||
+            el.isContentEditable);
+        if (editable || document.querySelector('[role="dialog"]')) return;
         e.preventDefault();
         const next = order[(order.indexOf(autonomyRef.current) + 1) % order.length];
         changeAutonomy(next);
@@ -267,6 +291,7 @@ export function ConsoleShell({
       setHasReadyAttachments(false);
       setSelectedKbIds([]);
       setRoute("chat");
+      closeRailOnMobile();
     } catch (e) {
       toast.error(`Could not load session: ${e instanceof Error ? e.message : e}`);
     }
@@ -288,6 +313,7 @@ export function ConsoleShell({
     setHasReadyAttachments(false);
     setSelectedKbIds([]);
     setRoute("chat");
+    closeRailOnMobile();
   };
 
   const toggleKb = React.useCallback((id: string) => {
@@ -351,9 +377,14 @@ export function ConsoleShell({
 
   return (
     <div className={appClass} style={{ "--brand-sky": accent.sky, "--brand-deep-blue": accent.deep } as React.CSSProperties}>
+      <a href="#main-content" className="skip-link">
+        Skip to content
+      </a>
+      {/* Mobile-only scrim behind the off-canvas rail; a tap dismisses it. */}
+      {!railCollapsed && <div className="rail-backdrop" onClick={toggleRail} aria-hidden="true" />}
       {/* ===== Rail ===== */}
       {!railCollapsed && (
-        <aside className="rail">
+        <aside className="rail" aria-label="Sidebar">
           <div className="rail-head">
             <Image
               className="rail-mark"
@@ -374,7 +405,7 @@ export function ConsoleShell({
           </div>
 
           <div className="rail-scroll">
-            <div className="nav-group">
+            <nav className="nav-group" aria-label="Primary">
               {NAV.map((n) => {
                 const Icon = n.icon;
                 const count = navCount(n.id);
@@ -382,7 +413,11 @@ export function ConsoleShell({
                   <button
                     key={n.id}
                     className={"nav-item" + (route === n.id ? " active" : "")}
-                    onClick={() => setRoute(n.id)}
+                    onClick={() => {
+                      setRoute(n.id);
+                      closeRailOnMobile();
+                    }}
+                    aria-current={route === n.id ? "page" : undefined}
                   >
                     <Icon />
                     <span>{n.label}</span>
@@ -390,13 +425,18 @@ export function ConsoleShell({
                   </button>
                 );
               })}
-            </div>
+            </nav>
 
             {route === "chat" && (
               <div className="nav-group">
                 <div className="nav-cap eyebrow flex items-center">
                   <span>Recent Sessions</span>
-                  <button className="sess-x shown" title="New chat" onClick={handleNew}>
+                  <button
+                    className="sess-x shown"
+                    aria-label="New chat"
+                    title="New chat"
+                    onClick={handleNew}
+                  >
                     <Plus className="size-3.5" />
                   </button>
                 </div>
@@ -405,6 +445,7 @@ export function ConsoleShell({
                   <input
                     value={sessQuery}
                     onChange={(e) => setSessQuery(e.target.value)}
+                    aria-label="Search sessions"
                     placeholder="Search sessions…"
                   />
                 </div>
@@ -420,14 +461,28 @@ export function ConsoleShell({
                       <div
                         key={s.id}
                         className={"sess-item" + (s.id === activeId ? " active" : "")}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => handleSelect(s.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleSelect(s.id);
+                          }
+                        }}
                       >
                         <div className="sess-row">
                           <span className="chan-dot" style={{ background: channelDot(s.model || "") }} />
                           <span className="sess-title">{s.title || "Untitled session"}</span>
-                          <span className="sess-x" onClick={(e) => handleDelete(s.id, e)} title="Delete">
+                          <button
+                            type="button"
+                            className="sess-x"
+                            onClick={(e) => handleDelete(s.id, e)}
+                            aria-label={`Delete session: ${s.title || "Untitled session"}`}
+                            title="Delete"
+                          >
                             <X className="size-[13px]" />
-                          </span>
+                          </button>
                         </div>
                         <div className="sess-meta">
                           <span>{s.message_count} msgs</span>
@@ -478,11 +533,13 @@ export function ConsoleShell({
       )}
 
       {/* ===== Main ===== */}
-      <main className="main">
+      <main className="main" id="main-content" tabIndex={-1}>
         <div className="topbar">
           <button
             className="icon-btn"
             onClick={toggleRail}
+            aria-label={railCollapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-expanded={!railCollapsed}
             title={railCollapsed ? "Show sidebar" : "Hide sidebar"}
           >
             {railCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
@@ -510,7 +567,7 @@ export function ConsoleShell({
           </span>
 
           {route === "chat" && (
-            <button className="icon-btn" onClick={handleNew} title="New chat">
+            <button className="icon-btn" onClick={handleNew} aria-label="New chat" title="New chat">
               <Plus />
             </button>
           )}
@@ -518,17 +575,24 @@ export function ConsoleShell({
             <button
               className="icon-btn"
               onClick={() => setTweak("rightPanel", !tweaks.rightPanel)}
+              aria-label="Toggle context panel"
+              aria-pressed={tweaks.rightPanel}
               title="Toggle context panel"
               style={tweaks.rightPanel ? { color: "var(--foreground)" } : undefined}
             >
               <PanelRight />
             </button>
           )}
-          <button className="icon-btn" onClick={() => setTweaksOpen(true)} title="Tweaks">
+          <button
+            className="icon-btn"
+            onClick={() => setTweaksOpen(true)}
+            aria-label="Tweaks"
+            title="Tweaks"
+          >
             <SlidersHorizontal />
           </button>
           {authOn && (
-            <button className="icon-btn" onClick={logout} title="Sign out">
+            <button className="icon-btn" onClick={logout} aria-label="Sign out" title="Sign out">
               <LogOut />
             </button>
           )}

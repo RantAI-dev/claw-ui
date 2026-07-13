@@ -63,6 +63,9 @@ export async function streamChat(
     }
   };
 
+  // Track whether the server already delivered a real `error` frame, so the
+  // synthetic "stream ended" fallback below doesn't clobber a specific cause.
+  let sawError = false;
   try {
     while (true) {
       const { done, value } = await readChunk();
@@ -94,6 +97,7 @@ export async function streamChat(
         if (!dataLine) continue;
         try {
           const ev = JSON.parse(dataLine) as ChatEvent;
+          if (ev.type === "error") sawError = true;
           onEvent(ev);
           if (ev.type === "done") return;
         } catch {
@@ -103,8 +107,9 @@ export async function streamChat(
     }
     // Reached only when the stream closed without a `done` event — the server
     // dropped the connection mid-turn. Synthesize a terminal pair so the
-    // assistant bubble stops "streaming" and the interruption is visible.
-    onEvent({ type: "error", message: "The response stream ended before completing." });
+    // assistant bubble stops "streaming" and the interruption is visible — but
+    // don't overwrite a real `error` frame the server already delivered.
+    if (!sawError) onEvent({ type: "error", message: "The response stream ended before completing." });
     onEvent({ type: "done", text: "", cancelled: false });
   } catch (err) {
     if ((err as Error)?.name === "AbortError") {

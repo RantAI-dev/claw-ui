@@ -299,6 +299,10 @@ export interface ChatMessage {
   toolCalls?: ToolCall[];
   usage?: { total: number; cost_usd: number } | null;
   error?: string | null;
+  /** Assistant turn was stopped/aborted before completing. Excluded — together
+   *  with its paired user message — from the SENT history so a cancelled topic
+   *  never bleeds into the next prompt. */
+  cancelled?: boolean;
   /** KB document titles retrieved for this assistant turn (citations). */
   sources?: string[];
   /** Filenames the user had attached when sending this user turn. */

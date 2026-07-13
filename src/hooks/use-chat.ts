@@ -74,11 +74,29 @@ function withKbContext(text: string, context: string): string {
 }
 
 /** Build a compact transcript of recent turns so the (stateless) gateway agent
- *  gets conversation memory. Returns "" when there is no prior turn. */
-function buildHistory(prior: ChatMessage[]): string {
-  const turns = prior.filter((m) => m.role === "user" || m.role === "assistant");
-  if (turns.length === 0) return "";
-  return turns
+ *  gets conversation memory. A stopped turn is dropped WHOLE (assistant + its
+ *  paired user message) and a failed assistant reply is dropped (its user
+ *  question is kept), so an abandoned/errored topic never bleeds into the next
+ *  prompt. Returns "" when there is no prior turn. Exported for unit tests. */
+export function buildHistory(prior: ChatMessage[]): string {
+  const kept: ChatMessage[] = [];
+  for (const m of prior) {
+    if (m.role !== "user" && m.role !== "assistant") continue;
+    if (m.role === "assistant") {
+      if (m.cancelled) {
+        // Abandoned turn: drop it AND its paired user message so the cancelled
+        // topic does not resurface as context in the next request.
+        if (kept.length && kept[kept.length - 1].role === "user") kept.pop();
+        continue;
+      }
+      // Failed reply carries no useful answer; drop it but keep the user's
+      // question (a valid antecedent they may retry).
+      if (m.error) continue;
+    }
+    kept.push(m);
+  }
+  if (kept.length === 0) return "";
+  return kept
     .slice(-MAX_HISTORY_MSGS)
     .map((m) => {
       const who = m.role === "user" ? "User" : "Assistant";
@@ -103,6 +121,14 @@ function stripDecorations(content: string): string {
   c = c.replace(new RegExp(`\\n*${KB_OPEN}\\n[\\s\\S]*?\\n${KB_CLOSE}`, "g"), "");
   c = c.replace(new RegExp(`\\n*${HIST_OPEN}\\n[\\s\\S]*?\\n${HIST_CLOSE}`, "g"), "");
   return c.replace(/\s+$/, "");
+}
+
+/** Mark any still-running tool chip as finished — used when a turn ends without
+ *  a `tool_call_end` (cancelled/aborted, or a dropped end frame) so the Activity
+ *  disclosure doesn't pulse "Running" forever. */
+function finalizeToolCalls(tools?: ToolCall[]): ToolCall[] | undefined {
+  if (!tools?.length) return tools;
+  return tools.map((t) => (t.done ? t : { ...t, done: true, ok: t.ok ?? false }));
 }
 
 export function useChat(opts: UseChatOptions) {
@@ -133,6 +159,18 @@ export function useChat(opts: UseChatOptions) {
   React.useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+  // Synchronous latch: `isStreaming` only flips true inside runAssistant, AFTER
+  // send()'s `await retrieve()`, so without this a fast second send slips through
+  // the guard and starts a duplicate concurrent turn.
+  const inFlightRef = React.useRef(false);
+  // Bumped by reset()/loadHistory() to invalidate an in-flight send/regenerate
+  // whose conversation was switched out from under it during `await retrieve()`.
+  const epochRef = React.useRef(0);
+  // Mirror of pendingApproval so resolveApproval can restore it on a failed POST.
+  const pendingApprovalRef = React.useRef<PendingApproval | null>(null);
+  React.useEffect(() => {
+    pendingApprovalRef.current = pendingApproval;
+  }, [pendingApproval]);
 
   const patch = React.useCallback((id: string, fn: (m: ChatMessage) => ChatMessage) => {
     setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
@@ -182,7 +220,12 @@ export function useChat(opts: UseChatOptions) {
       const onEvent = (ev: ChatEvent) => {
         switch (ev.type) {
           case "chunk":
-            patch(assistantId, (m) => ({ ...m, content: m.content + ev.text }));
+            // `ev.text` is untrusted wire data; guard the concat so a malformed
+            // frame can't append the literal "undefined" into the message.
+            patch(assistantId, (m) => ({
+              ...m,
+              content: m.content + (typeof ev.text === "string" ? ev.text : ""),
+            }));
             break;
           case "tool_call_start":
             patch(assistantId, (m) => ({
@@ -191,12 +234,24 @@ export function useChat(opts: UseChatOptions) {
             }));
             break;
           case "tool_call_end":
-            patch(assistantId, (m) => ({
-              ...m,
-              toolCalls: (m.toolCalls || []).map((t) =>
+            patch(assistantId, (m) => {
+              const existing = m.toolCalls || [];
+              const matched = existing.some((t) => t.id === ev.id);
+              const updated = existing.map((t) =>
                 t.id === ev.id ? { ...t, ok: ev.ok, outputPreview: ev.output_preview, done: true } : t,
-              ),
-            }));
+              );
+              // An end with no matching start (dropped/reordered frame) would
+              // otherwise vanish — surface it as a completed chip instead.
+              return {
+                ...m,
+                toolCalls: matched
+                  ? updated
+                  : [
+                      ...updated,
+                      { id: ev.id, name: "tool", ok: ev.ok, outputPreview: ev.output_preview, done: true } as ToolCall,
+                    ],
+              };
+            });
             break;
           case "usage":
             patch(assistantId, (m) => ({ ...m, usage: { total: ev.total, cost_usd: ev.cost_usd } }));
@@ -208,15 +263,23 @@ export function useChat(opts: UseChatOptions) {
             setPendingApproval({ id: ev.id, tool: ev.tool, args: ev.args });
             break;
           case "error":
+            // Terminal for the turn — clear any pending approval so its modal
+            // can't ghost over the finished/failed conversation.
+            setPendingApproval(null);
             patch(assistantId, (m) => ({ ...m, error: ev.message }));
             break;
           case "done":
             // Capture the session the backend persisted this turn to, so the
             // next message continues the same conversation (multi-turn).
             if (ev.session_id) setSessionId(ev.session_id);
+            // The turn is over — a lingering approval modal (e.g. server-side
+            // deadline auto-deny) must not survive into the next turn.
+            setPendingApproval(null);
             patch(assistantId, (m) => ({
               ...m,
               streaming: false,
+              cancelled: ev.cancelled || m.cancelled,
+              toolCalls: finalizeToolCalls(m.toolCalls),
               content: m.content || (ev.cancelled ? "_(stopped)_" : ev.text || ""),
             }));
             break;
@@ -225,20 +288,40 @@ export function useChat(opts: UseChatOptions) {
         }
       };
 
-      await streamChat(
-        {
-          message: userContent,
-          model: optsRef.current.model,
-          provider: optsRef.current.provider,
-          temperature: optsRef.current.temperature,
-          session_id: sessionIdRef.current ?? undefined,
-        },
-        onEvent,
-        controller.signal,
-      );
-
-      setIsStreaming(false);
-      abortRef.current = null;
+      try {
+        await streamChat(
+          {
+            message: userContent,
+            model: optsRef.current.model,
+            provider: optsRef.current.provider,
+            temperature: optsRef.current.temperature,
+            session_id: sessionIdRef.current ?? undefined,
+          },
+          onEvent,
+          controller.signal,
+        );
+      } catch (err) {
+        // streamChat only rejects when it fails BEFORE its own try block — a Stop
+        // before the first byte (AbortError) or a network failure reaching the
+        // Next route. Finalize the bubble here so it never stays "streaming".
+        const aborted = (err as Error)?.name === "AbortError";
+        setPendingApproval(null);
+        patch(assistantId, (m) => ({
+          ...m,
+          streaming: false,
+          toolCalls: finalizeToolCalls(m.toolCalls),
+          ...(aborted
+            ? { cancelled: true, content: m.content || "_(stopped)_" }
+            : { error: m.error || String(err instanceof Error ? err.message : err) }),
+        }));
+      } finally {
+        // Only the turn that still owns the controller may tear down shared
+        // state — a superseded or reset turn must not clobber the live one.
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          setIsStreaming(false);
+        }
+      }
     },
     [patch],
   );
@@ -246,59 +329,90 @@ export function useChat(opts: UseChatOptions) {
   const send = React.useCallback(
     async (text: string, attachments?: string[]) => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
-      // Prior turns (before this one) → conversation memory for the stateless gateway.
-      const history = buildHistory(messagesRef.current);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextId("u"),
-          role: "user",
-          content: trimmed,
-          attachments: attachments?.length ? attachments : undefined,
-        },
-      ]);
-      const { context, sources } = await retrieve(trimmed);
-      await runAssistant(decorate(withKbContext(withHistory(trimmed, history), context)), sources);
+      if (!trimmed || isStreaming || inFlightRef.current) return;
+      // Latch synchronously — `isStreaming` doesn't flip until runAssistant, past
+      // the `await retrieve()` below, so this is what actually blocks a duplicate.
+      inFlightRef.current = true;
+      const epoch = epochRef.current;
+      try {
+        // Prior turns (before this one) → conversation memory for the stateless gateway.
+        const history = buildHistory(messagesRef.current);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextId("u"),
+            role: "user",
+            content: trimmed,
+            attachments: attachments?.length ? attachments : undefined,
+          },
+        ]);
+        const { context, sources } = await retrieve(trimmed);
+        // A New-chat / session switch during retrieve() invalidates this turn;
+        // bail so its reply isn't stranded in the wrong conversation.
+        if (epoch !== epochRef.current) return;
+        await runAssistant(decorate(withKbContext(withHistory(trimmed, history), context)), sources);
+      } finally {
+        if (epoch === epochRef.current) inFlightRef.current = false;
+      }
     },
     [isStreaming, runAssistant, decorate, retrieve],
   );
 
   /** Approve or deny the pending tool call; resumes the paused stream. */
   const resolveApproval = React.useCallback(async (id: string, approve: boolean) => {
+    const prev = pendingApprovalRef.current;
+    const epoch = epochRef.current;
     setPendingApproval(null);
     try {
       await api.resolveApproval(id, approve);
     } catch {
-      // If the resolve POST fails the gateway's 5-min deadline still auto-denies,
-      // so the stream won't hang forever; surface nothing extra here.
+      // The resolve POST failed (transient blip). Restore the prompt so the user
+      // can retry, rather than silently letting the gateway's deadline auto-DENY
+      // an intended approve. Only restore while the same turn is still live.
+      if (epoch === epochRef.current && abortRef.current) setPendingApproval(prev);
     }
   }, []);
 
   /** Re-run the most recent user turn, replacing the last assistant reply. */
   const regenerate = React.useCallback(async () => {
-    if (isStreaming) return;
+    if (isStreaming || inFlightRef.current) return;
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!lastUser) return;
-    // History = turns before the one being regenerated.
-    const at = messages.lastIndexOf(lastUser);
-    const history = buildHistory(at === -1 ? [] : messages.slice(0, at));
-    // Drop everything after the last user message (keyed on the object ref so
-    // it's correct even if `prev` differs from this render's snapshot).
-    setMessages((prev) => {
-      const i = prev.lastIndexOf(lastUser);
-      return i === -1 ? prev : prev.slice(0, i + 1);
-    });
-    const { context, sources } = await retrieve(lastUser.content);
-    await runAssistant(decorate(withKbContext(withHistory(lastUser.content, history), context)), sources);
+    inFlightRef.current = true;
+    const epoch = epochRef.current;
+    try {
+      // History = turns before the one being regenerated.
+      const at = messages.lastIndexOf(lastUser);
+      const history = buildHistory(at === -1 ? [] : messages.slice(0, at));
+      // Drop everything after the last user message (keyed on the object ref so
+      // it's correct even if `prev` differs from this render's snapshot).
+      setMessages((prev) => {
+        const i = prev.lastIndexOf(lastUser);
+        return i === -1 ? prev : prev.slice(0, i + 1);
+      });
+      const { context, sources } = await retrieve(lastUser.content);
+      if (epoch !== epochRef.current) return;
+      await runAssistant(decorate(withKbContext(withHistory(lastUser.content, history), context)), sources);
+    } finally {
+      if (epoch === epochRef.current) inFlightRef.current = false;
+    }
   }, [isStreaming, messages, runAssistant, decorate, retrieve]);
 
-  const stop = React.useCallback(() => abortRef.current?.abort(), []);
+  const stop = React.useCallback(() => {
+    abortRef.current?.abort();
+    // A stopped turn's approval prompt must not linger and resolve the old tool.
+    setPendingApproval(null);
+  }, []);
 
   const reset = React.useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
+    // Invalidate any in-flight send/regenerate and release its latch so the new
+    // chat can send immediately.
+    epochRef.current += 1;
+    inFlightRef.current = false;
     setIsStreaming(false);
+    setPendingApproval(null);
     setMessages([]);
     setSessionId(null);
     setConversationId(nextId("c"));
@@ -308,7 +422,10 @@ export function useChat(opts: UseChatOptions) {
   const loadHistory = React.useCallback((history: SessionMessage[], id: string | null) => {
     abortRef.current?.abort();
     abortRef.current = null;
+    epochRef.current += 1;
+    inFlightRef.current = false;
     setIsStreaming(false);
+    setPendingApproval(null);
     setSessionId(id);
     setConversationId(id ?? nextId("c"));
     setMessages(
