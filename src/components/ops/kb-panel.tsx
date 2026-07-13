@@ -251,17 +251,27 @@ function KbCard({
   return (
     <div
       onClick={onOpen}
-      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open knowledge base ${group.name}`}
+      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {/* Hover actions */}
-      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Hover / focus actions */}
+      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onEdit();
           }}
           title="Edit"
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
+          aria-label={`Edit knowledge base ${group.name}`}
+          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Pencil className="size-3.5" />
         </button>
@@ -271,7 +281,8 @@ function KbCard({
             onDelete();
           }}
           title="Delete"
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+          aria-label={`Delete knowledge base ${group.name}`}
+          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Trash2 className="size-3.5" />
         </button>
@@ -684,6 +695,15 @@ function KbDetail({
       />
       <div
         onClick={() => fileRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileRef.current?.click();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload files to this knowledge base"
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);
@@ -695,7 +715,7 @@ function KbDetail({
           void upload(e.dataTransfer.files);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors",
+          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           dragOver
             ? "border-accent bg-accent/5"
             : "border-border bg-muted/30 hover:border-accent/50 hover:bg-muted/50",
@@ -946,19 +966,24 @@ function DocActions({
   buttonClassName?: string;
 }) {
   const btn = (hover: string) =>
-    cn("cursor-pointer rounded-md p-1.5 text-muted-foreground transition-all", buttonClassName, hover);
+    cn(
+      "cursor-pointer rounded-md p-1.5 text-muted-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      buttonClassName,
+      hover,
+    );
   return (
     <>
-      <button onClick={onView} title="View document" className={btn("hover:bg-accent/10 hover:text-accent")}>
+      <button onClick={onView} title="View document" aria-label="View document" className={btn("hover:bg-accent/10 hover:text-accent")}>
         <Eye className="size-3.5" />
       </button>
-      <button onClick={onIntel} title="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
+      <button onClick={onIntel} title="Document intelligence" aria-label="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
         <Sparkles className="size-3.5" />
       </button>
       <button
         onClick={onDelete}
         disabled={busy}
         title="Delete document"
+        aria-label="Delete document"
         className={btn("hover:bg-destructive/10 hover:text-destructive disabled:opacity-50")}
       >
         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -988,7 +1013,7 @@ function DocCard({
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
-      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <DocActions
           busy={busy}
           onView={onView}
@@ -1070,7 +1095,7 @@ function DocRow({
         onView={onView}
         onIntel={onIntel}
         onDelete={onDelete}
-        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100"
+        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
       />
     </div>
   );
