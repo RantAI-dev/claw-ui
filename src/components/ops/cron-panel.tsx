@@ -3,12 +3,14 @@
 import * as React from "react";
 import { Play, Plus, Power, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { CronSchedule } from "@/lib/types";
 import { useAsync } from "@/hooks/use-async";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
@@ -60,23 +62,48 @@ export function CronPanel() {
   const [prompt, setPrompt] = React.useState("");
   const [expr, setExpr] = React.useState("0 9 * * *");
   const [name, setName] = React.useState("");
+  const [kind, setKind] = React.useState<CronSchedule["kind"]>("cron");
+  const [everyMin, setEveryMin] = React.useState("60");
+  const [at, setAt] = React.useState("");
+  const [model, setModel] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const schedulePreview = describeCron(expr);
 
   const create = async () => {
-    if (!prompt.trim() || !expr.trim()) return;
+    if (!prompt.trim()) return;
+    let schedule: CronSchedule;
+    if (kind === "every") {
+      const mins = Number(everyMin);
+      if (!Number.isFinite(mins) || mins < 1) {
+        toast.error("Interval must be at least 1 minute");
+        return;
+      }
+      schedule = { kind: "every", every_ms: Math.round(mins) * 60000 };
+    } else if (kind === "at") {
+      const ms = at ? Date.parse(at) : NaN;
+      if (!Number.isFinite(ms)) {
+        toast.error("Pick a valid date and time");
+        return;
+      }
+      schedule = { kind: "at", at: new Date(ms).toISOString() };
+    } else {
+      if (!expr.trim()) return;
+      schedule = { kind: "cron", expr: expr.trim() };
+    }
     setBusy(true);
     try {
       await api.createCron({
-        schedule: { kind: "cron", expr: expr.trim() },
+        schedule,
         prompt: prompt.trim(),
         name: name.trim() || undefined,
+        model: model.trim() || undefined,
       });
       toast.success("Cron job created");
       setPrompt("");
       setName("");
+      setModel("");
       refresh();
     } catch (e) {
       toast.error(`Create failed: ${e instanceof Error ? e.message : e}`);
@@ -138,25 +165,79 @@ export function CronPanel() {
           rows={2}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <Input
-            value={expr}
-            onChange={(e) => setExpr(e.target.value)}
-            placeholder="0 9 * * *"
-            className="h-8 w-32 font-mono text-xs"
-          />
+          <Select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as CronSchedule["kind"])}
+            aria-label="Schedule type"
+            className="h-8 w-36 text-xs"
+          >
+            <option value="cron">Cron expression</option>
+            <option value="every">Every N minutes</option>
+            <option value="at">Once at…</option>
+          </Select>
+
+          {kind === "cron" && (
+            <Input
+              value={expr}
+              onChange={(e) => setExpr(e.target.value)}
+              placeholder="0 9 * * *"
+              aria-label="Cron expression"
+              className="h-8 w-32 font-mono text-xs"
+            />
+          )}
+          {kind === "every" && (
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                min="1"
+                value={everyMin}
+                onChange={(e) => setEveryMin(e.target.value)}
+                aria-label="Interval in minutes"
+                className="h-8 w-20 text-xs"
+              />
+              <span className="text-xs text-muted-foreground">min</span>
+            </div>
+          )}
+          {kind === "at" && (
+            <Input
+              type="datetime-local"
+              value={at}
+              onChange={(e) => setAt(e.target.value)}
+              aria-label="Run once at"
+              className="h-8 w-52 text-xs"
+            />
+          )}
+
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="name (optional)"
             className="h-8 min-w-[120px] flex-1 text-xs"
           />
-          <Button size="sm" onClick={create} disabled={busy || !prompt.trim() || !expr.trim()}>
+          <Button
+            size="sm"
+            onClick={create}
+            disabled={busy || !prompt.trim() || (kind === "cron" && !expr.trim())}
+          >
             <Plus className="size-4" /> Create
           </Button>
         </div>
-        {expr.trim() && (
+
+        <Input
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          placeholder="model override (optional — defaults to the agent's model)"
+          className="h-8 font-mono text-xs"
+        />
+
+        {kind === "cron" && expr.trim() && (
           <p className="text-[11px] text-muted-foreground">
             {schedulePreview ? `Runs ${schedulePreview}` : "Custom cron schedule"} · server time zone
+          </p>
+        )}
+        {kind === "every" && everyMin.trim() && (
+          <p className="text-[11px] text-muted-foreground">
+            Runs every {everyMin} minute{everyMin === "1" ? "" : "s"}
           </p>
         )}
       </Card>
