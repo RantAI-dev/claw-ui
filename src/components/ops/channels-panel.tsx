@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
@@ -58,7 +59,14 @@ export function ChannelsPanel() {
       <SectionTitle action={<RefreshButton onClick={refreshNow} />}>
         Channels {data && <span className="text-muted-foreground">· {data.count} configured</span>}
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} onRefresh={refreshNow}>
+      {/* Gate on the config fetch too: the allowlist editor is seeded from
+          GET /config, so rendering it before config loads (or after it fails)
+          would let "Save allowlist" persist an empty deny-all list. */}
+      <PanelFrame
+        loading={loading || cfg.loading}
+        error={error || cfg.error}
+        onRefresh={refreshNow}
+      >
         <TelegramCard
           connected={tgConnected}
           allowedUsers={telegramAllowlist(cfg.data)}
@@ -96,6 +104,7 @@ function TelegramCard({
   const [token, setToken] = React.useState("");
   const [users, setUsers] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
 
   // Prefill the allowlist editor with the saved list once connected.
   const savedAllowlist = allowedUsers.join(", ");
@@ -146,17 +155,12 @@ function TelegramCard({
   };
 
   const disconnect = async () => {
-    if (
-      !window.confirm(
-        "Disconnect Telegram? The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect.",
-      )
-    )
-      return;
     setBusy(true);
     try {
       await api.disconnectTelegram();
       toast.success("Disconnected Telegram");
       setUsers("");
+      setConfirmDisconnect(false);
       onReload();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -166,6 +170,7 @@ function TelegramCard({
   };
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
@@ -184,10 +189,11 @@ function TelegramCard({
       <CardContent className="space-y-2">
         {connected ? (
           <>
-            <label className="text-xs text-muted-foreground">
+            <label htmlFor="tg-allowlist" className="text-xs text-muted-foreground">
               Allowed user ids / usernames (comma-separated)
             </label>
             <Input
+              id="tg-allowlist"
               placeholder="Leave empty to deny all senders"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
@@ -200,7 +206,12 @@ function TelegramCard({
                 <Button size="sm" variant="outline" onClick={saveAllowlist} disabled={busy}>
                   {busy ? "Saving…" : "Save allowlist"}
                 </Button>
-                <Button size="sm" variant="destructive" onClick={disconnect} disabled={busy}>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setConfirmDisconnect(true)}
+                  disabled={busy}
+                >
                   Disconnect
                 </Button>
               </div>
@@ -211,12 +222,14 @@ function TelegramCard({
             <Input
               type="password"
               placeholder="Bot token (from @BotFather)"
+              aria-label="Telegram bot token"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               autoComplete="off"
             />
             <Input
               placeholder="Allowed user ids / usernames (comma-separated)"
+              aria-label="Allowed user ids / usernames (comma-separated)"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />
@@ -233,12 +246,22 @@ function TelegramCard({
         )}
       </CardContent>
     </Card>
+    <ConfirmModal
+      open={confirmDisconnect}
+      onClose={() => setConfirmDisconnect(false)}
+      title="Disconnect Telegram?"
+      description="The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect."
+      confirmLabel="Disconnect"
+      busy={busy}
+      onConfirm={disconnect}
+    />
+    </>
   );
 }
 
 function UnderDevelopmentChannel({ label, active }: { label: string; active: boolean }) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3">
+    <Card className="rounded-lg border-dashed bg-muted/30 p-3 shadow-none">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
         {active && (
@@ -250,6 +273,6 @@ function UnderDevelopmentChannel({ label, active }: { label: string; active: boo
       <div className="mt-1 text-[11px] text-muted-foreground">
         {active ? "Running · manage via TUI" : "Under development"}
       </div>
-    </div>
+    </Card>
   );
 }

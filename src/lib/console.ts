@@ -131,7 +131,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   config: {
     title: "Configuration",
     eyebrow: "Live config",
-    blurb: "Hot-swap the default model and inspect the running config (secrets redacted).",
+    blurb: "Tune the default sampling temperature and inspect the running config (secrets redacted).",
   },
 };
 

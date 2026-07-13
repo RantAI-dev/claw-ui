@@ -3,13 +3,16 @@
 import * as React from "react";
 import { Play, Plus, Power, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { CronSchedule } from "@/lib/types";
 import { useAsync } from "@/hooks/use-async";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
@@ -24,25 +27,83 @@ function fmtWhen(ts: string | number | null): string {
   }
 }
 
+const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** Best-effort plain-English summary of a 5-field cron expr. Returns null for
+ *  anything it can't describe confidently — the caller shows "custom schedule". */
+function describeCron(expr: string): string | null {
+  const f = expr.trim().split(/\s+/);
+  if (f.length !== 5) return null;
+  const [min, hour, dom, mon, dow] = f;
+  const num = (s: string) => (/^\d+$/.test(s) ? Number(s) : null);
+  const h = num(hour);
+  const m = num(min);
+
+  let time: string;
+  if (min === "*" && hour === "*") return "every minute";
+  else if (h != null && m != null && h < 24 && m < 60)
+    time = `at ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  else if (hour === "*" && m != null && m < 60) time = `at :${String(m).padStart(2, "0")} every hour`;
+  else return null;
+
+  let day: string;
+  if (dom === "*" && mon === "*" && dow === "*") day = "every day";
+  else if (dom === "*" && mon === "*" && dow === "1-5") day = "on weekdays";
+  else if (dom === "*" && mon === "*" && num(dow) != null && num(dow)! <= 6)
+    day = `every ${DOW[num(dow)!]}`;
+  else if (num(dom) != null && mon === "*" && dow === "*") day = `on day ${num(dom)} of the month`;
+  else return null;
+
+  return `${time}, ${day}`;
+}
+
 export function CronPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.cron(), []);
   const [prompt, setPrompt] = React.useState("");
   const [expr, setExpr] = React.useState("0 9 * * *");
   const [name, setName] = React.useState("");
+  const [kind, setKind] = React.useState<CronSchedule["kind"]>("cron");
+  const [everyMin, setEveryMin] = React.useState("60");
+  const [at, setAt] = React.useState("");
+  const [model, setModel] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+  const schedulePreview = describeCron(expr);
 
   const create = async () => {
-    if (!prompt.trim() || !expr.trim()) return;
+    if (!prompt.trim()) return;
+    let schedule: CronSchedule;
+    if (kind === "every") {
+      const mins = Number(everyMin);
+      if (!Number.isFinite(mins) || mins < 1) {
+        toast.error("Interval must be at least 1 minute");
+        return;
+      }
+      schedule = { kind: "every", every_ms: Math.round(mins) * 60000 };
+    } else if (kind === "at") {
+      const ms = at ? Date.parse(at) : NaN;
+      if (!Number.isFinite(ms)) {
+        toast.error("Pick a valid date and time");
+        return;
+      }
+      schedule = { kind: "at", at: new Date(ms).toISOString() };
+    } else {
+      if (!expr.trim()) return;
+      schedule = { kind: "cron", expr: expr.trim() };
+    }
     setBusy(true);
     try {
       await api.createCron({
-        schedule: { kind: "cron", expr: expr.trim() },
+        schedule,
         prompt: prompt.trim(),
         name: name.trim() || undefined,
+        model: model.trim() || undefined,
       });
       toast.success("Cron job created");
       setPrompt("");
       setName("");
+      setModel("");
       refresh();
     } catch (e) {
       toast.error(`Create failed: ${e instanceof Error ? e.message : e}`);
@@ -72,13 +133,18 @@ export function CronPanel() {
       toast.error(`Run failed: ${e instanceof Error ? e.message : e}`, { id: t });
     }
   };
-  const del = async (id: string) => {
+  const del = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
     try {
-      await api.deleteCron(id);
+      await api.deleteCron(pendingDelete.id);
       toast.success("Job deleted");
+      setPendingDelete(null);
       refresh();
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -99,28 +165,90 @@ export function CronPanel() {
           rows={2}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <Input
-            value={expr}
-            onChange={(e) => setExpr(e.target.value)}
-            placeholder="0 9 * * *"
-            className="h-8 w-32 font-mono text-xs"
-          />
+          <Select
+            value={kind}
+            onChange={(e) => setKind(e.target.value as CronSchedule["kind"])}
+            aria-label="Schedule type"
+            className="h-8 w-36 text-xs"
+          >
+            <option value="cron">Cron expression</option>
+            <option value="every">Every N minutes</option>
+            <option value="at">Once at…</option>
+          </Select>
+
+          {kind === "cron" && (
+            <Input
+              value={expr}
+              onChange={(e) => setExpr(e.target.value)}
+              placeholder="0 9 * * *"
+              aria-label="Cron expression"
+              className="h-8 w-32 font-mono text-xs"
+            />
+          )}
+          {kind === "every" && (
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                min="1"
+                value={everyMin}
+                onChange={(e) => setEveryMin(e.target.value)}
+                aria-label="Interval in minutes"
+                className="h-8 w-20 text-xs"
+              />
+              <span className="text-xs text-muted-foreground">min</span>
+            </div>
+          )}
+          {kind === "at" && (
+            <Input
+              type="datetime-local"
+              value={at}
+              onChange={(e) => setAt(e.target.value)}
+              aria-label="Run once at"
+              className="h-8 w-52 text-xs"
+            />
+          )}
+
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="name (optional)"
             className="h-8 min-w-[120px] flex-1 text-xs"
           />
-          <Button size="sm" onClick={create} disabled={busy || !prompt.trim() || !expr.trim()}>
+          <Button
+            size="sm"
+            onClick={create}
+            disabled={busy || !prompt.trim() || (kind === "cron" && !expr.trim())}
+          >
             <Plus className="size-4" /> Create
           </Button>
         </div>
+
+        <Input
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          placeholder="model override (optional — defaults to the agent's model)"
+          className="h-8 font-mono text-xs"
+        />
+
+        {kind === "cron" && expr.trim() && (
+          <p className="text-[11px] text-muted-foreground">
+            {schedulePreview ? `Runs ${schedulePreview}` : "Custom cron schedule"} · server time zone
+          </p>
+        )}
+        {kind === "every" && everyMin.trim() && (
+          <p className="text-[11px] text-muted-foreground">
+            Runs every {everyMin} minute{everyMin === "1" ? "" : "s"}
+          </p>
+        )}
       </Card>
 
       <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
         <Card className="divide-y divide-border">
           {data?.jobs.map((j) => (
-            <div key={j.id} className="flex items-center gap-1.5 px-3 py-2.5">
+            <div
+              key={j.id}
+              className={cn("flex items-center gap-1.5 px-3 py-2.5", !j.enabled && "opacity-60")}
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium">{j.name || j.id.slice(0, 8)}</span>
@@ -135,16 +263,18 @@ export function CronPanel() {
               <IconButton
                 onClick={() => toggle(j.id, !j.enabled)}
                 title={j.enabled ? "Disable" : "Enable"}
+                aria-label={j.enabled ? "Disable job" : "Enable job"}
                 className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
               >
                 <Power className="size-3.5" />
               </IconButton>
-              <IconButton onClick={() => run(j.id)} title="Run now">
+              <IconButton onClick={() => run(j.id)} title="Run now" aria-label="Run job now">
                 <Play className="size-3.5" />
               </IconButton>
               <IconButton
-                onClick={() => del(j.id)}
+                onClick={() => setPendingDelete({ id: j.id, name: j.name || j.id.slice(0, 8) })}
                 title="Delete"
+                aria-label={`Delete job ${j.name || j.id.slice(0, 8)}`}
                 className="hover:bg-destructive/10 hover:text-destructive"
               >
                 <Trash2 className="size-3.5" />
@@ -152,7 +282,24 @@ export function CronPanel() {
             </div>
           ))}
         </Card>
+        <p className="mt-2 px-1 text-[10px] text-muted-foreground">
+          Next-run times are shown in your local time zone; cron expressions run in the server&apos;s.
+        </p>
       </PanelFrame>
+
+      <ConfirmModal
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        title="Delete scheduled job?"
+        description={
+          pendingDelete
+            ? `“${pendingDelete.name}” and its prompt will be removed. This can't be undone.`
+            : undefined
+        }
+        confirmLabel="Delete job"
+        busy={deleting}
+        onConfirm={del}
+      />
     </div>
   );
 }

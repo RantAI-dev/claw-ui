@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
-const MEMORY_CATEGORIES = ["core", "daily", "conversation"];
+const MEMORY_CATEGORIES = ["core", "daily"];
 
 export function MemoryPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.memory(100), []);
@@ -21,6 +22,9 @@ export function MemoryPanel() {
   const [category, setCategory] = React.useState("core");
   const [busy, setBusy] = React.useState(false);
   const [working, setWorking] = React.useState<string | null>(null);
+  const [pendingForget, setPendingForget] = React.useState<{ key: string; content: string } | null>(
+    null,
+  );
 
   const add = async () => {
     if (!content.trim()) return;
@@ -37,11 +41,14 @@ export function MemoryPanel() {
     }
   };
 
-  const del = async (key: string) => {
+  const del = async () => {
+    const key = pendingForget?.key;
+    if (!key) return;
     setWorking(key);
     try {
       await api.deleteMemory(key);
       toast.success("Fact forgotten");
+      setPendingForget(null);
       refresh();
     } catch (e) {
       toast.error(`Delete failed: ${e instanceof Error ? e.message : e}`);
@@ -90,31 +97,51 @@ export function MemoryPanel() {
             const w = working === e.key;
             return (
               <Card key={`${e.key}-${idx}`} className="p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-mono text-xs">{e.key}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-snug line-clamp-3">
+                    {e.content}
+                  </p>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <Badge variant="secondary" className="text-[10px]">
                       {e.category}
                     </Badge>
                     <IconButton
-                      onClick={() => del(e.key)}
+                      onClick={() => setPendingForget({ key: e.key, content: e.content })}
                       disabled={w}
                       title="Forget"
+                      aria-label="Forget this memory"
                       className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                     >
                       {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
                     </IconButton>
                   </div>
                 </div>
-                <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">
-                  {e.content}
-                </p>
-                <div className="mt-1 text-[10px] text-muted-foreground">{relativeTime(e.timestamp)}</div>
+                <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span className="truncate font-mono">{e.key}</span>
+                  <span>·</span>
+                  <span className="shrink-0">{relativeTime(e.timestamp)}</span>
+                </div>
               </Card>
             );
           })}
         </div>
       </PanelFrame>
+
+      <ConfirmModal
+        open={!!pendingForget}
+        onClose={() => setPendingForget(null)}
+        title="Forget this memory?"
+        description={
+          pendingForget
+            ? `The agent will no longer recall: “${pendingForget.content.slice(0, 140)}${
+                pendingForget.content.length > 140 ? "…" : ""
+              }”`
+            : undefined
+        }
+        confirmLabel="Forget"
+        busy={!!working}
+        onConfirm={del}
+      />
     </div>
   );
 }

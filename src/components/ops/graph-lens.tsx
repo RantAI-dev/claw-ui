@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Network, X } from "lucide-react";
+import { Network, RefreshCw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsyncGuarded } from "@/hooks/use-async-guarded";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
@@ -41,7 +41,7 @@ function narrowScopeLabel(scope: GraphScope): string | null {
  * knowledge base's graph, or the whole corpus. Renders the canvas, the
  * selected-node detail panel, the entity-type legend, and corpus stat tiles.
  */
-export function GraphLens({ scope }: { scope: GraphScope }) {
+export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?: boolean }) {
   // The concrete scope this lens was opened with — fixed for its lifetime so the
   // toggle can always jump back to "this document"/"this knowledge base".
   const [narrowScope] = React.useState(scope);
@@ -105,31 +105,43 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
 
   return (
     <div className="space-y-4">
-      {narrowLabel && (
-        <Segmented
-          value={toggleValue}
-          onChange={(v) => setActiveScope(v === "all" ? { kind: "all" } : narrowScope)}
-          options={[
-            { value: "narrow", label: narrowLabel },
-            { value: "all", label: "All knowledge bases" },
-          ]}
-        />
-      )}
-
-      {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatTile
-          label="entities"
-          value={formatNumber(totalEntities)}
-          hint={
-            data?.stats?.truncated
-              ? `showing ${formatNumber(nodes.length)} of ${formatNumber(totalEntities)}`
-              : undefined
-          }
-        />
-        <StatTile label="relations" value={formatNumber(totalRelations)} />
-        <StatTile label="entity types" value={formatNumber(typeCounts.length)} />
+      {/* Inside a single-document view the corpus jump is disorienting, so the
+          host can lock the lens to the scope it was opened at. */}
+      <div className="flex items-center justify-between gap-2">
+        {!lockScope && narrowLabel ? (
+          <Segmented
+            value={toggleValue}
+            onChange={(v) => setActiveScope(v === "all" ? { kind: "all" } : narrowScope)}
+            options={[
+              { value: "narrow", label: narrowLabel },
+              { value: "all", label: "All knowledge bases" },
+            ]}
+          />
+        ) : (
+          <div />
+        )}
+        <IconButton onClick={refresh} title="Refresh graph" aria-label="Refresh graph" className="shrink-0">
+          <RefreshCw className="size-4" />
+        </IconButton>
       </div>
+
+      {/* Stats — only once the graph is actually populated, so they don't read
+          "0 / 0 / 0" over the loading, error, disabled, or empty states. */}
+      {graphState === "ready" && !error && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatTile
+            label="entities"
+            value={formatNumber(totalEntities)}
+            hint={
+              data?.stats?.truncated
+                ? `showing ${formatNumber(nodes.length)} of ${formatNumber(totalEntities)}`
+                : undefined
+            }
+          />
+          <StatTile label="relations" value={formatNumber(totalRelations)} />
+          <StatTile label="entity types" value={formatNumber(typeCounts.length)} />
+        </div>
+      )}
 
       <PanelFrame loading={graphState === "loading"} error={error} onRefresh={refresh}>
         {graphState === "disabled" ? (

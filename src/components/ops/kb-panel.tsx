@@ -5,6 +5,7 @@ import {
   Database,
   BookOpen,
   FolderOpen,
+  FolderMinus,
   Plus,
   Pencil,
   Trash2,
@@ -41,7 +42,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
-import { EmptyState, PanelFrame } from "./shared";
+import { EmptyState, PanelFrame, RefreshButton } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { GraphLens } from "./graph-lens";
 import { KnowledgeSettingsCard } from "./knowledge-settings-card";
@@ -186,28 +187,39 @@ function KbList({
             {formatNumber(totalDocs)} document{totalDocs === 1 ? "" : "s"}
           </span>
         </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="size-4" /> New knowledge base
-        </Button>
+        <div className="flex items-center gap-2">
+          <RefreshButton onClick={groups.refresh} />
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="size-4" /> New knowledge base
+          </Button>
+        </div>
       </div>
 
-      <PanelFrame
-        loading={groups.loading}
-        error={groups.error}
-        empty={list.length === 0}
-        onRefresh={groups.refresh}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {list.map((g) => (
-            <KbCard
-              key={g.id}
-              group={g}
-              onOpen={() => onOpen(g)}
-              onEdit={() => openEdit(g)}
-              onDelete={() => setDeleteTarget(g)}
-            />
-          ))}
-        </div>
+      <PanelFrame loading={groups.loading} error={groups.error} onRefresh={groups.refresh}>
+        {list.length === 0 ? (
+          <EmptyState
+            icon={<Database className="size-6" />}
+            title="No knowledge bases yet"
+            hint="A knowledge base is a group of documents the agent can retrieve from."
+            action={
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="size-4" /> New knowledge base
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {list.map((g) => (
+              <KbCard
+                key={g.id}
+                group={g}
+                onOpen={() => onOpen(g)}
+                onEdit={() => openEdit(g)}
+                onDelete={() => setDeleteTarget(g)}
+              />
+            ))}
+          </div>
+        )}
       </PanelFrame>
 
       <KbEditorModal
@@ -251,17 +263,27 @@ function KbCard({
   return (
     <div
       onClick={onOpen}
-      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open knowledge base ${group.name}`}
+      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      {/* Hover actions */}
-      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* Hover / focus actions */}
+      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <button
           onClick={(e) => {
             e.stopPropagation();
             onEdit();
           }}
           title="Edit"
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
+          aria-label={`Edit knowledge base ${group.name}`}
+          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Pencil className="size-3.5" />
         </button>
@@ -271,7 +293,8 @@ function KbCard({
             onDelete();
           }}
           title="Delete"
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer"
+          aria-label={`Delete knowledge base ${group.name}`}
+          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Trash2 className="size-3.5" />
         </button>
@@ -479,6 +502,9 @@ function KbDetail({
   // Per-document delete confirmation target (deletes the document, not just the link).
   const [deleteDoc, setDeleteDoc] = React.useState<KbDocument | null>(null);
   const [deletingDoc, setDeletingDoc] = React.useState(false);
+  // Per-document unlink target (removes from this group only; the document lives on).
+  const [unlinkDoc, setUnlinkDoc] = React.useState<KbDocument | null>(null);
+  const [unlinking, setUnlinking] = React.useState(false);
   // Per-document viewer drawer target + which tab it opens on (Preview/Intelligence).
   const [viewerDoc, setViewerDoc] = React.useState<KbDocument | null>(null);
   const [viewerTab, setViewerTab] = React.useState<"preview" | "intelligence">("preview");
@@ -594,6 +620,25 @@ function KbDetail({
     }
   };
 
+  const confirmUnlinkDoc = async () => {
+    if (!unlinkDoc) return;
+    const target = unlinkDoc;
+    setUnlinking(true);
+    setWorking(target.id);
+    try {
+      await api.kbRemoveDocFromGroup(group.id, target.id);
+      toast.success(`Removed “${target.title || target.id.slice(0, 8)}” from “${group.name}”`);
+      setUnlinkDoc(null);
+      docs.refresh();
+      onChanged();
+    } catch (e) {
+      toast.error(`Remove failed: ${errMsg(e)}`);
+    } finally {
+      setUnlinking(false);
+      setWorking(null);
+    }
+  };
+
   const confirmDelete = async () => {
     setDeleting(true);
     try {
@@ -644,6 +689,7 @@ function KbDetail({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          <RefreshButton onClick={docs.refresh} />
           <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
             <Pencil className="size-3.5" /> Edit
           </Button>
@@ -651,6 +697,7 @@ function KbDetail({
             variant="outline"
             size="icon-sm"
             title="Delete knowledge base"
+            aria-label="Delete knowledge base"
             onClick={() => setDeleteOpen(true)}
             className="text-muted-foreground hover:text-destructive"
           >
@@ -684,6 +731,15 @@ function KbDetail({
       />
       <div
         onClick={() => fileRef.current?.click()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            fileRef.current?.click();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        aria-label="Upload files to this knowledge base"
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);
@@ -695,7 +751,7 @@ function KbDetail({
           void upload(e.dataTransfer.files);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors",
+          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           dragOver
             ? "border-accent bg-accent/5"
             : "border-border bg-muted/30 hover:border-accent/50 hover:bg-muted/50",
@@ -825,6 +881,7 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onDelete={() => setDeleteDoc(d)}
+                onUnlink={() => setUnlinkDoc(d)}
                 onView={() => {
                   setViewerDoc(d);
                   setViewerTab("preview");
@@ -844,6 +901,7 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onDelete={() => setDeleteDoc(d)}
+                onUnlink={() => setUnlinkDoc(d)}
                 onView={() => {
                   setViewerDoc(d);
                   setViewerTab("preview");
@@ -875,6 +933,20 @@ function KbDetail({
         description={`Delete “${group.name}”? Documents stay in the library but are unlinked.`}
         busy={deleting}
         onConfirm={confirmDelete}
+      />
+
+      <ConfirmModal
+        open={!!unlinkDoc}
+        onClose={() => setUnlinkDoc(null)}
+        title="Remove from this knowledge base"
+        description={
+          unlinkDoc
+            ? `Remove “${unlinkDoc.title || unlinkDoc.id.slice(0, 8)}” from “${group.name}”? It stays in the library and in any other knowledge bases it belongs to.`
+            : ""
+        }
+        confirmLabel="Remove"
+        busy={unlinking}
+        onConfirm={confirmUnlinkDoc}
       />
 
       <ConfirmModal
@@ -931,34 +1003,50 @@ function DocsEmpty({
   );
 }
 
-/** The View / Intelligence / Delete icon cluster shared by DocCard and DocRow. */
+/** The View / Intelligence / Remove / Delete icon cluster shared by DocCard and DocRow. */
 function DocActions({
   busy,
   onView,
   onIntel,
+  onUnlink,
   onDelete,
   buttonClassName,
 }: {
   busy: boolean;
   onView: () => void;
   onIntel: () => void;
+  onUnlink: () => void;
   onDelete: () => void;
   buttonClassName?: string;
 }) {
   const btn = (hover: string) =>
-    cn("cursor-pointer rounded-md p-1.5 text-muted-foreground transition-all", buttonClassName, hover);
+    cn(
+      "cursor-pointer rounded-md p-1.5 text-muted-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      buttonClassName,
+      hover,
+    );
   return (
     <>
-      <button onClick={onView} title="View document" className={btn("hover:bg-accent/10 hover:text-accent")}>
+      <button onClick={onView} title="View document" aria-label="View document" className={btn("hover:bg-accent/10 hover:text-accent")}>
         <Eye className="size-3.5" />
       </button>
-      <button onClick={onIntel} title="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
+      <button onClick={onIntel} title="Document intelligence" aria-label="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
         <Sparkles className="size-3.5" />
+      </button>
+      <button
+        onClick={onUnlink}
+        disabled={busy}
+        title="Remove from this knowledge base"
+        aria-label="Remove from this knowledge base"
+        className={btn("hover:bg-secondary hover:text-foreground disabled:opacity-50")}
+      >
+        <FolderMinus className="size-3.5" />
       </button>
       <button
         onClick={onDelete}
         disabled={busy}
-        title="Delete document"
+        title="Delete document from library"
+        aria-label="Delete document from library"
         className={btn("hover:bg-destructive/10 hover:text-destructive disabled:opacity-50")}
       >
         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -971,12 +1059,14 @@ function DocCard({
   doc,
   busy,
   onDelete,
+  onUnlink,
   onView,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onDelete: () => void;
+  onUnlink: () => void;
   onView: () => void;
   onIntel: () => void;
 }) {
@@ -988,11 +1078,12 @@ function DocCard({
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
-      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <DocActions
           busy={busy}
           onView={onView}
           onIntel={onIntel}
+          onUnlink={onUnlink}
           onDelete={onDelete}
           buttonClassName="bg-background/80 shadow-sm backdrop-blur-sm"
         />
@@ -1034,12 +1125,14 @@ function DocRow({
   doc,
   busy,
   onDelete,
+  onUnlink,
   onView,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onDelete: () => void;
+  onUnlink: () => void;
   onView: () => void;
   onIntel: () => void;
 }) {
@@ -1069,8 +1162,9 @@ function DocRow({
         busy={busy}
         onView={onView}
         onIntel={onIntel}
+        onUnlink={onUnlink}
         onDelete={onDelete}
-        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100"
+        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
       />
     </div>
   );

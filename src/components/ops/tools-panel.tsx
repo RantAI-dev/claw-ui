@@ -4,20 +4,13 @@ import * as React from "react";
 import { Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
-import { BUILTIN_TOOLS } from "@/lib/console";
+import { AUTONOMY, BUILTIN_TOOLS, autonomyPreset, levelToRung, rungToAutonomyPayload } from "@/lib/console";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle, StatTile } from "./shared";
-
-const AUTONOMY_LEVELS = [
-  { id: "read_only", label: "Read-only", dot: "var(--accent-purple)", blurb: "Observe only — no actions taken." },
-  { id: "supervised", label: "Supervised", dot: "var(--brand-sky)", blurb: "Acts, but risky operations require approval." },
-  { id: "full", label: "Full", dot: "var(--accent-green)", blurb: "Autonomous execution within policy bounds." },
-];
-const normLevel = (s: string) => s.toLowerCase().replace(/[_\-\s]/g, "");
 
 export function ToolsPanel() {
   const cfg = useAsync(() => api.config(), []);
@@ -35,8 +28,24 @@ export function ToolsPanel() {
   const allowed = arr("allowed_commands");
   const forbidden = arr("forbidden_paths");
 
+  // Map the gateway's real level (+always_ask count) onto the shared 4-rung
+  // ladder so this panel and the chat-shell control speak the same vocabulary.
+  const rung = levelToRung(level, alwaysAsk.length);
+  const preset = autonomyPreset(rung);
+
   const [busy, setBusy] = React.useState(false);
   const [cmd, setCmd] = React.useState("");
+  const [actionsInput, setActionsInput] = React.useState("");
+  const [costInput, setCostInput] = React.useState("");
+
+  // Seed the editable caps from the loaded config (both are mandatory positive
+  // values on the backend — there is no "unlimited").
+  React.useEffect(() => {
+    if (!cfg.data) return;
+    setActionsInput(maxActions != null ? String(maxActions) : "");
+    setCostInput(maxCostCents != null ? String(maxCostCents / 100) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.data]);
 
   const patch = async (body: Parameters<typeof api.setAutonomy>[0], msg?: string) => {
     setBusy(true);
@@ -60,12 +69,31 @@ export function ToolsPanel() {
   const addCmd = () => {
     const c = cmd.trim();
     if (!c) return;
-    if (!allowed.includes(c)) patch({ allowed_commands: [...allowed, c] }, `Allowed “${c}”`);
+    if (allowed.includes(c)) toast.message(`“${c}” is already in the allowlist`);
+    else patch({ allowed_commands: [...allowed, c] }, `Allowed “${c}”`);
     setCmd("");
   };
   const removeCmd = (c: string) => patch({ allowed_commands: allowed.filter((x) => x !== c) });
 
-  const activeLevel = AUTONOMY_LEVELS.find((l) => normLevel(l.id) === normLevel(level));
+  const saveLimits = () => {
+    if (actionsInput.trim() === "" || costInput.trim() === "") {
+      toast.error("Enter both an actions and a cost cap");
+      return;
+    }
+    const a = Math.round(Number(actionsInput));
+    const c = Math.round(Number(costInput) * 100);
+    // The backend rejects a zero action cap (must be > 0); guard here so the
+    // save doesn't fail server-side with a raw error.
+    if (!Number.isFinite(a) || a < 1) {
+      toast.error("Actions / hour must be at least 1");
+      return;
+    }
+    if (!Number.isFinite(c) || c < 0) {
+      toast.error("Cost / day must be 0 or more");
+      return;
+    }
+    patch({ max_actions_per_hour: a, max_cost_per_day_cents: c }, "Rate & cost caps updated");
+  };
 
   return (
     <div className="space-y-5">
@@ -78,42 +106,74 @@ export function ToolsPanel() {
               Autonomy level
             </div>
             <div className="flex flex-wrap gap-2">
-              {AUTONOMY_LEVELS.map((l) => {
-                const on = normLevel(l.id) === normLevel(level);
+              {AUTONOMY.map((p) => {
+                const on = p.id === rung;
                 return (
                   <Button
-                    key={l.id}
+                    key={p.id}
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() => patch({ level: l.id }, `Autonomy level → ${l.label}`)}
-                    style={on ? { borderColor: l.dot, color: l.dot } : undefined}
+                    onClick={() => patch(rungToAutonomyPayload(p.id), `Autonomy → ${p.label}`)}
+                    style={on ? { borderColor: p.dot, color: p.dot } : undefined}
                   >
                     <span
                       className="inline-block size-[7px] rounded-full"
-                      style={{ background: l.dot }}
+                      style={{ background: p.dot }}
                     />
-                    {l.label}
+                    {p.label}
                   </Button>
                 );
               })}
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">{activeLevel?.blurb || ""}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{preset.blurb}</p>
           </div>
 
-          {/* Limits — read-only */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile label="autonomy level" value={activeLevel?.label || level} />
-            <StatTile label="action cap" value={maxActions != null ? `${maxActions} / hr` : "—"} />
+          {/* Flags — read-only */}
+          <div className="grid grid-cols-2 gap-3">
             <StatTile
-              label="cost / day"
-              value={maxCostCents != null ? `$${(maxCostCents / 100).toFixed(2)}` : "—"}
+              label="block high-risk"
+              value={bool("block_high_risk_commands") ? "On" : "Off"}
+              tone={bool("block_high_risk_commands") ? "success" : "warning"}
             />
             <StatTile
               label="workspace only"
               value={bool("workspace_only") ? "On" : "Off"}
               tone={bool("workspace_only") ? "success" : "default"}
             />
+          </div>
+
+          {/* Rate & cost caps — editable */}
+          <div>
+            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Rate &amp; cost caps
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                actions / hour
+                <Input
+                  type="number"
+                  min="1"
+                  value={actionsInput}
+                  onChange={(e) => setActionsInput(e.target.value)}
+                  className="h-8 w-28"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                cost / day ($)
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={costInput}
+                  onChange={(e) => setCostInput(e.target.value)}
+                  className="h-8 w-28"
+                />
+              </label>
+              <Button size="sm" onClick={saveLimits} disabled={busy}>
+                Save caps
+              </Button>
+            </div>
           </div>
 
           {/* Per-tool auto-approve — editable switches */}
@@ -131,15 +191,18 @@ export function ToolsPanel() {
                     <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
                       {ask ? "always prompts (Manual)" : auto ? "runs without asking" : "follows level default"}
                     </span>
-                    <div
+                    <button
+                      type="button"
                       className={"switch" + (auto ? " on" : "")}
-                      onClick={() => !busy && toggleTool(tool)}
+                      onClick={() => toggleTool(tool)}
+                      disabled={busy}
                       role="switch"
                       aria-checked={auto}
+                      aria-label={`Auto-approve ${tool}`}
                       title={auto ? "Auto-approved" : "Requires approval"}
                     >
                       <i />
-                    </div>
+                    </button>
                   </div>
                 );
               })}

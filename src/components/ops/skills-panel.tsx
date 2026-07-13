@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
 
@@ -22,6 +23,7 @@ export function SkillsPanel() {
   const [hubLoading, setHubLoading] = React.useState(false);
   const [hubError, setHubError] = React.useState<string | null>(null);
   const [working, setWorking] = React.useState<string | null>(null);
+  const [pendingUninstall, setPendingUninstall] = React.useState<string | null>(null);
 
   const installedNames = React.useMemo(
     () => new Set((installed.data?.skills || []).map((s) => s.name.toLowerCase())),
@@ -82,11 +84,14 @@ export function SkillsPanel() {
     }
   };
 
-  const uninstall = async (name: string) => {
+  const uninstall = async () => {
+    const name = pendingUninstall;
+    if (!name) return;
     setWorking(name);
     try {
       await api.uninstallSkill(name);
       toast.success(`Removed ${name}`);
+      setPendingUninstall(null);
       installed.refresh();
     } catch (e) {
       toast.error(`Remove failed: ${e instanceof Error ? e.message : e}`);
@@ -132,15 +137,21 @@ export function SkillsPanel() {
                     <div className="ml-auto flex items-center gap-1">
                       <IconButton
                         onClick={() => toggle(s.name, !enabled)}
+                        disabled={busy}
                         title={enabled ? "Disable" : "Enable"}
-                        className={cn(enabled && "text-success hover:bg-success/10 hover:text-success")}
+                        aria-label={enabled ? `Disable ${s.name}` : `Enable ${s.name}`}
+                        className={cn(
+                          "disabled:opacity-50",
+                          enabled && "text-success hover:bg-success/10 hover:text-success",
+                        )}
                       >
                         <Power className="size-3.5" />
                       </IconButton>
                       <IconButton
-                        onClick={() => uninstall(s.name)}
+                        onClick={() => setPendingUninstall(s.name)}
                         disabled={busy}
                         title="Uninstall"
+                        aria-label={`Uninstall ${s.name}`}
                         className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                       >
                         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -177,6 +188,10 @@ export function SkillsPanel() {
           </div>
           {hubError ? (
             <EmptyState tone="destructive" title="ClawHub unavailable" hint={hubError} />
+          ) : hubLoading && !hub ? (
+            <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Searching ClawHub…
+            </div>
           ) : (
             <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {(hub || []).map((s) => {
@@ -230,6 +245,20 @@ export function SkillsPanel() {
           )}
         </div>
       )}
+
+      <ConfirmModal
+        open={!!pendingUninstall}
+        onClose={() => setPendingUninstall(null)}
+        title="Uninstall skill?"
+        description={
+          pendingUninstall
+            ? `“${pendingUninstall}” will be removed from the agent. You can reinstall it from ClawHub later.`
+            : undefined
+        }
+        confirmLabel="Uninstall"
+        busy={working === pendingUninstall}
+        onConfirm={uninstall}
+      />
     </div>
   );
 }

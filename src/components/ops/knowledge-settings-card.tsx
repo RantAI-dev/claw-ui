@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 
 /**
  * Knowledge Base credentials card. Doubles as the "not configured" gate:
@@ -22,6 +23,7 @@ export function KnowledgeSettingsCard() {
   const [embedding, setEmbedding] = React.useState("");
   const [vision, setVision] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  const [confirmClear, setConfirmClear] = React.useState(false);
 
   const configured = status.data?.embedding_configured ?? false;
   const source = status.data?.source ?? "none";
@@ -48,11 +50,11 @@ export function KnowledgeSettingsCard() {
   };
 
   const clear = async () => {
-    if (!window.confirm("Clear the Knowledge Base API keys? Document search will stop working until you re-enter a key.")) return;
     setBusy(true);
     try {
       await api.setKnowledge({ embedding_api_key: "", vision_api_key: "" });
       toast.success("Knowledge Base keys cleared");
+      setConfirmClear(false);
       status.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -61,11 +63,29 @@ export function KnowledgeSettingsCard() {
     }
   };
 
-  if (status.loading || status.error) return null;
+  if (status.loading) return null;
+
+  // Never silently vanish on error — that hides the only place to enter an
+  // embedding key. Surface it with a retry instead.
+  if (status.error) {
+    return (
+      <Card className="flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          <BookOpen className="size-4 text-muted-foreground" />
+          <span className="font-medium">Couldn&apos;t load Knowledge Base settings</span>
+          <span className="truncate text-xs text-muted-foreground">{status.error}</span>
+        </div>
+        <Button size="sm" variant="outline" onClick={status.refresh}>
+          Retry
+        </Button>
+      </Card>
+    );
+  }
 
   if (configured && !editing) {
     const envManaged = source === "env";
     return (
+      <>
       <Card className="flex flex-wrap items-center justify-between gap-3 p-3">
         <div className="flex items-center gap-2 text-sm">
           <BookOpen className="size-4 text-muted-foreground" />
@@ -80,10 +100,20 @@ export function KnowledgeSettingsCard() {
         ) : (
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit key</Button>
-            <Button size="sm" variant="ghost" onClick={clear} disabled={busy}>Clear</Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirmClear(true)} disabled={busy}>Clear</Button>
           </div>
         )}
       </Card>
+      <ConfirmModal
+        open={confirmClear}
+        onClose={() => setConfirmClear(false)}
+        title="Clear Knowledge Base keys?"
+        description="Document search will stop working until you re-enter an embedding key."
+        confirmLabel="Clear keys"
+        busy={busy}
+        onConfirm={clear}
+      />
+      </>
     );
   }
 

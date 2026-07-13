@@ -8,7 +8,6 @@ import { useAsync } from "@/hooks/use-async";
 import { formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Drawer } from "@/components/ui/drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "./shared";
@@ -37,8 +36,8 @@ function EntityTypeBadge({ type }: { type: string }) {
 /**
  * The intelligence content (re-extract + entities/relations/graph) for a single
  * document, decoupled from any drawer chrome so it can be hosted inside a tab
- * (DocViewerDrawer) as well as inside the standalone DocIntelligenceDrawer.
- * Renders its own re-extract button at the top-right of the content area.
+ * (DocViewerDrawer). Renders its own re-extract button at the top-right of the
+ * content area.
  */
 export function DocIntelligenceBody({ documentId }: { documentId: string }) {
   const intel = useAsync(() => api.kbDocumentIntelligence(documentId), [documentId]);
@@ -152,33 +151,10 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           </TabsContent>
 
           <TabsContent value="graph">
-            <GraphLens scope={{ kind: "document", documentId }} />
+            <GraphLens scope={{ kind: "document", documentId }} lockScope />
           </TabsContent>
         </Tabs>
       )}
     </div>
-  );
-}
-
-export function DocIntelligenceDrawer({
-  documentId,
-  documentTitle,
-  onClose,
-}: {
-  documentId: string;
-  documentTitle: string;
-  onClose: () => void;
-}) {
-  return (
-    <Drawer
-      eyebrow="Document intelligence"
-      title={documentTitle}
-      icon={<Sparkles className="size-4" />}
-      onClose={onClose}
-    >
-      <div className="min-h-0 flex-1 overflow-auto p-4 scrollbar-thin">
-        <DocIntelligenceBody documentId={documentId} />
-      </div>
-    </Drawer>
   );
 }

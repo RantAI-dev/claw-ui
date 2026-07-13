@@ -56,7 +56,7 @@ export function PersonaPanel() {
     setSavingKbs(true);
     try {
       await api.setPersonality({ preset: data?.preset || preset || undefined, always_on_kbs: next });
-      toast.success("Always-on knowledge bases updated");
+      toast.success("Always-on knowledge bases updated", { id: "persona-always-on" });
       refresh();
     } catch (e) {
       // Roll back the optimistic toggle on failure.
@@ -72,7 +72,7 @@ export function PersonaPanel() {
       <SectionTitle action={<RefreshButton onClick={() => { refresh(); groups.refresh(); }} />}>
         Personality
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} onRefresh={refresh}>
+      <PanelFrame loading={loading} error={error} empty={!loading && !error && !data} onRefresh={refresh}>
         {data && (
           <Card className="p-4">
             <KeyVal k="Profile" v={data.profile} />
@@ -112,7 +112,8 @@ export function PersonaPanel() {
                 Always-on knowledge bases
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Selected bases are searched on every conversation for this persona.
+                Selected bases are searched on every conversation for this persona. Create or edit
+                the bases themselves in the Knowledge Bases tab.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(groups.data || []).length === 0 ? (

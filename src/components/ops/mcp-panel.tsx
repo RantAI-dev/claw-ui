@@ -8,8 +8,22 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
+
+/** Split a command-line arg string into tokens, honoring single/double quotes so
+ *  a path with spaces (e.g. --path "/a b") survives as one arg. Whitespace-split
+ *  alone silently mangled those. */
+function parseArgs(input: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input)) !== null) {
+    out.push(m[1] ?? m[2] ?? m[3]);
+  }
+  return out;
+}
 
 export function McpPanel() {
   const cfg = useAsync(() => api.config(), []);
@@ -23,6 +37,7 @@ export function McpPanel() {
   const [args, setArgs] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [working, setWorking] = React.useState<string | null>(null);
+  const [pendingRemove, setPendingRemove] = React.useState<string | null>(null);
 
   const add = async () => {
     if (!name.trim() || !command.trim()) return;
@@ -30,7 +45,7 @@ export function McpPanel() {
     try {
       await api.addMcpServer(name.trim(), {
         command: command.trim(),
-        args: args.trim() ? args.trim().split(/\s+/) : [],
+        args: parseArgs(args),
       });
       toast.success(`Added MCP server “${name.trim()}” · applies on daemon restart`);
       setName("");
@@ -44,11 +59,14 @@ export function McpPanel() {
     }
   };
 
-  const remove = async (n: string) => {
+  const remove = async () => {
+    const n = pendingRemove;
+    if (!n) return;
     setWorking(n);
     try {
       await api.deleteMcpServer(n);
       toast.success(`Removed “${n}” · applies on daemon restart`);
+      setPendingRemove(null);
       cfg.refresh();
     } catch (e) {
       toast.error(`Remove failed: ${e instanceof Error ? e.message : e}`);
@@ -60,7 +78,8 @@ export function McpPanel() {
   return (
     <div className="space-y-4">
       <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>
-        Configured servers <span className="text-muted-foreground">· {servers.length}</span>
+        Configured servers{" "}
+        {cfg.data && <span className="text-muted-foreground">· {servers.length}</span>}
       </SectionTitle>
 
       <Card className="space-y-2 p-3">
@@ -83,7 +102,7 @@ export function McpPanel() {
           <Input
             value={args}
             onChange={(e) => setArgs(e.target.value)}
-            placeholder="args (space-separated, e.g. -y @modelcontextprotocol/server-github)"
+            placeholder={'args, space-separated; quote values with spaces (e.g. -y @scope/pkg --path "/a b")'}
             className="h-8 min-w-[200px] flex-1 font-mono text-xs"
           />
           <Button size="sm" onClick={add} disabled={busy || !name.trim() || !command.trim()}>
@@ -120,9 +139,10 @@ export function McpPanel() {
                     </div>
                   </div>
                   <IconButton
-                    onClick={() => remove(n)}
+                    onClick={() => setPendingRemove(n)}
                     disabled={w}
                     title="Remove"
+                    aria-label={`Remove MCP server ${n}`}
                     className="shrink-0 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                   >
                     {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -133,6 +153,20 @@ export function McpPanel() {
           </Card>
         )}
       </PanelFrame>
+
+      <ConfirmModal
+        open={!!pendingRemove}
+        onClose={() => setPendingRemove(null)}
+        title="Remove MCP server?"
+        description={
+          pendingRemove
+            ? `“${pendingRemove}” will be removed from the config; the runtime drops it on the next daemon restart.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        busy={!!working}
+        onConfirm={remove}
+      />
     </div>
   );
 }
