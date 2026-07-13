@@ -55,4 +55,25 @@ describe("streamChat", () => {
     expect(events.some((e) => e.type === "error")).toBe(true);
     expect(events.at(-1)?.type).toBe("done");
   });
+
+  it("keeps a real error frame and does not clobber it when the stream closes without a done", async () => {
+    // The gateway emitted a specific error, then dropped the socket (no `done`).
+    stubFetch([frame({ type: "error", message: "provider rate limited" })]);
+    const events = await collect();
+    const errors = events.filter((e) => e.type === "error") as Extract<ChatEvent, { type: "error" }>[];
+    expect(errors.some((e) => e.message === "provider rate limited")).toBe(true);
+    // The synthetic "ended before completing" fallback must NOT overwrite it.
+    expect(errors.some((e) => e.message.includes("ended before completing"))).toBe(false);
+    expect(events.at(-1)?.type).toBe("done");
+  });
+
+  it("rejects when the request fails before the stream starts", async () => {
+    // Stop-before-first-byte / network failure: the fetch throws outside
+    // streamChat's try block, so the promise must reject — the contract
+    // runAssistant's try/finally relies on to clean up the UI.
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("network down");
+    });
+    await expect(streamChat({ message: "hi" }, () => {}, undefined)).rejects.toThrow("network down");
+  });
 });
