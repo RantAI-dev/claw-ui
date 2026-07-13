@@ -12,6 +12,19 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
+/** Split a command-line arg string into tokens, honoring single/double quotes so
+ *  a path with spaces (e.g. --path "/a b") survives as one arg. Whitespace-split
+ *  alone silently mangled those. */
+function parseArgs(input: string): string[] {
+  const out: string[] = [];
+  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input)) !== null) {
+    out.push(m[1] ?? m[2] ?? m[3]);
+  }
+  return out;
+}
+
 export function McpPanel() {
   const cfg = useAsync(() => api.config(), []);
   const servers = React.useMemo(() => {
@@ -32,7 +45,7 @@ export function McpPanel() {
     try {
       await api.addMcpServer(name.trim(), {
         command: command.trim(),
-        args: args.trim() ? args.trim().split(/\s+/) : [],
+        args: parseArgs(args),
       });
       toast.success(`Added MCP server “${name.trim()}” · applies on daemon restart`);
       setName("");
@@ -89,7 +102,7 @@ export function McpPanel() {
           <Input
             value={args}
             onChange={(e) => setArgs(e.target.value)}
-            placeholder="args (space-separated, e.g. -y @modelcontextprotocol/server-github)"
+            placeholder={'args, space-separated; quote values with spaces (e.g. -y @scope/pkg --path "/a b")'}
             className="h-8 min-w-[200px] flex-1 font-mono text-xs"
           />
           <Button size="sm" onClick={add} disabled={busy || !name.trim() || !command.trim()}>
