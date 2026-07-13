@@ -246,7 +246,9 @@ export function ChatPane(props: ChatPaneProps) {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Ignore Enter while an IME composition is active (CJK etc.) — otherwise
+    // confirming a candidate would send a half-composed message.
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
     }
@@ -341,6 +343,7 @@ export function ChatPane(props: ChatPaneProps) {
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
+              aria-label={`Message ${agentName}`}
               placeholder={`Message ${agentName}…  (⏎ to send, ⇧⏎ for newline)`}
             />
             <input
@@ -369,6 +372,7 @@ export function ChatPane(props: ChatPaneProps) {
               <button
                 type="button"
                 className="cchip"
+                aria-label="Attach a document"
                 title={
                   attachments.length >= MAX_FILES
                     ? `Max ${MAX_FILES} attachments`
@@ -382,6 +386,7 @@ export function ChatPane(props: ChatPaneProps) {
               <button
                 type="button"
                 className="cchip"
+                aria-label="Attach an image"
                 title={
                   attachments.length >= MAX_FILES
                     ? `Max ${MAX_FILES} attachments`
@@ -398,6 +403,9 @@ export function ChatPane(props: ChatPaneProps) {
                 <button
                   type="button"
                   className={"cchip" + (activeKbCount > 0 ? " input" : "")}
+                  aria-label="Knowledge bases for this chat"
+                  aria-haspopup="menu"
+                  aria-expanded={kbOpen}
                   title="Knowledge bases for this chat"
                   onClick={() => setKbOpen((o) => !o)}
                   style={activeKbCount > 0 ? { color: "var(--brand-sky)", borderColor: "var(--brand-sky)" } : undefined}

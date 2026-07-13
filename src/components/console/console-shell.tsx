@@ -249,6 +249,17 @@ export function ConsoleShell({
     const order = AUTONOMY.map((p) => p.id);
     const onKey = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key === "Tab") {
+        // Shift+Tab is the universal "focus previous" key — do NOT hijack it while
+        // the user is typing or a dialog is open (that would break reverse-tab and
+        // could flip autonomy by accident). Only cycle from a non-editable context.
+        const el = document.activeElement as HTMLElement | null;
+        const editable =
+          !!el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            el.tagName === "SELECT" ||
+            el.isContentEditable);
+        if (editable || document.querySelector('[role="dialog"]')) return;
         e.preventDefault();
         const next = order[(order.indexOf(autonomyRef.current) + 1) % order.length];
         changeAutonomy(next);
@@ -420,14 +431,28 @@ export function ConsoleShell({
                       <div
                         key={s.id}
                         className={"sess-item" + (s.id === activeId ? " active" : "")}
+                        role="button"
+                        tabIndex={0}
                         onClick={() => handleSelect(s.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            handleSelect(s.id);
+                          }
+                        }}
                       >
                         <div className="sess-row">
                           <span className="chan-dot" style={{ background: channelDot(s.model || "") }} />
                           <span className="sess-title">{s.title || "Untitled session"}</span>
-                          <span className="sess-x" onClick={(e) => handleDelete(s.id, e)} title="Delete">
+                          <button
+                            type="button"
+                            className="sess-x"
+                            onClick={(e) => handleDelete(s.id, e)}
+                            aria-label={`Delete session: ${s.title || "Untitled session"}`}
+                            title="Delete"
+                          >
                             <X className="size-[13px]" />
-                          </span>
+                          </button>
                         </div>
                         <div className="sess-meta">
                           <span>{s.message_count} msgs</span>

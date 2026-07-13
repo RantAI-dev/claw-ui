@@ -113,6 +113,7 @@ function BotTurn({
           {m.error && (
             <div
               className="appr-reason"
+              role="alert"
               style={{
                 display: "flex",
                 gap: 8,
@@ -145,7 +146,7 @@ function BotTurn({
 
           {m.sources && m.sources.length > 0 && !m.streaming && (
             <div className="src-chips">
-              <span className="src-label">Sumber:</span>
+              <span className="src-label">Sources:</span>
               {m.sources.map((s, i) => (
                 <span className="src-chip" key={`${s}-${i}`} title={s}>
                   <FileText />
@@ -236,7 +237,7 @@ export function Transcript({
       )}
       {thinking && (
         <div className="turn fade-up">
-          <div className="msg-bot">
+          <div className="msg-bot" role="status" aria-live="polite">
             <div className="bot-ava">{agentInitials}</div>
             <div className="bot-body" style={{ paddingTop: 4 }}>
               <div className="think-body" style={{ paddingTop: 0, display: "flex", alignItems: "center", gap: 9 }}>
