@@ -65,7 +65,8 @@ export function McpPanel() {
   return (
     <div className="space-y-4">
       <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>
-        Configured servers <span className="text-muted-foreground">· {servers.length}</span>
+        Configured servers{" "}
+        {cfg.data && <span className="text-muted-foreground">· {servers.length}</span>}
       </SectionTitle>
 
       <Card className="space-y-2 p-3">

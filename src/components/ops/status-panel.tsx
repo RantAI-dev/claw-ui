@@ -38,10 +38,15 @@ export function StatusPanel() {
 
       <div>
         <SectionTitle>Doctor checks</SectionTitle>
-        <PanelFrame loading={doctor.loading} error={doctor.error} onRefresh={doctor.refresh}>
+        <PanelFrame
+          loading={doctor.loading}
+          error={doctor.error}
+          empty={doctor.data?.results.length === 0}
+          onRefresh={doctor.refresh}
+        >
           <div className="space-y-1.5">
-            {doctor.data?.results.map((r, i) => (
-              <Card key={i} className="flex items-start gap-3 p-3">
+            {doctor.data?.results.map((r) => (
+              <Card key={`${r.category}-${r.name}`} className="flex items-start gap-3 p-3">
                 <SeverityBadge severity={r.severity} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">

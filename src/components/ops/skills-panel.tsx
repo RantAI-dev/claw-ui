@@ -137,8 +137,13 @@ export function SkillsPanel() {
                     <div className="ml-auto flex items-center gap-1">
                       <IconButton
                         onClick={() => toggle(s.name, !enabled)}
+                        disabled={busy}
                         title={enabled ? "Disable" : "Enable"}
-                        className={cn(enabled && "text-success hover:bg-success/10 hover:text-success")}
+                        aria-label={enabled ? `Disable ${s.name}` : `Enable ${s.name}`}
+                        className={cn(
+                          "disabled:opacity-50",
+                          enabled && "text-success hover:bg-success/10 hover:text-success",
+                        )}
                       >
                         <Power className="size-3.5" />
                       </IconButton>
@@ -183,6 +188,10 @@ export function SkillsPanel() {
           </div>
           {hubError ? (
             <EmptyState tone="destructive" title="ClawHub unavailable" hint={hubError} />
+          ) : hubLoading && !hub ? (
+            <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" /> Searching ClawHub…
+            </div>
           ) : (
             <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {(hub || []).map((s) => {
