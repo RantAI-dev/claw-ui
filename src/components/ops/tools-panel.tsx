@@ -35,6 +35,17 @@ export function ToolsPanel() {
 
   const [busy, setBusy] = React.useState(false);
   const [cmd, setCmd] = React.useState("");
+  const [actionsInput, setActionsInput] = React.useState("");
+  const [costInput, setCostInput] = React.useState("");
+
+  // Seed the editable caps from the loaded config (both are mandatory positive
+  // values on the backend — there is no "unlimited").
+  React.useEffect(() => {
+    if (!cfg.data) return;
+    setActionsInput(maxActions != null ? String(maxActions) : "");
+    setCostInput(maxCostCents != null ? String(maxCostCents / 100) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg.data]);
 
   const patch = async (body: Parameters<typeof api.setAutonomy>[0], msg?: string) => {
     setBusy(true);
@@ -63,6 +74,26 @@ export function ToolsPanel() {
     setCmd("");
   };
   const removeCmd = (c: string) => patch({ allowed_commands: allowed.filter((x) => x !== c) });
+
+  const saveLimits = () => {
+    if (actionsInput.trim() === "" || costInput.trim() === "") {
+      toast.error("Enter both an actions and a cost cap");
+      return;
+    }
+    const a = Math.round(Number(actionsInput));
+    const c = Math.round(Number(costInput) * 100);
+    // The backend rejects a zero action cap (must be > 0); guard here so the
+    // save doesn't fail server-side with a raw error.
+    if (!Number.isFinite(a) || a < 1) {
+      toast.error("Actions / hour must be at least 1");
+      return;
+    }
+    if (!Number.isFinite(c) || c < 0) {
+      toast.error("Cost / day must be 0 or more");
+      return;
+    }
+    patch({ max_actions_per_hour: a, max_cost_per_day_cents: c }, "Rate & cost caps updated");
+  };
 
   return (
     <div className="space-y-5">
@@ -98,23 +129,51 @@ export function ToolsPanel() {
             <p className="mt-2 text-xs text-muted-foreground">{preset.blurb}</p>
           </div>
 
-          {/* Limits — read-only */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {/* Flags — read-only */}
+          <div className="grid grid-cols-2 gap-3">
             <StatTile
               label="block high-risk"
               value={bool("block_high_risk_commands") ? "On" : "Off"}
               tone={bool("block_high_risk_commands") ? "success" : "warning"}
-            />
-            <StatTile label="action cap" value={maxActions != null ? `${maxActions} / hr` : "—"} />
-            <StatTile
-              label="cost / day"
-              value={maxCostCents != null ? `$${(maxCostCents / 100).toFixed(2)}` : "—"}
             />
             <StatTile
               label="workspace only"
               value={bool("workspace_only") ? "On" : "Off"}
               tone={bool("workspace_only") ? "success" : "default"}
             />
+          </div>
+
+          {/* Rate & cost caps — editable */}
+          <div>
+            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Rate &amp; cost caps
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                actions / hour
+                <Input
+                  type="number"
+                  min="1"
+                  value={actionsInput}
+                  onChange={(e) => setActionsInput(e.target.value)}
+                  className="h-8 w-28"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                cost / day ($)
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={costInput}
+                  onChange={(e) => setCostInput(e.target.value)}
+                  className="h-8 w-28"
+                />
+              </label>
+              <Button size="sm" onClick={saveLimits} disabled={busy}>
+                Save caps
+              </Button>
+            </div>
           </div>
 
           {/* Per-tool auto-approve — editable switches */}
