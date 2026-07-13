@@ -14,7 +14,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
-const MEMORY_CATEGORIES = ["core", "daily", "conversation"];
+const MEMORY_CATEGORIES = ["core", "daily"];
 
 export function MemoryPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.memory(100), []);
@@ -97,8 +97,10 @@ export function MemoryPanel() {
             const w = working === e.key;
             return (
               <Card key={`${e.key}-${idx}`} className="p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-mono text-xs">{e.key}</span>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-snug line-clamp-3">
+                    {e.content}
+                  </p>
                   <div className="flex shrink-0 items-center gap-1.5">
                     <Badge variant="secondary" className="text-[10px]">
                       {e.category}
@@ -114,10 +116,11 @@ export function MemoryPanel() {
                     </IconButton>
                   </div>
                 </div>
-                <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">
-                  {e.content}
-                </p>
-                <div className="mt-1 text-[10px] text-muted-foreground">{relativeTime(e.timestamp)}</div>
+                <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span className="truncate font-mono">{e.key}</span>
+                  <span>·</span>
+                  <span className="shrink-0">{relativeTime(e.timestamp)}</span>
+                </div>
               </Card>
             );
           })}
