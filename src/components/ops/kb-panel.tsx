@@ -41,7 +41,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
-import { EmptyState, PanelFrame } from "./shared";
+import { EmptyState, PanelFrame, RefreshButton } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { GraphLens } from "./graph-lens";
 import { KnowledgeSettingsCard } from "./knowledge-settings-card";
@@ -186,28 +186,39 @@ function KbList({
             {formatNumber(totalDocs)} document{totalDocs === 1 ? "" : "s"}
           </span>
         </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="size-4" /> New knowledge base
-        </Button>
+        <div className="flex items-center gap-2">
+          <RefreshButton onClick={groups.refresh} />
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="size-4" /> New knowledge base
+          </Button>
+        </div>
       </div>
 
-      <PanelFrame
-        loading={groups.loading}
-        error={groups.error}
-        empty={list.length === 0}
-        onRefresh={groups.refresh}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {list.map((g) => (
-            <KbCard
-              key={g.id}
-              group={g}
-              onOpen={() => onOpen(g)}
-              onEdit={() => openEdit(g)}
-              onDelete={() => setDeleteTarget(g)}
-            />
-          ))}
-        </div>
+      <PanelFrame loading={groups.loading} error={groups.error} onRefresh={groups.refresh}>
+        {list.length === 0 ? (
+          <EmptyState
+            icon={<Database className="size-6" />}
+            title="No knowledge bases yet"
+            hint="A knowledge base is a group of documents the agent can retrieve from."
+            action={
+              <Button size="sm" onClick={openCreate}>
+                <Plus className="size-4" /> New knowledge base
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {list.map((g) => (
+              <KbCard
+                key={g.id}
+                group={g}
+                onOpen={() => onOpen(g)}
+                onEdit={() => openEdit(g)}
+                onDelete={() => setDeleteTarget(g)}
+              />
+            ))}
+          </div>
+        )}
       </PanelFrame>
 
       <KbEditorModal

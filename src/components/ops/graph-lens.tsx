@@ -116,20 +116,23 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
         />
       )}
 
-      {/* Stats */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatTile
-          label="entities"
-          value={formatNumber(totalEntities)}
-          hint={
-            data?.stats?.truncated
-              ? `showing ${formatNumber(nodes.length)} of ${formatNumber(totalEntities)}`
-              : undefined
-          }
-        />
-        <StatTile label="relations" value={formatNumber(totalRelations)} />
-        <StatTile label="entity types" value={formatNumber(typeCounts.length)} />
-      </div>
+      {/* Stats — only once the graph is actually populated, so they don't read
+          "0 / 0 / 0" over the loading, error, disabled, or empty states. */}
+      {graphState === "ready" && !error && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <StatTile
+            label="entities"
+            value={formatNumber(totalEntities)}
+            hint={
+              data?.stats?.truncated
+                ? `showing ${formatNumber(nodes.length)} of ${formatNumber(totalEntities)}`
+                : undefined
+            }
+          />
+          <StatTile label="relations" value={formatNumber(totalRelations)} />
+          <StatTile label="entity types" value={formatNumber(typeCounts.length)} />
+        </div>
+      )}
 
       <PanelFrame loading={graphState === "loading"} error={error} onRefresh={refresh}>
         {graphState === "disabled" ? (
