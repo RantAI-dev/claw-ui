@@ -164,7 +164,10 @@ export function CronPanel() {
       <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
         <Card className="divide-y divide-border">
           {data?.jobs.map((j) => (
-            <div key={j.id} className="flex items-center gap-1.5 px-3 py-2.5">
+            <div
+              key={j.id}
+              className={cn("flex items-center gap-1.5 px-3 py-2.5", !j.enabled && "opacity-60")}
+            >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium">{j.name || j.id.slice(0, 8)}</span>
@@ -179,11 +182,12 @@ export function CronPanel() {
               <IconButton
                 onClick={() => toggle(j.id, !j.enabled)}
                 title={j.enabled ? "Disable" : "Enable"}
+                aria-label={j.enabled ? "Disable job" : "Enable job"}
                 className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
               >
                 <Power className="size-3.5" />
               </IconButton>
-              <IconButton onClick={() => run(j.id)} title="Run now">
+              <IconButton onClick={() => run(j.id)} title="Run now" aria-label="Run job now">
                 <Play className="size-3.5" />
               </IconButton>
               <IconButton

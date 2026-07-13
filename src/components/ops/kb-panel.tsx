@@ -666,6 +666,7 @@ function KbDetail({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          <RefreshButton onClick={docs.refresh} />
           <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
             <Pencil className="size-3.5" /> Edit
           </Button>
@@ -673,6 +674,7 @@ function KbDetail({
             variant="outline"
             size="icon-sm"
             title="Delete knowledge base"
+            aria-label="Delete knowledge base"
             onClick={() => setDeleteOpen(true)}
             className="text-muted-foreground hover:text-destructive"
           >

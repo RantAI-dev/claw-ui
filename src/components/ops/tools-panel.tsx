@@ -58,7 +58,8 @@ export function ToolsPanel() {
   const addCmd = () => {
     const c = cmd.trim();
     if (!c) return;
-    if (!allowed.includes(c)) patch({ allowed_commands: [...allowed, c] }, `Allowed “${c}”`);
+    if (allowed.includes(c)) toast.message(`“${c}” is already in the allowlist`);
+    else patch({ allowed_commands: [...allowed, c] }, `Allowed “${c}”`);
     setCmd("");
   };
   const removeCmd = (c: string) => patch({ allowed_commands: allowed.filter((x) => x !== c) });

@@ -112,7 +112,8 @@ export function PersonaPanel() {
                 Always-on knowledge bases
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Selected bases are searched on every conversation for this persona.
+                Selected bases are searched on every conversation for this persona. Create or edit
+                the bases themselves in the Knowledge Bases tab.
               </p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(groups.data || []).length === 0 ? (

@@ -189,10 +189,11 @@ function TelegramCard({
       <CardContent className="space-y-2">
         {connected ? (
           <>
-            <label className="text-xs text-muted-foreground">
+            <label htmlFor="tg-allowlist" className="text-xs text-muted-foreground">
               Allowed user ids / usernames (comma-separated)
             </label>
             <Input
+              id="tg-allowlist"
               placeholder="Leave empty to deny all senders"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
@@ -221,12 +222,14 @@ function TelegramCard({
             <Input
               type="password"
               placeholder="Bot token (from @BotFather)"
+              aria-label="Telegram bot token"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               autoComplete="off"
             />
             <Input
               placeholder="Allowed user ids / usernames (comma-separated)"
+              aria-label="Allowed user ids / usernames (comma-separated)"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />
@@ -258,7 +261,7 @@ function TelegramCard({
 
 function UnderDevelopmentChannel({ label, active }: { label: string; active: boolean }) {
   return (
-    <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3">
+    <Card className="rounded-lg border-dashed bg-muted/30 p-3 shadow-none">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
         {active && (
@@ -270,6 +273,6 @@ function UnderDevelopmentChannel({ label, active }: { label: string; active: boo
       <div className="mt-1 text-[11px] text-muted-foreground">
         {active ? "Running · manage via TUI" : "Under development"}
       </div>
-    </div>
+    </Card>
   );
 }
