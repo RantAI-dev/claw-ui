@@ -41,7 +41,7 @@ function narrowScopeLabel(scope: GraphScope): string | null {
  * knowledge base's graph, or the whole corpus. Renders the canvas, the
  * selected-node detail panel, the entity-type legend, and corpus stat tiles.
  */
-export function GraphLens({ scope }: { scope: GraphScope }) {
+export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?: boolean }) {
   // The concrete scope this lens was opened with — fixed for its lifetime so the
   // toggle can always jump back to "this document"/"this knowledge base".
   const [narrowScope] = React.useState(scope);
@@ -105,7 +105,9 @@ export function GraphLens({ scope }: { scope: GraphScope }) {
 
   return (
     <div className="space-y-4">
-      {narrowLabel && (
+      {/* Inside a single-document view the corpus jump is disorienting, so the
+          host can lock the lens to the scope it was opened at. */}
+      {!lockScope && narrowLabel && (
         <Segmented
           value={toggleValue}
           onChange={(v) => setActiveScope(v === "all" ? { kind: "all" } : narrowScope)}

@@ -151,7 +151,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           </TabsContent>
 
           <TabsContent value="graph">
-            <GraphLens scope={{ kind: "document", documentId }} />
+            <GraphLens scope={{ kind: "document", documentId }} lockScope />
           </TabsContent>
         </Tabs>
       )}
