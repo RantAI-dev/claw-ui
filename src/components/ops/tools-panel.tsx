@@ -4,20 +4,13 @@ import * as React from "react";
 import { Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
-import { BUILTIN_TOOLS } from "@/lib/console";
+import { AUTONOMY, BUILTIN_TOOLS, autonomyPreset, levelToRung, rungToAutonomyPayload } from "@/lib/console";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle, StatTile } from "./shared";
-
-const AUTONOMY_LEVELS = [
-  { id: "read_only", label: "Read-only", dot: "var(--accent-purple)", blurb: "Observe only — no actions taken." },
-  { id: "supervised", label: "Supervised", dot: "var(--brand-sky)", blurb: "Acts, but risky operations require approval." },
-  { id: "full", label: "Full", dot: "var(--accent-green)", blurb: "Autonomous execution within policy bounds." },
-];
-const normLevel = (s: string) => s.toLowerCase().replace(/[_\-\s]/g, "");
 
 export function ToolsPanel() {
   const cfg = useAsync(() => api.config(), []);
@@ -34,6 +27,11 @@ export function ToolsPanel() {
   const alwaysAsk = arr("always_ask");
   const allowed = arr("allowed_commands");
   const forbidden = arr("forbidden_paths");
+
+  // Map the gateway's real level (+always_ask count) onto the shared 4-rung
+  // ladder so this panel and the chat-shell control speak the same vocabulary.
+  const rung = levelToRung(level, alwaysAsk.length);
+  const preset = autonomyPreset(rung);
 
   const [busy, setBusy] = React.useState(false);
   const [cmd, setCmd] = React.useState("");
@@ -65,8 +63,6 @@ export function ToolsPanel() {
   };
   const removeCmd = (c: string) => patch({ allowed_commands: allowed.filter((x) => x !== c) });
 
-  const activeLevel = AUTONOMY_LEVELS.find((l) => normLevel(l.id) === normLevel(level));
-
   return (
     <div className="space-y-5">
       <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>Policy</SectionTitle>
@@ -78,32 +74,36 @@ export function ToolsPanel() {
               Autonomy level
             </div>
             <div className="flex flex-wrap gap-2">
-              {AUTONOMY_LEVELS.map((l) => {
-                const on = normLevel(l.id) === normLevel(level);
+              {AUTONOMY.map((p) => {
+                const on = p.id === rung;
                 return (
                   <Button
-                    key={l.id}
+                    key={p.id}
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() => patch({ level: l.id }, `Autonomy level → ${l.label}`)}
-                    style={on ? { borderColor: l.dot, color: l.dot } : undefined}
+                    onClick={() => patch(rungToAutonomyPayload(p.id), `Autonomy → ${p.label}`)}
+                    style={on ? { borderColor: p.dot, color: p.dot } : undefined}
                   >
                     <span
                       className="inline-block size-[7px] rounded-full"
-                      style={{ background: l.dot }}
+                      style={{ background: p.dot }}
                     />
-                    {l.label}
+                    {p.label}
                   </Button>
                 );
               })}
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">{activeLevel?.blurb || ""}</p>
+            <p className="mt-2 text-xs text-muted-foreground">{preset.blurb}</p>
           </div>
 
           {/* Limits — read-only */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <StatTile label="autonomy level" value={activeLevel?.label || level} />
+            <StatTile
+              label="block high-risk"
+              value={bool("block_high_risk_commands") ? "On" : "Off"}
+              tone={bool("block_high_risk_commands") ? "success" : "warning"}
+            />
             <StatTile label="action cap" value={maxActions != null ? `${maxActions} / hr` : "—"} />
             <StatTile
               label="cost / day"
@@ -131,15 +131,18 @@ export function ToolsPanel() {
                     <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
                       {ask ? "always prompts (Manual)" : auto ? "runs without asking" : "follows level default"}
                     </span>
-                    <div
+                    <button
+                      type="button"
                       className={"switch" + (auto ? " on" : "")}
-                      onClick={() => !busy && toggleTool(tool)}
+                      onClick={() => toggleTool(tool)}
+                      disabled={busy}
                       role="switch"
                       aria-checked={auto}
+                      aria-label={`Auto-approve ${tool}`}
                       title={auto ? "Auto-approved" : "Requires approval"}
                     >
                       <i />
-                    </div>
+                    </button>
                   </div>
                 );
               })}
