@@ -239,6 +239,9 @@ export function ChatPane(props: ChatPaneProps) {
       setText("");
       if (taRef.current) taRef.current.style.height = "auto";
     }
+    // Return focus to the composer: the Send button disables itself the instant
+    // the text clears, which would otherwise blur it and strand keyboard focus.
+    taRef.current?.focus();
     // Keep ready attachments visible as a persistent indicator — they stay in
     // the KB for this whole conversation and are re-retrieved every turn. Drop
     // only failed/in-flight chips. (Cleared on a new chat via the conversationId key.)
@@ -464,15 +467,25 @@ export function ChatPane(props: ChatPaneProps) {
                 className="min-w-[7rem]"
               />
 
-              {isStreaming ? (
-                <button className="send-btn stop" onClick={onStop}>
-                  Stop <Square />
-                </button>
-              ) : (
-                <button className="send-btn" onClick={() => submit()} disabled={!text.trim()}>
-                  Send <ArrowUp />
-                </button>
-              )}
+              {/* One stable button that toggles Send⇄Stop — swapping two separate
+                  elements dropped keyboard focus on the transition. */}
+              <button
+                type="button"
+                className={"send-btn" + (isStreaming ? " stop" : "")}
+                onClick={isStreaming ? onStop : () => submit()}
+                disabled={!isStreaming && !text.trim()}
+                aria-label={isStreaming ? "Stop generating" : "Send message"}
+              >
+                {isStreaming ? (
+                  <>
+                    Stop <Square />
+                  </>
+                ) : (
+                  <>
+                    Send <ArrowUp />
+                  </>
+                )}
+              </button>
             </div>
           </div>
           <div className="composer-hint">

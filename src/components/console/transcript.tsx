@@ -7,6 +7,7 @@ import { toolIcon } from "@/lib/console";
 import { formatNumber, formatUsd } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Markdown } from "@/components/chat/markdown";
+import { stripThink } from "@/lib/render-text";
 import { GenerativeMessage } from "./generative-ui";
 
 function argsTarget(args: unknown): string {
@@ -95,14 +96,15 @@ function BotTurn({
   renderMode: "md" | "gui";
   onAction: (value: string) => void;
 }) {
-  const showCursor = m.streaming && !m.content;
+  const display = stripThink(m.content, !!m.streaming);
+  const showCursor = m.streaming && !display;
   const tools = m.toolCalls || [];
 
   return (
     <div className="turn fade-up">
       <div className="msg-bot">
         <div className="bot-ava">{agentInitials}</div>
-        <div className="bot-body">
+        <div className="bot-body" aria-busy={m.streaming || undefined}>
           <div className="bot-name">
             <b>{agentName}</b>
             {modelTag && <span className="tag">{modelTag}</span>}
@@ -129,17 +131,17 @@ function BotTurn({
             </div>
           )}
 
-          {(m.content || showCursor) &&
+          {(display || showCursor) &&
             (renderMode === "gui" ? (
               <GenerativeMessage
-                content={m.content}
+                content={display}
                 onAction={onAction}
                 serif={serif}
                 streaming={m.streaming}
               />
             ) : (
               <div className={"prose" + (serif ? " serif" : "")} style={{ position: "relative" }}>
-                <Markdown content={m.content} />
+                <Markdown content={display} />
                 {m.streaming && <span className="cursor" />}
               </div>
             ))}
@@ -172,7 +174,7 @@ function UserTurn({ m }: { m: ChatMessage }) {
   return (
     <div className="turn fade-up">
       <div className="msg-user">
-        <div className="bubble">{m.content}</div>
+        {m.content && <div className="bubble">{m.content}</div>}
         {m.attachments && m.attachments.length > 0 && (
           <div
             className="attach-chips"
@@ -216,10 +218,15 @@ export function Transcript({
   renderMode: "md" | "gui";
   onAction: (value: string) => void;
 }) {
+  const lastIdx = messages.length - 1;
   return (
     <div className="transcript">
-      {messages.map((m) =>
-        m.role === "user" ? (
+      {messages.map((m, i) => {
+        // When the "working…" placeholder is shown, the trailing empty streaming
+        // assistant turn IS that placeholder — rendering it too would put a second
+        // avatar (an empty bot bubble) right beside the thinking dots.
+        if (thinking && i === lastIdx && m.role === "assistant") return null;
+        return m.role === "user" ? (
           <UserTurn key={m.id} m={m} />
         ) : (
           <BotTurn
@@ -233,8 +240,8 @@ export function Transcript({
             renderMode={renderMode}
             onAction={onAction}
           />
-        ),
-      )}
+        );
+      })}
       {thinking && (
         <div className="turn fade-up">
           <div className="msg-bot" role="status" aria-live="polite">

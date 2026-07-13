@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Markdown } from "@/components/chat/markdown";
+import { coerceText as asText } from "@/lib/render-text";
 
 /* A lightweight OpenUI-style generative-UI renderer: the agent emits a fenced
  * ```ui block holding a JSON array of components, and we render them as real
@@ -95,10 +96,6 @@ function UiComposing() {
       Composing interface…
     </div>
   );
-}
-
-function asText(v: unknown): string {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
 function Component({
