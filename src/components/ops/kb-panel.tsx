@@ -5,6 +5,7 @@ import {
   Database,
   BookOpen,
   FolderOpen,
+  FolderMinus,
   Plus,
   Pencil,
   Trash2,
@@ -501,6 +502,9 @@ function KbDetail({
   // Per-document delete confirmation target (deletes the document, not just the link).
   const [deleteDoc, setDeleteDoc] = React.useState<KbDocument | null>(null);
   const [deletingDoc, setDeletingDoc] = React.useState(false);
+  // Per-document unlink target (removes from this group only; the document lives on).
+  const [unlinkDoc, setUnlinkDoc] = React.useState<KbDocument | null>(null);
+  const [unlinking, setUnlinking] = React.useState(false);
   // Per-document viewer drawer target + which tab it opens on (Preview/Intelligence).
   const [viewerDoc, setViewerDoc] = React.useState<KbDocument | null>(null);
   const [viewerTab, setViewerTab] = React.useState<"preview" | "intelligence">("preview");
@@ -612,6 +616,25 @@ function KbDetail({
       toast.error(`Delete failed: ${errMsg(e)}`);
     } finally {
       setDeletingDoc(false);
+      setWorking(null);
+    }
+  };
+
+  const confirmUnlinkDoc = async () => {
+    if (!unlinkDoc) return;
+    const target = unlinkDoc;
+    setUnlinking(true);
+    setWorking(target.id);
+    try {
+      await api.kbRemoveDocFromGroup(group.id, target.id);
+      toast.success(`Removed “${target.title || target.id.slice(0, 8)}” from “${group.name}”`);
+      setUnlinkDoc(null);
+      docs.refresh();
+      onChanged();
+    } catch (e) {
+      toast.error(`Remove failed: ${errMsg(e)}`);
+    } finally {
+      setUnlinking(false);
       setWorking(null);
     }
   };
@@ -858,6 +881,7 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onDelete={() => setDeleteDoc(d)}
+                onUnlink={() => setUnlinkDoc(d)}
                 onView={() => {
                   setViewerDoc(d);
                   setViewerTab("preview");
@@ -877,6 +901,7 @@ function KbDetail({
                 doc={d}
                 busy={working === d.id}
                 onDelete={() => setDeleteDoc(d)}
+                onUnlink={() => setUnlinkDoc(d)}
                 onView={() => {
                   setViewerDoc(d);
                   setViewerTab("preview");
@@ -908,6 +933,20 @@ function KbDetail({
         description={`Delete “${group.name}”? Documents stay in the library but are unlinked.`}
         busy={deleting}
         onConfirm={confirmDelete}
+      />
+
+      <ConfirmModal
+        open={!!unlinkDoc}
+        onClose={() => setUnlinkDoc(null)}
+        title="Remove from this knowledge base"
+        description={
+          unlinkDoc
+            ? `Remove “${unlinkDoc.title || unlinkDoc.id.slice(0, 8)}” from “${group.name}”? It stays in the library and in any other knowledge bases it belongs to.`
+            : ""
+        }
+        confirmLabel="Remove"
+        busy={unlinking}
+        onConfirm={confirmUnlinkDoc}
       />
 
       <ConfirmModal
@@ -964,17 +1003,19 @@ function DocsEmpty({
   );
 }
 
-/** The View / Intelligence / Delete icon cluster shared by DocCard and DocRow. */
+/** The View / Intelligence / Remove / Delete icon cluster shared by DocCard and DocRow. */
 function DocActions({
   busy,
   onView,
   onIntel,
+  onUnlink,
   onDelete,
   buttonClassName,
 }: {
   busy: boolean;
   onView: () => void;
   onIntel: () => void;
+  onUnlink: () => void;
   onDelete: () => void;
   buttonClassName?: string;
 }) {
@@ -993,10 +1034,19 @@ function DocActions({
         <Sparkles className="size-3.5" />
       </button>
       <button
+        onClick={onUnlink}
+        disabled={busy}
+        title="Remove from this knowledge base"
+        aria-label="Remove from this knowledge base"
+        className={btn("hover:bg-secondary hover:text-foreground disabled:opacity-50")}
+      >
+        <FolderMinus className="size-3.5" />
+      </button>
+      <button
         onClick={onDelete}
         disabled={busy}
-        title="Delete document"
-        aria-label="Delete document"
+        title="Delete document from library"
+        aria-label="Delete document from library"
         className={btn("hover:bg-destructive/10 hover:text-destructive disabled:opacity-50")}
       >
         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -1009,12 +1059,14 @@ function DocCard({
   doc,
   busy,
   onDelete,
+  onUnlink,
   onView,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onDelete: () => void;
+  onUnlink: () => void;
   onView: () => void;
   onIntel: () => void;
 }) {
@@ -1031,6 +1083,7 @@ function DocCard({
           busy={busy}
           onView={onView}
           onIntel={onIntel}
+          onUnlink={onUnlink}
           onDelete={onDelete}
           buttonClassName="bg-background/80 shadow-sm backdrop-blur-sm"
         />
@@ -1072,12 +1125,14 @@ function DocRow({
   doc,
   busy,
   onDelete,
+  onUnlink,
   onView,
   onIntel,
 }: {
   doc: KbDocument;
   busy: boolean;
   onDelete: () => void;
+  onUnlink: () => void;
   onView: () => void;
   onIntel: () => void;
 }) {
@@ -1107,6 +1162,7 @@ function DocRow({
         busy={busy}
         onView={onView}
         onIntel={onIntel}
+        onUnlink={onUnlink}
         onDelete={onDelete}
         buttonClassName="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
       />
