@@ -445,6 +445,10 @@
   display: inline-flex;
   cursor: pointer;
   transition: color var(--duration-fast);
+  /* Reset native button chrome (this is a real <button> for keyboard/a11y). */
+  background: none;
+  border: none;
+  padding: 0;
 }
 .sess-item:hover .sess-x {
   opacity: 1;
@@ -686,6 +690,8 @@
   line-height: 1.55;
   letter-spacing: -0.005em;
   white-space: pre-wrap;
+  /* Break long unbroken strings (pasted URLs/tokens) instead of clipping. */
+  overflow-wrap: anywhere;
 }
 .msg-meta {
   display: flex;
@@ -1118,6 +1124,8 @@
   align-items: center;
   gap: 8px;
   padding: 7px 9px 9px 12px;
+  /* Wrap on narrow viewports so the Send/Stop button never clips off-screen. */
+  flex-wrap: wrap;
 }
 .cchip {
   display: inline-flex;
@@ -2054,6 +2062,7 @@ pre.toml {
   border: 1px solid var(--border);
   padding: 6px 9px;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 .markdown-body th {
   background: oklch(var(--af) /4%);

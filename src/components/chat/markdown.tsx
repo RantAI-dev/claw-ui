@@ -106,6 +106,15 @@ export const Markdown = React.memo(function Markdown({
               </a>
             );
           },
+          table({ children, ...props }) {
+            // Wrap wide tables so they scroll inside their own box instead of
+            // pushing the whole transcript into horizontal scroll.
+            return (
+              <div style={{ overflowX: "auto", maxWidth: "100%" }}>
+                <table {...props}>{children}</table>
+              </div>
+            );
+          },
         }}
       >
         {content}
