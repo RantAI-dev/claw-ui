@@ -25,6 +25,36 @@ function fmtWhen(ts: string | number | null): string {
   }
 }
 
+const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** Best-effort plain-English summary of a 5-field cron expr. Returns null for
+ *  anything it can't describe confidently — the caller shows "custom schedule". */
+function describeCron(expr: string): string | null {
+  const f = expr.trim().split(/\s+/);
+  if (f.length !== 5) return null;
+  const [min, hour, dom, mon, dow] = f;
+  const num = (s: string) => (/^\d+$/.test(s) ? Number(s) : null);
+  const h = num(hour);
+  const m = num(min);
+
+  let time: string;
+  if (min === "*" && hour === "*") return "every minute";
+  else if (h != null && m != null && h < 24 && m < 60)
+    time = `at ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  else if (hour === "*" && m != null && m < 60) time = `at :${String(m).padStart(2, "0")} every hour`;
+  else return null;
+
+  let day: string;
+  if (dom === "*" && mon === "*" && dow === "*") day = "every day";
+  else if (dom === "*" && mon === "*" && dow === "1-5") day = "on weekdays";
+  else if (dom === "*" && mon === "*" && num(dow) != null && num(dow)! <= 6)
+    day = `every ${DOW[num(dow)!]}`;
+  else if (num(dom) != null && mon === "*" && dow === "*") day = `on day ${num(dom)} of the month`;
+  else return null;
+
+  return `${time}, ${day}`;
+}
+
 export function CronPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.cron(), []);
   const [prompt, setPrompt] = React.useState("");
@@ -33,6 +63,7 @@ export function CronPanel() {
   const [busy, setBusy] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const schedulePreview = describeCron(expr);
 
   const create = async () => {
     if (!prompt.trim() || !expr.trim()) return;
@@ -123,6 +154,11 @@ export function CronPanel() {
             <Plus className="size-4" /> Create
           </Button>
         </div>
+        {expr.trim() && (
+          <p className="text-[11px] text-muted-foreground">
+            {schedulePreview ? `Runs ${schedulePreview}` : "Custom cron schedule"} · server time zone
+          </p>
+        )}
       </Card>
 
       <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
@@ -161,6 +197,9 @@ export function CronPanel() {
             </div>
           ))}
         </Card>
+        <p className="mt-2 px-1 text-[10px] text-muted-foreground">
+          Next-run times are shown in your local time zone; cron expressions run in the server&apos;s.
+        </p>
       </PanelFrame>
 
       <ConfirmModal
