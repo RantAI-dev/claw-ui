@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Network, X } from "lucide-react";
+import { Network, RefreshCw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsyncGuarded } from "@/hooks/use-async-guarded";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
@@ -107,16 +107,23 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
     <div className="space-y-4">
       {/* Inside a single-document view the corpus jump is disorienting, so the
           host can lock the lens to the scope it was opened at. */}
-      {!lockScope && narrowLabel && (
-        <Segmented
-          value={toggleValue}
-          onChange={(v) => setActiveScope(v === "all" ? { kind: "all" } : narrowScope)}
-          options={[
-            { value: "narrow", label: narrowLabel },
-            { value: "all", label: "All knowledge bases" },
-          ]}
-        />
-      )}
+      <div className="flex items-center justify-between gap-2">
+        {!lockScope && narrowLabel ? (
+          <Segmented
+            value={toggleValue}
+            onChange={(v) => setActiveScope(v === "all" ? { kind: "all" } : narrowScope)}
+            options={[
+              { value: "narrow", label: narrowLabel },
+              { value: "all", label: "All knowledge bases" },
+            ]}
+          />
+        ) : (
+          <div />
+        )}
+        <IconButton onClick={refresh} title="Refresh graph" aria-label="Refresh graph" className="shrink-0">
+          <RefreshCw className="size-4" />
+        </IconButton>
+      </div>
 
       {/* Stats — only once the graph is actually populated, so they don't read
           "0 / 0 / 0" over the loading, error, disabled, or empty states. */}
