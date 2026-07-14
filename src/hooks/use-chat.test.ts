@@ -32,4 +32,18 @@ describe("buildHistory", () => {
     const out = buildHistory([msg("user", "what is 2+2"), msg("assistant", "", { error: "provider error" })]);
     expect(out).toBe("User: what is 2+2");
   });
+
+  it("strips [IMAGE:…] markers so a model-emitted one can't poison later turns", () => {
+    // The gateway counts [IMAGE:…] as an image input even inside a text history
+    // block, so a marker the model once emitted would hard-fail every following
+    // turn on a provider without vision. Embedded history must not carry it.
+    const out = buildHistory([
+      msg("user", "show me a diagram"),
+      msg("assistant", "Here it is: [IMAGE:diagram1] hope it helps"),
+      msg("user", "what next"),
+    ]);
+    expect(out).not.toContain("[IMAGE:");
+    expect(out).toContain("Here it is:");
+    expect(out).toContain("hope it helps");
+  });
 });

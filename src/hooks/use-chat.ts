@@ -78,6 +78,17 @@ function withKbContext(text: string, context: string): string {
  *  paired user message) and a failed assistant reply is dropped (its user
  *  question is kept), so an abandoned/errored topic never bleeds into the next
  *  prompt. Returns "" when there is no prior turn. Exported for unit tests. */
+/** Remove `[IMAGE:…]` markers from text. The gateway counts these as image
+ *  inputs even when they appear inside a history text block, so a marker the
+ *  model once emitted (e.g. image-ish syntax) would otherwise be re-embedded by
+ *  `buildHistory` and hard-fail every following turn on a provider without
+ *  vision — a conversation that can only be cleared with a New chat. The web
+ *  console never sends real image markers (uploads go to the KB), so a marker
+ *  here is always a stray artifact and safe to drop. */
+function stripImageMarkers(s: string): string {
+  return s.replace(/\[IMAGE:[^\]]*\]/g, "");
+}
+
 export function buildHistory(prior: ChatMessage[]): string {
   const kept: ChatMessage[] = [];
   for (const m of prior) {
@@ -100,8 +111,9 @@ export function buildHistory(prior: ChatMessage[]): string {
     .slice(-MAX_HISTORY_MSGS)
     .map((m) => {
       const who = m.role === "user" ? "User" : "Assistant";
+      const content = stripImageMarkers(m.content);
       const body =
-        m.content.length > MAX_HISTORY_CHARS ? `${m.content.slice(0, MAX_HISTORY_CHARS)}…` : m.content;
+        content.length > MAX_HISTORY_CHARS ? `${content.slice(0, MAX_HISTORY_CHARS)}…` : content;
       return `${who}: ${body}`;
     })
     .join("\n");
