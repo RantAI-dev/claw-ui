@@ -8,7 +8,21 @@
  * also hide an unclosed trailing block until its `</think>` arrives.
  */
 export function stripThink(content: string, streaming: boolean): string {
-  let c = content.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  let c = content;
+  // A `</think>` with no matching `<think>` before it is a leaked reasoning
+  // terminator — some models (e.g. MiniMax) emit a bare closer because the
+  // opening tag was consumed upstream or lives in a separate reasoning field.
+  // Drop everything up to and including it.
+  const close = /<\/think>/i.exec(c);
+  if (close) {
+    const openIdx = /<think\b/i.exec(c)?.index ?? -1;
+    if (openIdx === -1 || close.index < openIdx) {
+      c = c.slice(close.index + close[0].length);
+    }
+  }
+  // Remove complete reasoning blocks.
+  c = c.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "");
+  // While streaming, hide an unclosed trailing block until its </think> arrives.
   if (streaming) c = c.replace(/<think\b[^>]*>[\s\S]*$/i, "");
   return c;
 }

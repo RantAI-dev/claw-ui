@@ -28,6 +28,20 @@ describe("stripThink", () => {
   it("leaves ordinary content untouched", () => {
     expect(stripThink("just a normal reply", true)).toBe("just a normal reply");
   });
+
+  it("drops an orphan </think> (no matching opener) and the reasoning before it", () => {
+    // Observed live with MiniMax: the opening tag lives in a separate field, so
+    // the content starts with a bare </think>.
+    expect(stripThink("</think>The auto-generated session id is X", false)).toBe(
+      "The auto-generated session id is X",
+    );
+    expect(stripThink("weighing options</think>Final answer", true)).toBe("Final answer");
+  });
+
+  it("keeps a paired block's answer even when a later orphan-looking close exists", () => {
+    // The first </think> here is legitimately paired, so nothing extra is dropped.
+    expect(stripThink("<think>hidden</think>Answer", false)).toBe("Answer");
+  });
 });
 
 describe("coerceText", () => {
