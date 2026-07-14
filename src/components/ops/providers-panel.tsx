@@ -42,16 +42,23 @@ export function ProvidersPanel() {
     try {
       const providerChanged = provider && provider !== active;
       const modelChanged = model && model !== info.data?.model;
-      if (providerChanged || modelChanged) {
-        await api.setConfigModel({
-          provider: providerChanged ? provider : undefined,
-          model: model || undefined,
-        });
-      }
+      const res =
+        providerChanged || modelChanged
+          ? await api.setConfigModel({
+              provider: providerChanged ? provider : undefined,
+              model: model || undefined,
+            })
+          : null;
       if (key.trim() || url.trim()) {
         await api.setSecrets({ api_key: key.trim() || undefined, api_url: url.trim() || undefined });
       }
-      toast.success(`Saved — ${provider || active} · ${model || "model unchanged"}`);
+      // Surface the gateway's "no usable credential" heads-up — but not when the
+      // user just added a key in this same save (which resolves it).
+      if (res?.warning && !key.trim()) {
+        toast.warning(res.warning);
+      } else {
+        toast.success(`Saved — ${provider || active} · ${model || "model unchanged"}`);
+      }
       setKey("");
       secrets.refresh();
       info.refresh();

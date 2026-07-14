@@ -150,10 +150,13 @@ export const api = {
     }),
   config: () => rc<Record<string, unknown>>("config"),
   setConfigModel: (body: { provider?: string; model?: string; temperature?: number }) =>
-    rc<{ default_provider: string | null; default_model: string | null; default_temperature: number }>(
-      "config/model",
-      { method: "PUT", body: JSON.stringify(body) },
-    ),
+    rc<{
+      default_provider: string | null;
+      default_model: string | null;
+      default_temperature: number;
+      /** Present when the switched provider has no usable credential yet. */
+      warning?: string;
+    }>("config/model", { method: "PUT", body: JSON.stringify(body) }),
   setAutonomy: (body: {
     level?: string;
     auto_approve?: string[];
