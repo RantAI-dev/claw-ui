@@ -8,6 +8,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelRight,
+  Pencil,
   Plus,
   Search,
   SlidersHorizontal,
@@ -43,6 +44,10 @@ import { TweaksPanel, TWEAK_DEFAULTS, type Tweaks } from "./tweaks";
 
 const TWEAKS_KEY = "rc_console_tweaks";
 const RAIL_KEY = "rc_console_rail";
+/** Cap on a hand-typed session title. Auto-derived ones top out around 51
+ *  characters, so this leaves headroom without letting a whole paragraph into
+ *  the rail. */
+const MAX_TITLE_LEN = 120;
 
 export function ConsoleShell({
   initialRoute = "chat",
@@ -332,6 +337,40 @@ export function ConsoleShell({
     }
   };
 
+  // ---- rename ----
+  // Nothing validates the title on the way to storage — not the store, the HTTP
+  // handler, the CLI, or the TUI — so an empty one would stick and leave a row
+  // that reads "Untitled session" but can no longer be auto-titled. Guard it
+  // here, at the surface that made it reachable.
+  const [renamingId, setRenamingId] = React.useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = React.useState("");
+
+  const startRename = (id: string, title: string | null, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRenamingId(id);
+    setDraftTitle(title || "");
+  };
+
+  // Escape just unmounts the editor. React does not deliver `onBlur` for an
+  // element that is removed while focused, so this cannot fall through into the
+  // commit path below — verified by removing the guard that used to sit here and
+  // watching the "Escape sends nothing" check still hold.
+  const cancelRename = () => setRenamingId(null);
+
+  const commitRename = async (id: string) => {
+    const next = draftTitle.trim().slice(0, MAX_TITLE_LEN);
+    const current = sessions.find((s) => s.id === id)?.title || "";
+    setRenamingId(null);
+    // Blank or unchanged is a no-op, not an error.
+    if (!next || next === current) return;
+    try {
+      await api.setSessionTitle(id, next);
+      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: next } : s)));
+    } catch (e) {
+      toast.error(`Rename failed: ${e instanceof Error ? e.message : e}`);
+    }
+  };
+
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     window.location.href = "/login";
@@ -473,16 +512,48 @@ export function ConsoleShell({
                       >
                         <div className="sess-row">
                           <span className="chan-dot" style={{ background: channelDot(s.model || "") }} />
-                          <span className="sess-title">{s.title || "Untitled session"}</span>
-                          <button
-                            type="button"
-                            className="sess-x"
-                            onClick={(e) => handleDelete(s.id, e)}
-                            aria-label={`Delete session: ${s.title || "Untitled session"}`}
-                            title="Delete"
-                          >
-                            <X className="size-[13px]" />
-                          </button>
+                          {renamingId === s.id ? (
+                            <input
+                              className="sess-title-input"
+                              autoFocus
+                              maxLength={MAX_TITLE_LEN}
+                              value={draftTitle}
+                              aria-label="Session title"
+                              onChange={(e) => setDraftTitle(e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              onBlur={() => commitRename(s.id)}
+                              onKeyDown={(e) => {
+                                // The row treats Enter/Space as "open this
+                                // session" — keep those from firing while the
+                                // title is being edited.
+                                e.stopPropagation();
+                                if (e.key === "Enter") commitRename(s.id);
+                                if (e.key === "Escape") cancelRename();
+                              }}
+                            />
+                          ) : (
+                            <>
+                              <span className="sess-title">{s.title || "Untitled session"}</span>
+                              <button
+                                type="button"
+                                className="sess-x edit"
+                                onClick={(e) => startRename(s.id, s.title, e)}
+                                aria-label={`Rename session: ${s.title || "Untitled session"}`}
+                                title="Rename"
+                              >
+                                <Pencil className="size-[13px]" />
+                              </button>
+                              <button
+                                type="button"
+                                className="sess-x"
+                                onClick={(e) => handleDelete(s.id, e)}
+                                aria-label={`Delete session: ${s.title || "Untitled session"}`}
+                                title="Delete"
+                              >
+                                <X className="size-[13px]" />
+                              </button>
+                            </>
+                          )}
                         </div>
                         <div className="sess-meta">
                           <span>{s.message_count} msgs</span>
