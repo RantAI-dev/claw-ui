@@ -1,0 +1,48 @@
+name: CI
+
+# Until now this repo had only `release.yml` (tag-triggered), so pull requests
+# carried no automated gate at all — a PR could typecheck-fail, break the test
+# suite, or fail to build and nothing would say so.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, Test, Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # SHAs pinned to match release.yml — no new action sources.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      # `next build` needs the gateway URL to exist but never contacts it at
+      # build time; the routes that talk to the gateway are all force-dynamic.
+      - name: Build
+        run: npm run build
+        env:
+          RANTAICLAW_GATEWAY_URL: http://127.0.0.1:9393
+
+# Deliberately no lint step: `next lint` was removed in Next 16, and the `lint`
+# script left in package.json now fails with "no such directory: lint". Wiring
+# ESLint back up is a separate change from establishing a gate at all.
