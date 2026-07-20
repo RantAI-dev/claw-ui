@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   AlertTriangle,
+  ArrowDown,
   ArrowUp,
   Check,
   ImageIcon,
@@ -147,6 +148,7 @@ export function ChatPane(props: ChatPaneProps) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const kbRef = React.useRef<HTMLDivElement>(null);
   const atBottom = React.useRef(true);
+  const [detached, setDetached] = React.useState(false);
 
   // Close the KB picker on an outside click.
   React.useEffect(() => {
@@ -211,10 +213,35 @@ export function ChatPane(props: ChatPaneProps) {
     [attachments.length, conversationId, patchAttachment],
   );
 
+  // Two representations of the same fact, on purpose: the ref is what the
+  // per-token effect below reads (no re-render), the state is what draws the
+  // jump-to-latest pill. Only flipping the state keeps a fast token stream from
+  // re-rendering the console on every scroll event.
+  const setFollowing = React.useCallback((v: boolean) => {
+    if (atBottom.current === v) return;
+    atBottom.current = v;
+    setDetached(!v);
+  }, []);
+
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    atBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 140;
+    setFollowing(el.scrollHeight - el.scrollTop - el.clientHeight < 140);
+  };
+
+  // An upward wheel/trackpad gesture is an explicit "let me read this". Honour
+  // it here rather than waiting for the scroll event, which during a fast
+  // stream can lose the race against the auto-scroll effect and get clobbered
+  // before it is read. Scrollbar drags have no wheel event and are covered by
+  // `onScroll` above.
+  const onWheel = (e: React.WheelEvent) => {
+    if (e.deltaY < 0) setFollowing(false);
+  };
+
+  const jumpToLatest = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    setFollowing(true);
   };
 
   React.useEffect(() => {
@@ -234,6 +261,9 @@ export function ChatPane(props: ChatPaneProps) {
     const v = (value ?? text).trim();
     if (!v || isStreaming) return;
     const docNames = attachments.filter((a) => a.status === "ready").map((a) => a.name);
+    // Sending is a request to watch the reply — re-attach even if the operator
+    // had scrolled back to read something older.
+    setFollowing(true);
     onSend(v, docNames.length ? docNames : undefined);
     if (value == null) {
       setText("");
@@ -265,7 +295,7 @@ export function ChatPane(props: ChatPaneProps) {
     <>
       {connection === "offline" && <ConnectionBanner needsAuth={needsAuth} error={connError} />}
 
-      <div className="scroll-area" ref={scrollRef} onScroll={onScroll}>
+      <div className="scroll-area" ref={scrollRef} onScroll={onScroll} onWheel={onWheel}>
         {empty ? (
           <div className="chat-empty">
             <div className="ce-mark">
@@ -305,6 +335,13 @@ export function ChatPane(props: ChatPaneProps) {
           </div>
         )}
       </div>
+
+      {detached && !empty && (
+        <button className="jump-latest" onClick={jumpToLatest}>
+          <ArrowDown />
+          {isStreaming ? "Jump to latest — still writing" : "Jump to latest"}
+        </button>
+      )}
 
       <div className="composer-wrap">
         <div className="composer-inner">
