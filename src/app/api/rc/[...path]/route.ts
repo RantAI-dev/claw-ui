@@ -2,19 +2,20 @@
 // Attaches the bearer token server-side and relays status + JSON transparently.
 import { NextRequest } from "next/server";
 import { GATEWAY_URL, gatewayHeaders } from "@/lib/gateway";
+import { resolveGatewayUrl } from "@/lib/gateway-path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function proxy(req: NextRequest, path: string[]) {
-  // Refuse traversal segments so the proxy can never reach gateway endpoints
-  // outside /api/v1/* (e.g. /webhook, /pair) by escaping the prefix.
-  if (path.some((seg) => seg === "." || seg === ".." || seg === "")) {
+  // Confine the proxy to /api/v1/* so it can never reach gateway endpoints
+  // outside it (/webhook, /pair, /triggers/*, /metrics) carrying the bearer
+  // token. See `resolveGatewayUrl` for why a per-segment ".." comparison — what
+  // this used to do — does not hold.
+  const url = resolveGatewayUrl(path, req.nextUrl.search || "", GATEWAY_URL);
+  if (url === null) {
     return Response.json({ error: "invalid_path" }, { status: 400 });
   }
-  const suffix = path.join("/");
-  const search = req.nextUrl.search || "";
-  const url = `${GATEWAY_URL}/api/v1/${suffix}${search}`;
 
   const method = req.method.toUpperCase();
   const hasBody = method === "POST" || method === "PUT" || method === "PATCH";
