@@ -13,12 +13,20 @@ import {
 } from "@/lib/auth";
 import { idleTimeoutMs } from "@/lib/auth-required";
 import { isBackgroundPath, SESSION_EXPIRED } from "@/lib/activity";
+import { isCrossSiteWrite } from "@/lib/request-origin";
 
 // Gate every page and proxy route behind the session cookie when a password is
 // configured. Static assets, the login page, and the auth endpoints stay open.
 // (Next 16 "proxy" — the successor to the deprecated "middleware" convention.)
+//
+// The asset exemption is anchored to a single root-level segment on purpose. It
+// used to be `.*\.(?:png|ico|svg|webmanifest)$`, which is unanchored and so
+// exempted *any* path carrying one of those suffixes — API paths included. That
+// let `/api/rc/status.svg` skip this file entirely: no session check, and the
+// BFF still attached the gateway bearer token. Everything under `public/` is a
+// root-level file, so `[^/]+\.ext$` covers the real assets and nothing else.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon|.*\\.(?:png|ico|svg|webmanifest)$).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon|[^/]+\\.(?:png|ico|svg|webmanifest)$).*)"],
 };
 
 // Only mark the refreshed cookie Secure when the request is actually HTTPS, and
@@ -32,6 +40,20 @@ function secureCookie(req: NextRequest): boolean {
 }
 
 export default async function proxy(req: NextRequest) {
+  // Cross-site write rejection runs FIRST — ahead of the auth-enabled check —
+  // because the BFF signs requests with the gateway token whether or not
+  // console login is configured. With login off (the default), the console
+  // would otherwise accept privileged writes from any page the operator has
+  // open in another tab.
+  const crossSite = isCrossSiteWrite(
+    req.method,
+    { secFetchSite: req.headers.get("sec-fetch-site"), origin: req.headers.get("origin") },
+    req.nextUrl.origin,
+  );
+  if (crossSite) {
+    return NextResponse.json({ error: "cross_site_request_blocked" }, { status: 403 });
+  }
+
   if (!(await authEnabled())) return NextResponse.next();
 
   // Login is enabled but no real cookie secret is set → the gate is

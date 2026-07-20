@@ -456,6 +456,22 @@
 .sess-x:hover {
   color: var(--destructive);
 }
+/* Rename is not destructive — don't borrow the delete button's red hover. */
+.sess-x.edit:hover {
+  color: var(--foreground);
+}
+.sess-title-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  outline: none;
+}
 /* Always-visible variant (e.g. the "new chat" + in the sessions header). */
 .sess-x.shown {
   margin-left: auto;
@@ -653,11 +669,41 @@
 }
 
 /* ============================ Chat transcript ============================ */
+/* No `scroll-behavior: smooth` here, deliberately. The transcript is scrolled
+   imperatively (`scrollTop = scrollHeight`) once per streamed token; with smooth
+   enabled, each of those starts an animation whose own scroll events report a
+   near-bottom position, which overwrote the "user scrolled away" flag. The
+   transcript then dragged itself back down and could not be read during a
+   stream. See `chat-pane.tsx`. */
 .scroll-area {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scroll-behavior: smooth;
+}
+.jump-latest {
+  position: absolute;
+  left: 50%;
+  bottom: 108px;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 12px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 18%);
+  cursor: pointer;
+}
+.jump-latest:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, var(--card));
+}
+.jump-latest svg {
+  width: 14px;
+  height: 14px;
 }
 .transcript {
   max-width: 780px;
