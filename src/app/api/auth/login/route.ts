@@ -14,14 +14,41 @@ function trustProxy(): boolean {
   return v === "1" || v === "true";
 }
 
-function clientKey(req: NextRequest): string {
-  if (!trustProxy()) return "global";
-  const xff = req.headers.get("x-forwarded-for");
+export function clientKeyFromHeaders(
+  xff: string | null,
+  realIp: string | null,
+  trusted: boolean,
+): string {
+  if (!trusted) return "global";
   if (xff) {
-    const first = xff.split(",")[0].trim();
-    if (first) return first;
+    // Take the RIGHTMOST entry, not the leftmost.
+    //
+    // A correctly configured reverse proxy *appends* the peer it saw
+    // (nginx's `proxy_add_x_forwarded_for`, Caddy, Traefik), so the last
+    // element is the one our trusted proxy wrote and the earlier ones are
+    // whatever the client sent. Keying on the leftmost let a client defeat the
+    // lockout entirely by rotating a header value it controls — and grow the
+    // guard's map with a fresh key per attempt.
+    //
+    // The comment above about forged XFF anticipated a *direct* client; it
+    // missed that the header is equally forgeable through a proxy that is
+    // behaving correctly.
+    const parts = xff
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (last) return last;
   }
-  return req.headers.get("x-real-ip") ?? "global";
+  return realIp ?? "global";
+}
+
+function clientKey(req: NextRequest): string {
+  return clientKeyFromHeaders(
+    req.headers.get("x-forwarded-for"),
+    req.headers.get("x-real-ip"),
+    trustProxy(),
+  );
 }
 
 function lockedResponse(retryAfterSecs: number): Response {
