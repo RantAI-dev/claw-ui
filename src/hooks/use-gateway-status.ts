@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { api } from "@/lib/api";
+import { SESSION_EXPIRED } from "@/lib/activity";
 import type { StatusInfo } from "@/lib/types";
 
 export type Connection = "connecting" | "online" | "offline";
@@ -21,6 +22,13 @@ export function useGatewayStatus(pollMs = 15000) {
       setNeedsAuth(false);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      // The idle window lapsed while this tab sat open. Send the operator to
+      // the login page with an explanation instead of leaving them staring at
+      // an "offline" badge on a console that is actually just signed out.
+      if (msg === SESSION_EXPIRED) {
+        window.location.replace("/login?reason=idle");
+        return;
+      }
       setConnection("offline");
       setError(msg);
       setNeedsAuth(/401|unauthor|pair/i.test(msg));
