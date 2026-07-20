@@ -37,6 +37,7 @@ import { useChat } from "@/hooks/use-chat";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ChatPane } from "./chat-pane";
 import { OpsView } from "./ops-view";
 import { RightPanel } from "./right-panel";
@@ -325,15 +326,33 @@ export function ConsoleShell({
     setSelectedKbIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }, []);
 
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  // Deleting a session is irreversible and the trigger is a 13px icon sitting
+  // in a dense row — now beside the rename pencil this PR adds, which makes a
+  // misclick that much easier. Every other destructive action in the console
+  // already goes through ConfirmModal (memory, mcp, cron, channels, skills,
+  // kb); this was the one exception.
+  const [pendingDelete, setPendingDelete] = React.useState<SessionSummary | null>(null);
+  const [deleting, setDeleting] = React.useState(false);
+
+  const requestDelete = (session: SessionSummary, e: React.MouseEvent) => {
     e.stopPropagation();
+    setPendingDelete(session);
+  };
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const { id } = pendingDelete;
+    setDeleting(true);
     try {
       await api.deleteSession(id);
       setSessions((prev) => prev.filter((s) => s.id !== id));
       if (activeId === id) handleNew();
       toast.success("Session deleted");
+      setPendingDelete(null);
     } catch (e) {
       toast.error(`Delete failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -546,7 +565,7 @@ export function ConsoleShell({
                               <button
                                 type="button"
                                 className="sess-x"
-                                onClick={(e) => handleDelete(s.id, e)}
+                                onClick={(e) => requestDelete(s, e)}
                                 aria-label={`Delete session: ${s.title || "Untitled session"}`}
                                 title="Delete"
                               >
@@ -728,6 +747,21 @@ export function ConsoleShell({
       )}
 
       <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} tweaks={tweaks} setTweak={setTweak} />
+
+      <ConfirmModal
+        open={!!pendingDelete}
+        onClose={() => setPendingDelete(null)}
+        title="Delete this session?"
+        description={
+          pendingDelete
+            ? `“${pendingDelete.title || "Untitled session"}” and its ${
+                pendingDelete.message_count
+              } message${pendingDelete.message_count === 1 ? "" : "s"} will be removed. This cannot be undone.`
+            : undefined
+        }
+        busy={deleting}
+        onConfirm={confirmDelete}
+      />
 
       {/* In-browser tool-approval modal (WebModal backend). Shown when the agent
           pauses on a tool that needs approval; Approve/Deny resumes the turn. */}
