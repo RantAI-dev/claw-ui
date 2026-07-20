@@ -1,26 +1,45 @@
 import "server-only";
 import { GATEWAY_URL } from "./gateway";
 
-type Fetcher = () => Promise<{ login_required: boolean }>;
+export type AuthInfo = { login_required: boolean; idle_timeout_secs: number };
+
+type Fetcher = () => Promise<AuthInfo>;
+
+/** What we assume when the gateway cannot be reached. See `createAuthInfoCache`. */
+const FAIL_CLOSED: AuthInfo = { login_required: true, idle_timeout_secs: 0 };
 
 /**
- * Whether the connected RantaiClaw gateway has console login enabled, cached
- * with a short TTL so the per-request auth gate doesn't hit the gateway every
- * time. **Fail-closed:** if the gateway is unreachable/errors, treat login as
- * required — a down gateway makes the console non-functional anyway, so failing
- * closed never silently drops the gate.
+ * The connected RantaiClaw gateway's auth policy, cached with a short TTL so the
+ * per-request gate doesn't hit the gateway every time.
+ *
+ * **Fail-closed on `login_required`:** if the gateway is unreachable/errors,
+ * treat login as required — a down gateway makes the console non-functional
+ * anyway, so failing closed never silently drops the gate.
+ *
+ * **Fail-open on `idle_timeout_secs`:** an outage reports `0` (no idle
+ * enforcement) rather than some guessed window, because the alternative is
+ * logging every operator out on a transient gateway blip. The absolute 24h cap
+ * still applies throughout, and the gate above stays on, so the exposure is a
+ * session that outlives its idle window only for as long as the gateway is
+ * down.
  */
-export function createAuthRequiredCache(fetcher: Fetcher, ttlMs: number) {
-  let cached: { value: boolean; at: number } | null = null;
+export function createAuthInfoCache(fetcher: Fetcher, ttlMs: number) {
+  let cached: { value: AuthInfo; at: number } | null = null;
   return {
-    async isLoginRequired(now: number): Promise<boolean> {
+    async get(now: number): Promise<AuthInfo> {
       if (cached && now - cached.at < ttlMs) return cached.value;
       try {
-        const { login_required } = await fetcher();
-        cached = { value: !!login_required, at: now };
+        const info = await fetcher();
+        cached = {
+          value: {
+            login_required: !!info.login_required,
+            idle_timeout_secs: Number(info.idle_timeout_secs) || 0,
+          },
+          at: now,
+        };
         return cached.value;
       } catch {
-        return true; // fail-closed
+        return FAIL_CLOSED;
       }
     },
   };
@@ -29,12 +48,20 @@ export function createAuthRequiredCache(fetcher: Fetcher, ttlMs: number) {
 const defaultFetcher: Fetcher = async () => {
   const res = await fetch(`${GATEWAY_URL}/api/v1/auth/info`, { cache: "no-store" });
   if (!res.ok) throw new Error(`auth/info ${res.status}`);
-  return (await res.json()) as { login_required: boolean };
+  return (await res.json()) as AuthInfo;
 };
 
-const cache = createAuthRequiredCache(defaultFetcher, 30_000);
+const cache = createAuthInfoCache(defaultFetcher, 30_000);
 
 /** True when the connected gateway requires console login. Fail-closed. */
 export async function isLoginRequired(now = Date.now()): Promise<boolean> {
-  return cache.isLoginRequired(now);
+  return (await cache.get(now)).login_required;
+}
+
+/**
+ * Idle window in milliseconds, `0` when auto-lock is disabled. Sourced from the
+ * gateway so the console and the TUI run one setting rather than two copies.
+ */
+export async function idleTimeoutMs(now = Date.now()): Promise<number> {
+  return (await cache.get(now)).idle_timeout_secs * 1000;
 }

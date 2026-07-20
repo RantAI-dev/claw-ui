@@ -17,9 +17,46 @@ rantaiclaw setup login      # sets a username + argon2 password hash in config.g
 ```
 
 The web UI detects this via the gateway's `GET /api/v1/auth/info`
-(`{ login_required }`), cached ~30 s and **fail-closed** (if the gateway is
-unreachable it assumes login is required — a down gateway makes the console
-non-functional anyway, so the gate is never silently dropped).
+(`{ login_required, idle_timeout_secs }`), cached ~30 s and **fail-closed** on
+`login_required` (if the gateway is unreachable it assumes login is required — a
+down gateway makes the console non-functional anyway, so the gate is never
+silently dropped). `idle_timeout_secs` fails *open* (reported as `0`) during an
+outage, because logging every operator out on a transient blip is the worse
+failure — the gate above stays on and the absolute cap still applies.
+
+## Idle auto-lock
+
+Set on the RantaiClaw side via `rantaiclaw setup login`
+(`config.gateway.login.idle_timeout_secs`, `0` = off, which is the default). The
+console reads it from the gateway rather than carrying its own copy, so it and
+the TUI always run the same policy.
+
+The `rc_session` payload carries two stamps: `exp`, the absolute cap, minted at
+login and **never** extended; and `la`, the last-activity stamp, which slides
+forward. Staying busy therefore cannot keep a session alive past 24 h.
+
+What counts as activity is decided **server-side** in `src/lib/activity.ts`, not
+by a header the client sets about itself. The console polls `/api/rc/status`
+every 15 s for its connection badge and never stops while a tab is open, so that
+one path is excluded — otherwise an abandoned browser would renew its own
+session forever and the window could never elapse. Everything else counts, which
+is the safe direction to be wrong in: a background poller nobody excludes merely
+delays a logout, while a mislabelled real interaction would sign out an operator
+mid-task.
+
+Re-signing is throttled (at most once a minute, and never coarser than a quarter
+of the window) so ordinary browsing doesn't put a `Set-Cookie` on every request.
+
+When the window lapses, `src/proxy.ts` clears the cookie and either redirects to
+`/login?reason=idle` (navigations) or returns `401 {"error":"session_expired",
+"reason":"idle"}` (API calls). The status poll picks that up and sends the tab to
+the login page, so an operator gets an explanation instead of a console that
+merely looks offline.
+
+Note the one accepted rough edge: idleness is measured from *requests*, and
+watching a long stream generates none of its own. A single turn that outlasts the
+window will end in a re-login — which is why the shortest offered preset is 15
+minutes.
 
 ## Credentials (do not confuse them)
 
@@ -52,6 +89,10 @@ per-process.
 ## Limitations
 
 - Single operator (single username + password). No per-user accounts or roles.
-- `rc_session` is a stateless HMAC token (24 h TTL); revoke early only by
+- `rc_session` is a stateless HMAC token (24 h cap); revoke early only by
   rotating `RANTAICLAW_UI_SECRET`.
+- Idle auto-lock defends an **unattended browser**, not a stolen cookie. Someone
+  holding a copied cookie renews it the same way a real operator does, simply by
+  making requests, so it stays good up to the absolute cap. Rotating the secret
+  is still the only way to cut a session short.
 - UI lockout is per-process; a multi-instance UI would need a shared store.

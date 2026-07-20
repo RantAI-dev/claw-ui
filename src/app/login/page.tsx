@@ -15,6 +15,12 @@ export default function LoginPage() {
   const [password, setPassword] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
+  // `?reason=idle` means the proxy dropped the session for inactivity. Say so,
+  // otherwise being bounced back here reads as a bug rather than a policy.
+  const [idled, setIdled] = React.useState(false);
+  React.useEffect(() => {
+    setIdled(new URLSearchParams(window.location.search).get("reason") === "idle");
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +62,9 @@ export default function LoginPage() {
         <div className="mb-5 flex flex-col items-center gap-2 text-center">
           <Image src={brand.logo} alt={brand.name} width={40} height={40} className="rounded-lg" priority unoptimized />
           <h1 className="text-base font-semibold">{brand.productName}</h1>
-          <p className="text-xs text-muted-foreground">Enter your password to continue</p>
+          <p className="text-xs text-muted-foreground">
+            {idled ? "Signed out after a stretch of inactivity" : "Enter your password to continue"}
+          </p>
         </div>
         <form onSubmit={submit} className="space-y-3">
           <div className="relative">
