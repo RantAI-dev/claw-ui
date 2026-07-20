@@ -18,6 +18,23 @@ function nextId(prefix: string) {
   return `${prefix}-${idSeq}-${Math.round(Math.random() * 1e6)}`;
 }
 
+/**
+ * A conversation id the gateway will adopt as the session id.
+ *
+ * Must be UUID-shaped — `record_api_turn` ignores anything else and mints its
+ * own, which is exactly the mismatch this exists to avoid. `randomUUID` needs a
+ * secure context; the console is served over loopback or HTTPS, but fall back
+ * rather than throw so a plain-http LAN bind still works.
+ */
+export function newConversationId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const hex = (n: number) =>
+    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-a${hex(3)}-${hex(12)}`;
+}
+
 export interface UseChatOptions {
   model?: string;
   provider?: string;
@@ -151,8 +168,16 @@ export function useChat(opts: UseChatOptions) {
   // stays open while this is set; resolving it (POST /approvals/{id}) lets the
   // paused turn resume.
   const [pendingApproval, setPendingApproval] = React.useState<PendingApproval | null>(null);
-  // Stable client-side id used to scope KB attachments + retrieval per chat.
-  const [conversationId, setConversationId] = React.useState<string>(() => nextId("c"));
+  // Stable id used to scope KB attachments + retrieval per chat, AND sent as
+  // `session_id` on the first turn so the gateway adopts it (RantAIClaw #289).
+  //
+  // It has to be a UUID, not `nextId("c")`. Attachments are ingested into the
+  // KB under this id at *upload* time — before any session exists — so if the
+  // gateway then minted its own id, reopening the session would search the KB
+  // under an id the documents were never stored against, and every attachment
+  // in that conversation became silently unreachable. The gateway only adopts a
+  // caller-supplied id when it is UUID-shaped.
+  const [conversationId, setConversationId] = React.useState<string>(() => newConversationId());
   const abortRef = React.useRef<AbortController | null>(null);
   const optsRef = React.useRef(opts);
   optsRef.current = opts;
@@ -307,7 +332,10 @@ export function useChat(opts: UseChatOptions) {
             model: optsRef.current.model,
             provider: optsRef.current.provider,
             temperature: optsRef.current.temperature,
-            session_id: sessionIdRef.current ?? undefined,
+            // Fall back to the conversation id on the first turn: naming the
+            // session up front is what keeps it equal to the KB category the
+            // attachments were ingested under.
+            session_id: sessionIdRef.current ?? conversationIdRef.current,
           },
           onEvent,
           controller.signal,
@@ -427,7 +455,7 @@ export function useChat(opts: UseChatOptions) {
     setPendingApproval(null);
     setMessages([]);
     setSessionId(null);
-    setConversationId(nextId("c"));
+    setConversationId(newConversationId());
   }, []);
 
   /** Load a past session transcript and continue it (multi-turn when backend supports session_id). */
@@ -439,7 +467,7 @@ export function useChat(opts: UseChatOptions) {
     setIsStreaming(false);
     setPendingApproval(null);
     setSessionId(id);
-    setConversationId(id ?? nextId("c"));
+    setConversationId(id ?? newConversationId());
     setMessages(
       history
         .filter((m) => m.role === "user" || m.role === "assistant")

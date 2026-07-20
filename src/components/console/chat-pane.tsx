@@ -257,9 +257,17 @@ export function ChatPane(props: ChatPaneProps) {
   }, []);
   React.useEffect(grow, [text, grow]);
 
+  // An attachment still uploading has not reached the KB yet. Sending now drops
+  // its chip (see the filter at the end of submit), so when `ingestFile`
+  // resolves, `patchAttachment` maps over a list that no longer holds that id
+  // and does nothing — `readyCount` never rises, the ready-latch never fires,
+  // and `retrieveContext` short-circuits for every remaining turn. The document
+  // lands in the KB and the agent never sees it, with no error shown.
+  const uploading = attachments.some((a) => a.status === "uploading");
+
   const submit = (value?: string) => {
     const v = (value ?? text).trim();
-    if (!v || isStreaming) return;
+    if (!v || isStreaming || uploading) return;
     const docNames = attachments.filter((a) => a.status === "ready").map((a) => a.name);
     // Sending is a request to watch the reply — re-attach even if the operator
     // had scrolled back to read something older.
@@ -510,8 +518,9 @@ export function ChatPane(props: ChatPaneProps) {
                 type="button"
                 className={"send-btn" + (isStreaming ? " stop" : "")}
                 onClick={isStreaming ? onStop : () => submit()}
-                disabled={!isStreaming && !text.trim()}
+                disabled={!isStreaming && (!text.trim() || uploading)}
                 aria-label={isStreaming ? "Stop generating" : "Send message"}
+                title={uploading ? "Waiting for the attachment to finish uploading" : undefined}
               >
                 {isStreaming ? (
                   <>
