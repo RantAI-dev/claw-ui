@@ -45,11 +45,13 @@ export default async function proxy(req: NextRequest) {
   // console login is configured. With login off (the default), the console
   // would otherwise accept privileged writes from any page the operator has
   // open in another tab.
-  const crossSite = isCrossSiteWrite(
-    req.method,
-    { secFetchSite: req.headers.get("sec-fetch-site"), origin: req.headers.get("origin") },
-    req.nextUrl.origin,
-  );
+  const crossSite = isCrossSiteWrite(req.method, {
+    secFetchSite: req.headers.get("sec-fetch-site"),
+    origin: req.headers.get("origin"),
+    // The Host the browser actually reached us at — NOT `req.nextUrl.origin`,
+    // which is the bind address (`0.0.0.0`) in the standalone server.
+    host: req.headers.get("host"),
+  });
   if (crossSite) {
     return NextResponse.json({ error: "cross_site_request_blocked" }, { status: 403 });
   }

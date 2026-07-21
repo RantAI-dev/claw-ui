@@ -26,26 +26,47 @@ export function isStateChanging(method: string): boolean {
  * Whether a state-changing request should be refused as cross-site.
  *
  * `Sec-Fetch-Site` is the primary signal — every current browser sends it and
- * it cannot be set by page script. `Origin` is the fallback for older agents.
+ * it cannot be set by page script. `Origin` is the fallback for agents that
+ * omit it (Safari before 16.4, some webviews).
+ *
+ * The `Origin` fallback compares the Origin header's **host** against the
+ * request's own `Host` header — NOT against a precomputed self-origin string.
+ * Next's `req.nextUrl.origin` in the standalone server reflects the *bind*
+ * address (`http://0.0.0.0:3939` under `--host 0.0.0.0`), which no browser
+ * origin ever equals, so comparing against it rejected every genuine
+ * same-origin login reached by a real host/IP. A same-origin request always
+ * has `Origin`'s host equal to the `Host` it was sent to; a cross-site one does
+ * not. Comparing the two is the robust, bind-address-independent check.
  *
  * A request carrying *neither* header is not a browser (curl, the CLI, a
  * server-side caller). Those are let through: they have no ambient credentials
  * to abuse, so CSRF does not apply to them, and blocking them would break
  * scripted use. Network-level access is the auth gate's job, not this one's.
  *
- * `same-site` is refused along with `cross-site`: the console is a single
- * origin, and a sibling on another port of the same host is not something it
- * should accept privileged writes from.
+ * `same-site` is still refused along with `cross-site` on the Sec-Fetch-Site
+ * path: the console is a single origin, and a sibling on another port of the
+ * same host is not something it should accept privileged writes from.
  */
 export function isCrossSiteWrite(
   method: string,
-  headers: { secFetchSite: string | null; origin: string | null },
-  selfOrigin: string,
+  headers: { secFetchSite: string | null; origin: string | null; host: string | null },
 ): boolean {
   if (!isStateChanging(method)) return false;
 
-  const { secFetchSite, origin } = headers;
+  const { secFetchSite, origin, host } = headers;
   if (secFetchSite) return secFetchSite !== "same-origin" && secFetchSite !== "none";
-  if (origin) return origin !== selfOrigin;
+  if (origin) {
+    // A malformed Origin, or one whose host differs from the Host header we were
+    // reached at, is cross-site. If we have no Host to compare against, fail
+    // closed.
+    if (!host) return true;
+    let originHost: string;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      return true;
+    }
+    return originHost !== host;
+  }
   return false;
 }
