@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Play, Plus, Power, Trash2 } from "lucide-react";
+import { History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { CronSchedule } from "@/lib/types";
+import type { CronJob, CronRun, CronSchedule } from "@/lib/types";
+import { CRON_PRESETS, describeCron, validateCron } from "@/lib/cron";
 import { useAsync } from "@/hooks/use-async";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Modal } from "@/components/ui/modal";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
@@ -27,40 +29,13 @@ function fmtWhen(ts: string | number | null): string {
   }
 }
 
-const DOW = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-
-/** Best-effort plain-English summary of a 5-field cron expr. Returns null for
- *  anything it can't describe confidently — the caller shows "custom schedule". */
-function describeCron(expr: string): string | null {
-  const f = expr.trim().split(/\s+/);
-  if (f.length !== 5) return null;
-  const [min, hour, dom, mon, dow] = f;
-  const num = (s: string) => (/^\d+$/.test(s) ? Number(s) : null);
-  const h = num(hour);
-  const m = num(min);
-
-  let time: string;
-  if (min === "*" && hour === "*") return "every minute";
-  else if (h != null && m != null && h < 24 && m < 60)
-    time = `at ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  else if (hour === "*" && m != null && m < 60) time = `at :${String(m).padStart(2, "0")} every hour`;
-  else return null;
-
-  let day: string;
-  if (dom === "*" && mon === "*" && dow === "*") day = "every day";
-  else if (dom === "*" && mon === "*" && dow === "1-5") day = "on weekdays";
-  else if (dom === "*" && mon === "*" && num(dow) != null && num(dow)! <= 6)
-    day = `every ${DOW[num(dow)!]}`;
-  else if (num(dom) != null && mon === "*" && dow === "*") day = `on day ${num(dom)} of the month`;
-  else return null;
-
-  return `${time}, ${day}`;
-}
-
 export function CronPanel() {
-  const { data, loading, error, refresh } = useAsync(() => api.cron(), []);
+  const { data, loading, error, refresh, refreshing } = useAsync(() => api.cron(), []);
+  const [jobKind, setJobKind] = React.useState<"agent" | "shell">("agent");
   const [prompt, setPrompt] = React.useState("");
+  const [command, setCommand] = React.useState("");
   const [expr, setExpr] = React.useState("0 9 * * *");
+  const [tz, setTz] = React.useState("");
   const [name, setName] = React.useState("");
   const [kind, setKind] = React.useState<CronSchedule["kind"]>("cron");
   const [everyMin, setEveryMin] = React.useState("60");
@@ -69,41 +44,75 @@ export function CronPanel() {
   const [busy, setBusy] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-  const schedulePreview = describeCron(expr);
+  const [editing, setEditing] = React.useState<CronJob | null>(null);
+  const [history, setHistory] = React.useState<CronJob | null>(null);
 
-  const create = async () => {
-    if (!prompt.trim()) return;
-    let schedule: CronSchedule;
+  const schedulePreview = describeCron(expr);
+  const cronError = kind === "cron" ? validateCron(expr) : null;
+
+  // Live refresh: a job firing in the background surfaces without a manual click.
+  // `useAsync` keeps stale content mounted during a refresh, so this doesn't flash.
+  React.useEffect(() => {
+    const t = setInterval(refresh, 15000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const buildSchedule = (): CronSchedule | null => {
     if (kind === "every") {
       const mins = Number(everyMin);
       if (!Number.isFinite(mins) || mins < 1) {
         toast.error("Interval must be at least 1 minute");
-        return;
+        return null;
       }
-      schedule = { kind: "every", every_ms: Math.round(mins) * 60000 };
-    } else if (kind === "at") {
+      return { kind: "every", every_ms: Math.round(mins) * 60000 };
+    }
+    if (kind === "at") {
       const ms = at ? Date.parse(at) : NaN;
       if (!Number.isFinite(ms)) {
         toast.error("Pick a valid date and time");
-        return;
+        return null;
       }
-      schedule = { kind: "at", at: new Date(ms).toISOString() };
-    } else {
-      if (!expr.trim()) return;
-      schedule = { kind: "cron", expr: expr.trim() };
+      return { kind: "at", at: new Date(ms).toISOString() };
     }
+    if (!expr.trim()) return null;
+    const err = validateCron(expr);
+    if (err) {
+      toast.error(err);
+      return null;
+    }
+    return { kind: "cron", expr: expr.trim(), tz: tz.trim() || undefined };
+  };
+
+  const create = async () => {
+    const primaryEmpty = jobKind === "shell" ? !command.trim() : !prompt.trim();
+    if (primaryEmpty) return;
+    const schedule = buildSchedule();
+    if (!schedule) return;
+
+    const payload =
+      jobKind === "shell"
+        ? {
+            schedule,
+            job_type: "shell" as const,
+            command: command.trim(),
+            name: name.trim() || undefined,
+          }
+        : {
+            schedule,
+            job_type: "agent" as const,
+            prompt: prompt.trim(),
+            name: name.trim() || undefined,
+            model: model.trim() || undefined,
+          };
     setBusy(true);
     try {
-      await api.createCron({
-        schedule,
-        prompt: prompt.trim(),
-        name: name.trim() || undefined,
-        model: model.trim() || undefined,
-      });
+      await api.createCron(payload);
       toast.success("Cron job created");
       setPrompt("");
+      setCommand("");
       setName("");
       setModel("");
+      setAt("");
       refresh();
     } catch (e) {
       toast.error(`Create failed: ${e instanceof Error ? e.message : e}`);
@@ -148,22 +157,65 @@ export function CronPanel() {
     }
   };
 
+  const createDisabled =
+    busy ||
+    (jobKind === "shell" ? !command.trim() : !prompt.trim()) ||
+    (kind === "cron" && (!expr.trim() || cronError != null));
+
   return (
     <div className="space-y-4">
-      <SectionTitle action={<RefreshButton onClick={refresh} />}>
+      <SectionTitle action={<RefreshButton onClick={refresh} spinning={refreshing} />}>
         Scheduled jobs {data && <span className="text-muted-foreground">· {data.count}</span>}
       </SectionTitle>
 
       <Card className="space-y-2 p-3">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          New agent job
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            New {jobKind} job
+          </div>
+          <Select
+            value={jobKind}
+            onChange={(e) => setJobKind(e.target.value as "agent" | "shell")}
+            aria-label="Job kind"
+            className="h-7 w-28 text-xs"
+          >
+            <option value="agent">Agent</option>
+            <option value="shell">Shell</option>
+          </Select>
         </div>
-        <Textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Prompt the agent runs on schedule…"
-          rows={2}
-        />
+
+        {jobKind === "agent" ? (
+          <Textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Prompt the agent runs on schedule…"
+            rows={2}
+          />
+        ) : (
+          <Input
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder="Shell command to run on schedule…"
+            aria-label="Shell command"
+            className="h-8 font-mono text-xs"
+          />
+        )}
+
+        {kind === "cron" && (
+          <div className="flex flex-wrap gap-1">
+            {CRON_PRESETS.map((p) => (
+              <button
+                key={p.expr}
+                type="button"
+                onClick={() => setExpr(p.expr)}
+                className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex flex-wrap items-center gap-2">
           <Select
             value={kind}
@@ -177,13 +229,22 @@ export function CronPanel() {
           </Select>
 
           {kind === "cron" && (
-            <Input
-              value={expr}
-              onChange={(e) => setExpr(e.target.value)}
-              placeholder="0 9 * * *"
-              aria-label="Cron expression"
-              className="h-8 w-32 font-mono text-xs"
-            />
+            <>
+              <Input
+                value={expr}
+                onChange={(e) => setExpr(e.target.value)}
+                placeholder="0 9 * * *"
+                aria-label="Cron expression"
+                className="h-8 w-32 font-mono text-xs"
+              />
+              <Input
+                value={tz}
+                onChange={(e) => setTz(e.target.value)}
+                placeholder="tz (e.g. UTC)"
+                aria-label="Timezone (IANA)"
+                className="h-8 w-40 text-xs"
+              />
+            </>
           )}
           {kind === "every" && (
             <div className="flex items-center gap-1.5">
@@ -214,25 +275,27 @@ export function CronPanel() {
             placeholder="name (optional)"
             className="h-8 min-w-[120px] flex-1 text-xs"
           />
-          <Button
-            size="sm"
-            onClick={create}
-            disabled={busy || !prompt.trim() || (kind === "cron" && !expr.trim())}
-          >
+          <Button size="sm" onClick={create} disabled={createDisabled}>
             <Plus className="size-4" /> Create
           </Button>
         </div>
 
-        <Input
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          placeholder="model override (optional — defaults to the agent's model)"
-          className="h-8 font-mono text-xs"
-        />
+        {jobKind === "agent" && (
+          <Input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="model override (optional — defaults to the agent's model)"
+            className="h-8 font-mono text-xs"
+          />
+        )}
 
-        {kind === "cron" && expr.trim() && (
+        {kind === "cron" && expr.trim() && cronError && (
+          <p className="text-[11px] text-destructive">{cronError}</p>
+        )}
+        {kind === "cron" && expr.trim() && !cronError && (
           <p className="text-[11px] text-muted-foreground">
-            {schedulePreview ? `Runs ${schedulePreview}` : "Custom cron schedule"} · server time zone
+            {schedulePreview ? `Runs ${schedulePreview}` : "Custom cron schedule"} ·{" "}
+            {tz.trim() ? tz.trim() : "server time zone"}
           </p>
         )}
         {kind === "every" && everyMin.trim() && (
@@ -256,9 +319,14 @@ export function CronPanel() {
                   {!j.enabled && <Badge variant="warning" className="text-[10px]">paused</Badge>}
                 </div>
                 <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  {j.expression} · next {fmtWhen(j.next_run)}
-                  {j.last_status ? ` · last: ${j.last_status}` : ""}
+                  {j.expression || j.schedule.kind} · next {fmtWhen(j.next_run)}
+                  {j.last_status ? ` · last: ${j.last_status} (${fmtWhen(j.last_run)})` : ""}
                 </div>
+                {(j.prompt || j.command) && (
+                  <div className="truncate text-[11px] text-muted-foreground/80">
+                    {j.job_type === "shell" ? j.command : j.prompt}
+                  </div>
+                )}
               </div>
               <IconButton
                 onClick={() => toggle(j.id, !j.enabled)}
@@ -272,6 +340,20 @@ export function CronPanel() {
                 <Play className="size-3.5" />
               </IconButton>
               <IconButton
+                onClick={() => setHistory(j)}
+                title="Run history"
+                aria-label={`Run history for ${j.name || j.id.slice(0, 8)}`}
+              >
+                <History className="size-3.5" />
+              </IconButton>
+              <IconButton
+                onClick={() => setEditing(j)}
+                title="Edit"
+                aria-label={`Edit job ${j.name || j.id.slice(0, 8)}`}
+              >
+                <Pencil className="size-3.5" />
+              </IconButton>
+              <IconButton
                 onClick={() => setPendingDelete({ id: j.id, name: j.name || j.id.slice(0, 8) })}
                 title="Delete"
                 aria-label={`Delete job ${j.name || j.id.slice(0, 8)}`}
@@ -283,9 +365,13 @@ export function CronPanel() {
           ))}
         </Card>
         <p className="mt-2 px-1 text-[10px] text-muted-foreground">
-          Next-run times are shown in your local time zone; cron expressions run in the server&apos;s.
+          Next-run times are shown in your local time zone; cron expressions run in the server&apos;s
+          (or a job&apos;s chosen time zone).
         </p>
       </PanelFrame>
+
+      <EditCronModal job={editing} onClose={() => setEditing(null)} onSaved={refresh} />
+      <CronRunsModal job={history} onClose={() => setHistory(null)} />
 
       <ConfirmModal
         open={!!pendingDelete}
@@ -301,5 +387,207 @@ export function CronPanel() {
         onConfirm={del}
       />
     </div>
+  );
+}
+
+/** Edit an existing job's name, prompt/command, model, and (for cron jobs) the
+ *  expression + timezone. Only changed fields are sent. */
+function EditCronModal({
+  job,
+  onClose,
+  onSaved,
+}: {
+  job: CronJob | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = React.useState("");
+  const [prompt, setPrompt] = React.useState("");
+  const [command, setCommand] = React.useState("");
+  const [model, setModel] = React.useState("");
+  const [expr, setExpr] = React.useState("");
+  const [tz, setTz] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!job) return;
+    setName(job.name ?? "");
+    setPrompt(job.prompt ?? "");
+    setCommand(job.command ?? "");
+    setModel(job.model ?? "");
+    setExpr(job.schedule.kind === "cron" ? job.schedule.expr : "");
+    setTz(job.schedule.kind === "cron" ? job.schedule.tz ?? "" : "");
+  }, [job]);
+
+  if (!job) return null;
+  const isCron = job.schedule.kind === "cron";
+  const isShell = job.job_type === "shell";
+  const cronError = isCron ? validateCron(expr) : null;
+
+  const save = async () => {
+    const body: Parameters<typeof api.updateCron>[1] = {};
+    if (name !== (job.name ?? "")) body.name = name;
+    if (isShell) {
+      if (command !== (job.command ?? "")) body.command = command;
+    } else {
+      if (prompt !== (job.prompt ?? "")) body.prompt = prompt;
+      if (model !== (job.model ?? "")) body.model = model;
+    }
+    if (isCron) {
+      const origExpr = job.schedule.kind === "cron" ? job.schedule.expr : "";
+      const origTz = job.schedule.kind === "cron" ? job.schedule.tz ?? "" : "";
+      if (expr !== origExpr || tz !== origTz) {
+        const err = validateCron(expr);
+        if (err) {
+          toast.error(err);
+          return;
+        }
+        body.schedule = { kind: "cron", expr: expr.trim(), tz: tz.trim() || undefined };
+      }
+    }
+    setBusy(true);
+    try {
+      await api.updateCron(job.id, body);
+      toast.success("Job updated");
+      onSaved();
+      onClose();
+    } catch (e) {
+      toast.error(`Update failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={!!job}
+      onClose={onClose}
+      title="Edit scheduled job"
+      description={job.name || job.id.slice(0, 8)}
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={save} disabled={busy || (isCron && cronError != null)}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-2">
+        <Input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="name"
+          className="h-8 text-xs"
+          aria-label="Name"
+        />
+        {isShell ? (
+          <Input
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder="shell command"
+            className="h-8 font-mono text-xs"
+            aria-label="Shell command"
+          />
+        ) : (
+          <Textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="prompt"
+            rows={2}
+            aria-label="Prompt"
+          />
+        )}
+        {!isShell && (
+          <Input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="model override (optional)"
+            className="h-8 font-mono text-xs"
+            aria-label="Model override"
+          />
+        )}
+        {isCron && (
+          <div className="flex flex-wrap gap-2">
+            <Input
+              value={expr}
+              onChange={(e) => setExpr(e.target.value)}
+              placeholder="0 9 * * *"
+              className="h-8 w-36 font-mono text-xs"
+              aria-label="Cron expression"
+            />
+            <Input
+              value={tz}
+              onChange={(e) => setTz(e.target.value)}
+              placeholder="tz (e.g. UTC)"
+              className="h-8 w-40 text-xs"
+              aria-label="Timezone"
+            />
+          </div>
+        )}
+        {isCron && cronError && <p className="text-[11px] text-destructive">{cronError}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+/** Durable run history for a job (replaces the ephemeral run toast). */
+function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => void }) {
+  const [runs, setRuns] = React.useState<CronRun[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!job) {
+      setRuns(null);
+      setError(null);
+      return;
+    }
+    let alive = true;
+    api
+      .cronRuns(job.id)
+      .then((r) => alive && setRuns(r.runs))
+      .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
+    return () => {
+      alive = false;
+    };
+  }, [job]);
+
+  if (!job) return null;
+
+  return (
+    <Modal
+      open={!!job}
+      onClose={onClose}
+      title="Run history"
+      description={job.name || job.id.slice(0, 8)}
+    >
+      <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+        {error && <p className="text-[11px] text-destructive">{error}</p>}
+        {!error && runs == null && <p className="text-[11px] text-muted-foreground">Loading…</p>}
+        {runs != null && runs.length === 0 && (
+          <p className="text-[11px] text-muted-foreground">No runs yet.</p>
+        )}
+        {runs?.map((r) => (
+          <details key={r.id} className="rounded border border-border px-2 py-1.5">
+            <summary className="flex cursor-pointer items-center gap-2 text-[11px]">
+              <Badge variant={r.status === "ok" ? "secondary" : "warning"} className="text-[10px]">
+                {r.status}
+              </Badge>
+              <span className="text-muted-foreground">{fmtWhen(r.started_at)}</span>
+              <span className="text-muted-foreground/70">
+                {r.duration_ms != null ? `${r.duration_ms}ms` : ""}
+              </span>
+            </summary>
+            {r.output && (
+              <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono text-[10px]">
+                {r.output}
+              </pre>
+            )}
+          </details>
+        ))}
+      </div>
+    </Modal>
   );
 }
