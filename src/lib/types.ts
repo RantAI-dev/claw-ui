@@ -271,11 +271,30 @@ export interface CronJob {
   id: string;
   name: string | null;
   expression: string;
-  job_type: string;
+  schedule: CronSchedule;
+  job_type: string; // "agent" | "shell"
+  command: string;
+  prompt: string | null;
+  session_target: string; // "isolated" | "main"
+  model: string | null;
   enabled: boolean;
+  delete_after_run: boolean;
+  created_at: string;
+  delivery: { mode: string; channel: string | null; to: string | null; best_effort: boolean };
   next_run: string | number | null;
   last_run: string | number | null;
   last_status: string | null;
+  last_output: string | null;
+}
+
+export interface CronRun {
+  id: number;
+  job_id: string;
+  started_at: string;
+  finished_at: string;
+  status: string; // "ok" | "error"
+  output: string | null;
+  duration_ms: number | null;
 }
 
 // ---- Chat SSE event frames ----

@@ -3,6 +3,7 @@ import type {
   ChannelsInfo,
   ClawHubSkill,
   CronJob,
+  CronRun,
   CronSchedule,
   DoctorResult,
   Insights,
@@ -114,18 +115,38 @@ export const api = {
   refreshProviderModels: (id: string) =>
     rc<ModelCatalog>(`providers/${encodeURIComponent(id)}/models/refresh`, { method: "POST" }),
   cron: () => rc<{ jobs: CronJob[]; count: number }>("cron"),
-  createCron: (body: { schedule: CronSchedule; prompt: string; name?: string; model?: string }) =>
-    rc<CronJob>("cron", { method: "POST", body: JSON.stringify(body) }),
+  createCron: (body: {
+    schedule: CronSchedule;
+    job_type?: "agent" | "shell";
+    prompt?: string;
+    command?: string;
+    name?: string;
+    model?: string;
+    session_target?: "isolated" | "main";
+    delete_after_run?: boolean;
+  }) => rc<CronJob>("cron", { method: "POST", body: JSON.stringify(body) }),
   updateCron: (
     id: string,
-    body: { enabled?: boolean; name?: string; prompt?: string; model?: string; schedule?: CronSchedule },
+    body: {
+      enabled?: boolean;
+      name?: string;
+      prompt?: string;
+      command?: string;
+      model?: string;
+      schedule?: CronSchedule;
+      session_target?: "isolated" | "main";
+      delete_after_run?: boolean;
+    },
   ) => rc<CronJob>(`cron/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteCron: (id: string) =>
     rc<{ id: string; deleted: boolean }>(`cron/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  runCron: (id: string) =>
-    rc<{ id: string; success: boolean; output: string }>(`cron/${encodeURIComponent(id)}/run`, {
-      method: "POST",
-    }),
+  runCron: (id: string, approved = false) =>
+    rc<{ id: string; success: boolean; output: string }>(
+      `cron/${encodeURIComponent(id)}/run${approved ? "?approved=true" : ""}`,
+      { method: "POST" },
+    ),
+  cronRuns: (id: string, limit = 50) =>
+    rc<{ runs: CronRun[]; count: number }>(`cron/${encodeURIComponent(id)}/runs?limit=${limit}`),
   setSkillEnabled: (name: string, enabled: boolean) =>
     rc<{ name: string; enabled: boolean }>(`skills/${encodeURIComponent(name)}/enabled`, {
       method: "PUT",

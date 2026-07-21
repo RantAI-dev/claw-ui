@@ -195,10 +195,16 @@ export function CountBadge({ n }: { n: number }) {
   );
 }
 
-export function RefreshButton({ onClick }: { onClick: () => void }) {
+export function RefreshButton({
+  onClick,
+  spinning = false,
+}: {
+  onClick: () => void;
+  spinning?: boolean;
+}) {
   return (
-    <Button variant="outline" size="sm" onClick={onClick}>
-      <RefreshCw /> Refresh
+    <Button variant="outline" size="sm" onClick={onClick} disabled={spinning}>
+      <RefreshCw className={cn(spinning && "animate-spin")} /> Refresh
     </Button>
   );
 }
