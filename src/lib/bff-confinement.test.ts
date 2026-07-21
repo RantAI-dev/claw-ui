@@ -57,48 +57,100 @@ describe("gateway path confinement", () => {
 });
 
 describe("cross-site write rejection", () => {
-  const SELF = "http://127.0.0.1:3939";
+  const HOST = "192.168.18.170:3939";
 
   it("treats reads as always allowed", () => {
     expect(isStateChanging("GET")).toBe(false);
-    expect(isCrossSiteWrite("GET", { secFetchSite: "cross-site", origin: "http://evil" }, SELF)).toBe(
-      false,
-    );
+    expect(
+      isCrossSiteWrite("GET", { secFetchSite: "cross-site", origin: "http://evil", host: HOST }),
+    ).toBe(false);
   });
 
-  it("allows the console's own writes", () => {
+  it("allows the console's own writes (Sec-Fetch-Site path)", () => {
     expect(
-      isCrossSiteWrite("POST", { secFetchSite: "same-origin", origin: SELF }, SELF),
+      isCrossSiteWrite("POST", {
+        secFetchSite: "same-origin",
+        origin: `http://${HOST}`,
+        host: HOST,
+      }),
     ).toBe(false);
   });
 
   it("blocks a write from another site", () => {
     expect(
-      isCrossSiteWrite("POST", { secFetchSite: "cross-site", origin: "http://evil.example" }, SELF),
+      isCrossSiteWrite("POST", {
+        secFetchSite: "cross-site",
+        origin: "http://evil.example",
+        host: HOST,
+      }),
     ).toBe(true);
   });
 
   it("blocks a same-site sibling on another port", () => {
-    // Ports are not part of a "site", so SameSite cookies would not stop this.
     expect(
-      isCrossSiteWrite("POST", { secFetchSite: "same-site", origin: "http://127.0.0.1:9999" }, SELF),
+      isCrossSiteWrite("POST", {
+        secFetchSite: "same-site",
+        origin: "http://192.168.18.170:9999",
+        host: HOST,
+      }),
     ).toBe(true);
   });
 
-  it("falls back to Origin when Sec-Fetch-Site is absent", () => {
-    expect(isCrossSiteWrite("POST", { secFetchSite: null, origin: "http://evil" }, SELF)).toBe(true);
-    expect(isCrossSiteWrite("POST", { secFetchSite: null, origin: SELF }, SELF)).toBe(false);
+  // Regression: the Origin fallback used to compare against `req.nextUrl.origin`
+  // — the BIND address `0.0.0.0:3939` in the standalone server — so a genuine
+  // same-origin login reached by LAN IP was rejected whenever the browser
+  // omitted Sec-Fetch-Site (shipped broken in claw-ui v0.3.5). It must compare
+  // against the Host header instead.
+  it("allows a same-origin write via the Origin fallback, matched against Host", () => {
+    expect(
+      isCrossSiteWrite("POST", {
+        secFetchSite: null,
+        origin: `http://${HOST}`,
+        host: HOST,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not depend on the server's bind address", () => {
+    // Same request, but pretend nextUrl.origin were 0.0.0.0 — irrelevant now,
+    // because we compare Origin's host to the Host header, not a bind string.
+    for (const host of ["192.168.18.170:3939", "127.0.0.1:3939", "localhost:3939"]) {
+      expect(
+        isCrossSiteWrite("POST", {
+          secFetchSite: null,
+          origin: `http://${host}`,
+          host,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("blocks a cross-origin write on the fallback path", () => {
+    expect(
+      isCrossSiteWrite("POST", { secFetchSite: null, origin: "http://evil.example", host: HOST }),
+    ).toBe(true);
+  });
+
+  it("fails closed on a malformed Origin or a missing Host", () => {
+    expect(
+      isCrossSiteWrite("POST", { secFetchSite: null, origin: "not a url", host: HOST }),
+    ).toBe(true);
+    expect(
+      isCrossSiteWrite("POST", { secFetchSite: null, origin: `http://${HOST}`, host: null }),
+    ).toBe(true);
   });
 
   it("allows a non-browser caller that sends neither header", () => {
     // curl and the CLI carry no ambient credentials, so CSRF does not apply;
     // keeping them out is the auth gate's job, not this check's.
-    expect(isCrossSiteWrite("POST", { secFetchSite: null, origin: null }, SELF)).toBe(false);
+    expect(isCrossSiteWrite("POST", { secFetchSite: null, origin: null, host: HOST })).toBe(false);
   });
 
   it("covers every state-changing method, not just POST", () => {
     for (const m of ["POST", "PUT", "PATCH", "DELETE"]) {
-      expect(isCrossSiteWrite(m, { secFetchSite: "cross-site", origin: null }, SELF)).toBe(true);
+      expect(
+        isCrossSiteWrite(m, { secFetchSite: "cross-site", origin: null, host: HOST }),
+      ).toBe(true);
     }
   });
 });
