@@ -37,7 +37,9 @@ async function rc<T>(path: string, init?: RequestInit): Promise<T> {
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const detail = data?.detail || data?.error || res.statusText;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new Error(
+      typeof detail === "string" ? detail : JSON.stringify(detail),
+    );
   }
   return data as T;
 }
@@ -47,18 +49,24 @@ export const api = {
   doctor: () => rc<{ results: DoctorResult[] }>("doctor"),
   insights: () => rc<Insights>("insights"),
   sessions: (limit = 100) =>
-    rc<{ sessions: SessionSummary[]; count: number }>(`sessions?limit=${limit}`),
-  session: (id: string) => rc<SessionDetail>(`sessions/${encodeURIComponent(id)}`),
+    rc<{ sessions: SessionSummary[]; count: number }>(
+      `sessions?limit=${limit}`,
+    ),
+  session: (id: string) =>
+    rc<SessionDetail>(`sessions/${encodeURIComponent(id)}`),
   searchSessions: (query: string, limit = 30) =>
     rc<{ results: SearchResult[]; count: number }>("sessions/search", {
       method: "POST",
       body: JSON.stringify({ query, limit }),
     }),
   setSessionTitle: (id: string, title: string) =>
-    rc<{ id: string; title: string }>(`sessions/${encodeURIComponent(id)}/title`, {
-      method: "PUT",
-      body: JSON.stringify({ title }),
-    }),
+    rc<{ id: string; title: string }>(
+      `sessions/${encodeURIComponent(id)}/title`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ title }),
+      },
+    ),
   deleteSession: (id: string) =>
     rc<{ deleted: boolean; id: string }>(`sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -80,11 +88,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(body),
     }),
-  /** Resolve an in-browser tool-approval modal raised mid-chat (WebModal backend). */
-  resolveApproval: (id: string, approve: boolean) =>
-    rc<{ resolved: boolean; id: string; approved: boolean }>(
+  /** Resolve an in-browser tool-approval modal raised mid-chat (WebModal backend).
+   *  `always` (approve only) allowlists the tool for the rest of the session so it
+   *  stops prompting; deny cancels the whole turn. */
+  resolveApproval: (id: string, approve: boolean, always = false) =>
+    rc<{ resolved: boolean; id: string; approved: boolean; always?: boolean }>(
       `approvals/${encodeURIComponent(id)}`,
-      { method: "POST", body: JSON.stringify({ approve }) },
+      { method: "POST", body: JSON.stringify({ approve, always }) },
     ),
   channels: () => rc<ChannelsInfo>("channels"),
   // Experimental: connect a Telegram channel from the console. The gateway
@@ -105,7 +115,8 @@ export const api = {
     rc<{ disconnected: boolean; channel: string }>("channels/telegram", {
       method: "DELETE",
     }),
-  providers: () => rc<{ providers: ProviderInfo[]; count: number }>("providers"),
+  providers: () =>
+    rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   // Model catalog for a provider — resolved by the gateway from the SAME on-disk
   // cache + curated fallback the TUI uses, so the UI never drifts. `source` is
   // "cache" | "curated"; `refreshProviderModels` repopulates the cache from the
@@ -113,7 +124,9 @@ export const api = {
   providerModels: (id: string) =>
     rc<ModelCatalog>(`providers/${encodeURIComponent(id)}/models`),
   refreshProviderModels: (id: string) =>
-    rc<ModelCatalog>(`providers/${encodeURIComponent(id)}/models/refresh`, { method: "POST" }),
+    rc<ModelCatalog>(`providers/${encodeURIComponent(id)}/models/refresh`, {
+      method: "POST",
+    }),
   cron: () => rc<{ jobs: CronJob[]; count: number }>("cron"),
   createCron: (body: {
     schedule: CronSchedule;
@@ -137,25 +150,38 @@ export const api = {
       session_target?: "isolated" | "main";
       delete_after_run?: boolean;
     },
-  ) => rc<CronJob>(`cron/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+  ) =>
+    rc<CronJob>(`cron/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   deleteCron: (id: string) =>
-    rc<{ id: string; deleted: boolean }>(`cron/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    rc<{ id: string; deleted: boolean }>(`cron/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   runCron: (id: string, approved = false) =>
     rc<{ id: string; success: boolean; output: string }>(
       `cron/${encodeURIComponent(id)}/run${approved ? "?approved=true" : ""}`,
       { method: "POST" },
     ),
   cronRuns: (id: string, limit = 50) =>
-    rc<{ runs: CronRun[]; count: number }>(`cron/${encodeURIComponent(id)}/runs?limit=${limit}`),
+    rc<{ runs: CronRun[]; count: number }>(
+      `cron/${encodeURIComponent(id)}/runs?limit=${limit}`,
+    ),
   setSkillEnabled: (name: string, enabled: boolean) =>
-    rc<{ name: string; enabled: boolean }>(`skills/${encodeURIComponent(name)}/enabled`, {
-      method: "PUT",
-      body: JSON.stringify({ enabled }),
-    }),
+    rc<{ name: string; enabled: boolean }>(
+      `skills/${encodeURIComponent(name)}/enabled`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      },
+    ),
   // ClawHub registry — browse top-by-stars, or search with q. Goes via the Next
   // /api/clawhub proxy (not the gateway).
   clawhub: async (q?: string): Promise<{ items: ClawHubSkill[] }> => {
-    const res = await fetch(`/api/clawhub${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+    const res = await fetch(
+      `/api/clawhub${q ? `?q=${encodeURIComponent(q)}` : ""}`,
+    );
     const d = await res.json();
     if (!res.ok) throw new Error(d.detail || d.error || "ClawHub error");
     return d;
@@ -166,11 +192,18 @@ export const api = {
       body: JSON.stringify({ slug }),
     }),
   uninstallSkill: (name: string) =>
-    rc<{ name: string; removed: boolean }>(`skills/${encodeURIComponent(name)}`, {
-      method: "DELETE",
-    }),
+    rc<{ name: string; removed: boolean }>(
+      `skills/${encodeURIComponent(name)}`,
+      {
+        method: "DELETE",
+      },
+    ),
   config: () => rc<Record<string, unknown>>("config"),
-  setConfigModel: (body: { provider?: string; model?: string; temperature?: number }) =>
+  setConfigModel: (body: {
+    provider?: string;
+    model?: string;
+    temperature?: number;
+  }) =>
     rc<{
       default_provider: string | null;
       default_model: string | null;
@@ -190,8 +223,14 @@ export const api = {
     block_high_risk_commands?: boolean;
     require_approval_for_medium_risk?: boolean;
   }) =>
-    rc<Record<string, unknown>>("config/autonomy", { method: "PUT", body: JSON.stringify(body) }),
-  addMcpServer: (name: string, body: { command: string; args?: string[]; env?: Record<string, string> }) =>
+    rc<Record<string, unknown>>("config/autonomy", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  addMcpServer: (
+    name: string,
+    body: { command: string; args?: string[]; env?: Record<string, string> },
+  ) =>
     rc<{ name: string; added: boolean; count: number }>(
       `config/mcp_servers/${encodeURIComponent(name)}`,
       { method: "POST", body: JSON.stringify(body) },
@@ -201,10 +240,20 @@ export const api = {
       `config/mcp_servers/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
-  addMemory: (body: { content: string; key?: string; category?: string; session_id?: string }) =>
-    rc<{ key: string; stored: boolean }>("memory", { method: "POST", body: JSON.stringify(body) }),
+  addMemory: (body: {
+    content: string;
+    key?: string;
+    category?: string;
+    session_id?: string;
+  }) =>
+    rc<{ key: string; stored: boolean }>("memory", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   deleteMemory: (key: string) =>
-    rc<{ key: string; removed: boolean }>(`memory/${encodeURIComponent(key)}`, { method: "DELETE" }),
+    rc<{ key: string; removed: boolean }>(`memory/${encodeURIComponent(key)}`, {
+      method: "DELETE",
+    }),
   secrets: () => rc<SecretsInfo>("secrets"),
   setSecrets: (body: { api_key?: string; api_url?: string }) =>
     rc<{ ok: boolean; api_key_present: boolean }>("secrets", {
@@ -213,17 +262,27 @@ export const api = {
     }),
   // ---- Knowledge Base groups (a "Knowledge Base" == a group) ----
   kbGroups: () => rc<KbGroup[]>("kb/groups"),
-  kbCreateGroup: (body: { name: string; description?: string; color?: string }) =>
+  kbCreateGroup: (body: {
+    name: string;
+    description?: string;
+    color?: string;
+  }) =>
     rc<KbGroup>("kb/groups", { method: "POST", body: JSON.stringify(body) }),
-  kbUpdateGroup: (id: string, body: { name?: string; description?: string; color?: string }) =>
+  kbUpdateGroup: (
+    id: string,
+    body: { name?: string; description?: string; color?: string },
+  ) =>
     rc<KbGroup>(`kb/groups/${encodeURIComponent(id)}`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),
   kbDeleteGroup: (id: string) =>
-    rc<{ id: string; deleted: boolean }>(`kb/groups/${encodeURIComponent(id)}`, {
-      method: "DELETE",
-    }),
+    rc<{ id: string; deleted: boolean }>(
+      `kb/groups/${encodeURIComponent(id)}`,
+      {
+        method: "DELETE",
+      },
+    ),
   kbGroupDocuments: (id: string) =>
     rc<KbDocument[]>(`kb/groups/${encodeURIComponent(id)}/documents`),
   // Fetch a single document's full record (including `content`, the full
@@ -244,9 +303,12 @@ export const api = {
   // being retrieved and leaves every KB). Distinct from kbRemoveDocFromGroup, which
   // only unlinks the doc from one group and leaves the row active.
   kbDeleteDocument: (docId: string) =>
-    rc<{ id: string; mode: string }>(`kb/documents/${encodeURIComponent(docId)}`, {
-      method: "DELETE",
-    }),
+    rc<{ id: string; mode: string }>(
+      `kb/documents/${encodeURIComponent(docId)}`,
+      {
+        method: "DELETE",
+      },
+    ),
   // ---- KB Document Intelligence (SP-2 entity/relation graph) ----
   kbGraph: (opts?: { group?: string; limit?: number }) => {
     const q = new URLSearchParams();
@@ -256,14 +318,25 @@ export const api = {
     return rc<KbGraph>(`kb/graph${qs ? `?${qs}` : ""}`);
   },
   kbDocumentIntelligence: (docId: string) =>
-    rc<KbDocumentIntelligence>(`kb/documents/${encodeURIComponent(docId)}/intelligence`),
+    rc<KbDocumentIntelligence>(
+      `kb/documents/${encodeURIComponent(docId)}/intelligence`,
+    ),
   kbReExtractDocument: (docId: string) =>
-    rc<KbReExtractResult>(`kb/documents/${encodeURIComponent(docId)}/re-extract`, { method: "POST" }),
+    rc<KbReExtractResult>(
+      `kb/documents/${encodeURIComponent(docId)}/re-extract`,
+      { method: "POST" },
+    ),
   // ---- Knowledge Base credentials ([knowledge] config) ----
   getKnowledge: () => rc<KnowledgeStatus>("config/knowledge"),
-  setKnowledge: (body: { embedding_api_key?: string; vision_api_key?: string }) =>
-    rc<{ embedding_configured: boolean; vision_configured: boolean }>("config/knowledge", {
-      method: "PUT",
-      body: JSON.stringify(body),
-    }),
+  setKnowledge: (body: {
+    embedding_api_key?: string;
+    vision_api_key?: string;
+  }) =>
+    rc<{ embedding_configured: boolean; vision_configured: boolean }>(
+      "config/knowledge",
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      },
+    ),
 };

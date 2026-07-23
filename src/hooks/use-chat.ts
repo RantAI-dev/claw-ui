@@ -3,7 +3,12 @@
 import * as React from "react";
 import { api } from "@/lib/api";
 import { streamChat } from "@/lib/chat-stream";
-import type { ChatEvent, ChatMessage, SessionMessage, ToolCall } from "@/lib/types";
+import type {
+  ChatEvent,
+  ChatMessage,
+  SessionMessage,
+  ToolCall,
+} from "@/lib/types";
 
 /** A tool call paused awaiting the user's in-browser approve/deny decision. */
 export interface PendingApproval {
@@ -27,11 +32,16 @@ function nextId(prefix: string) {
  * rather than throw so a plain-http LAN bind still works.
  */
 export function newConversationId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   const hex = (n: number) =>
-    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+    Array.from({ length: n }, () =>
+      Math.floor(Math.random() * 16).toString(16),
+    ).join("");
   return `${hex(8)}-${hex(4)}-4${hex(3)}-a${hex(3)}-${hex(12)}`;
 }
 
@@ -87,7 +97,9 @@ const MAX_HISTORY_CHARS = 1500; // per message, to bound the request body size
 
 /** Append KB context after the user's text (before any GUI instruction). */
 function withKbContext(text: string, context: string): string {
-  return context.trim() ? `${text}\n\n${KB_OPEN}\n${context}\n${KB_CLOSE}` : text;
+  return context.trim()
+    ? `${text}\n\n${KB_OPEN}\n${context}\n${KB_CLOSE}`
+    : text;
 }
 
 /** Build a compact transcript of recent turns so the (stateless) gateway agent
@@ -130,7 +142,9 @@ export function buildHistory(prior: ChatMessage[]): string {
       const who = m.role === "user" ? "User" : "Assistant";
       const content = stripImageMarkers(m.content);
       const body =
-        content.length > MAX_HISTORY_CHARS ? `${content.slice(0, MAX_HISTORY_CHARS)}…` : content;
+        content.length > MAX_HISTORY_CHARS
+          ? `${content.slice(0, MAX_HISTORY_CHARS)}…`
+          : content;
       return `${who}: ${body}`;
     })
     .join("\n");
@@ -146,9 +160,16 @@ function withHistory(text: string, history: string): string {
 /** Strip appended decorations (history + KB context + GUI instruction) for display. */
 function stripDecorations(content: string): string {
   let c = content;
-  if (c.endsWith(GUI_INSTRUCTION)) c = c.slice(0, c.length - GUI_INSTRUCTION.length);
-  c = c.replace(new RegExp(`\\n*${KB_OPEN}\\n[\\s\\S]*?\\n${KB_CLOSE}`, "g"), "");
-  c = c.replace(new RegExp(`\\n*${HIST_OPEN}\\n[\\s\\S]*?\\n${HIST_CLOSE}`, "g"), "");
+  if (c.endsWith(GUI_INSTRUCTION))
+    c = c.slice(0, c.length - GUI_INSTRUCTION.length);
+  c = c.replace(
+    new RegExp(`\\n*${KB_OPEN}\\n[\\s\\S]*?\\n${KB_CLOSE}`, "g"),
+    "",
+  );
+  c = c.replace(
+    new RegExp(`\\n*${HIST_OPEN}\\n[\\s\\S]*?\\n${HIST_CLOSE}`, "g"),
+    "",
+  );
   return c.replace(/\s+$/, "");
 }
 
@@ -157,7 +178,9 @@ function stripDecorations(content: string): string {
  *  disclosure doesn't pulse "Running" forever. */
 function finalizeToolCalls(tools?: ToolCall[]): ToolCall[] | undefined {
   if (!tools?.length) return tools;
-  return tools.map((t) => (t.done ? t : { ...t, done: true, ok: t.ok ?? false }));
+  return tools.map((t) =>
+    t.done ? t : { ...t, done: true, ok: t.ok ?? false },
+  );
 }
 
 export function useChat(opts: UseChatOptions) {
@@ -167,7 +190,8 @@ export function useChat(opts: UseChatOptions) {
   // A tool the agent paused on, awaiting an in-browser approve/deny. The stream
   // stays open while this is set; resolving it (POST /approvals/{id}) lets the
   // paused turn resume.
-  const [pendingApproval, setPendingApproval] = React.useState<PendingApproval | null>(null);
+  const [pendingApproval, setPendingApproval] =
+    React.useState<PendingApproval | null>(null);
   // Stable id used to scope KB attachments + retrieval per chat, AND sent as
   // `session_id` on the first turn so the gateway adopts it (RantAIClaw #289).
   //
@@ -177,7 +201,9 @@ export function useChat(opts: UseChatOptions) {
   // under an id the documents were never stored against, and every attachment
   // in that conversation became silently unreachable. The gateway only adopts a
   // caller-supplied id when it is UUID-shaped.
-  const [conversationId, setConversationId] = React.useState<string>(() => newConversationId());
+  const [conversationId, setConversationId] = React.useState<string>(() =>
+    newConversationId(),
+  );
   const abortRef = React.useRef<AbortController | null>(null);
   const optsRef = React.useRef(opts);
   optsRef.current = opts;
@@ -209,15 +235,21 @@ export function useChat(opts: UseChatOptions) {
     pendingApprovalRef.current = pendingApproval;
   }, [pendingApproval]);
 
-  const patch = React.useCallback((id: string, fn: (m: ChatMessage) => ChatMessage) => {
-    setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
-  }, []);
+  const patch = React.useCallback(
+    (id: string, fn: (m: ChatMessage) => ChatMessage) => {
+      setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
+    },
+    [],
+  );
 
   // Decorate the SENT message (not the displayed one) with the GUI spec in gui mode.
   // Appended after the user's text so the first line — and thus the gateway's
   // session title — stays the real question.
   const decorate = React.useCallback(
-    (text: string) => (optsRef.current.renderMode === "gui" ? `${text}\n\n${GUI_INSTRUCTION}` : text),
+    (text: string) =>
+      optsRef.current.renderMode === "gui"
+        ? `${text}\n\n${GUI_INSTRUCTION}`
+        : text,
     [],
   );
 
@@ -267,7 +299,15 @@ export function useChat(opts: UseChatOptions) {
           case "tool_call_start":
             patch(assistantId, (m) => ({
               ...m,
-              toolCalls: [...(m.toolCalls || []), { id: ev.id, name: ev.name, args: ev.args, done: false } as ToolCall],
+              toolCalls: [
+                ...(m.toolCalls || []),
+                {
+                  id: ev.id,
+                  name: ev.name,
+                  args: ev.args,
+                  done: false,
+                } as ToolCall,
+              ],
             }));
             break;
           case "tool_call_end":
@@ -275,7 +315,14 @@ export function useChat(opts: UseChatOptions) {
               const existing = m.toolCalls || [];
               const matched = existing.some((t) => t.id === ev.id);
               const updated = existing.map((t) =>
-                t.id === ev.id ? { ...t, ok: ev.ok, outputPreview: ev.output_preview, done: true } : t,
+                t.id === ev.id
+                  ? {
+                      ...t,
+                      ok: ev.ok,
+                      outputPreview: ev.output_preview,
+                      done: true,
+                    }
+                  : t,
               );
               // An end with no matching start (dropped/reordered frame) would
               // otherwise vanish — surface it as a completed chip instead.
@@ -285,13 +332,22 @@ export function useChat(opts: UseChatOptions) {
                   ? updated
                   : [
                       ...updated,
-                      { id: ev.id, name: "tool", ok: ev.ok, outputPreview: ev.output_preview, done: true } as ToolCall,
+                      {
+                        id: ev.id,
+                        name: "tool",
+                        ok: ev.ok,
+                        outputPreview: ev.output_preview,
+                        done: true,
+                      } as ToolCall,
                     ],
               };
             });
             break;
           case "usage":
-            patch(assistantId, (m) => ({ ...m, usage: { total: ev.total, cost_usd: ev.cost_usd } }));
+            patch(assistantId, (m) => ({
+              ...m,
+              usage: { total: ev.total, cost_usd: ev.cost_usd },
+            }));
             break;
           case "approval_request":
             // Surface the request; the stream keeps reading (keep-alives) until
@@ -317,7 +373,8 @@ export function useChat(opts: UseChatOptions) {
               streaming: false,
               cancelled: ev.cancelled || m.cancelled,
               toolCalls: finalizeToolCalls(m.toolCalls),
-              content: m.content || (ev.cancelled ? "_(stopped)_" : ev.text || ""),
+              content:
+                m.content || (ev.cancelled ? "_(stopped)_" : ev.text || ""),
             }));
             break;
           default:
@@ -352,7 +409,10 @@ export function useChat(opts: UseChatOptions) {
           toolCalls: finalizeToolCalls(m.toolCalls),
           ...(aborted
             ? { cancelled: true, content: m.content || "_(stopped)_" }
-            : { error: m.error || String(err instanceof Error ? err.message : err) }),
+            : {
+                error:
+                  m.error || String(err instanceof Error ? err.message : err),
+              }),
         }));
       } finally {
         // Only the turn that still owns the controller may tear down shared
@@ -390,7 +450,10 @@ export function useChat(opts: UseChatOptions) {
         // A New-chat / session switch during retrieve() invalidates this turn;
         // bail so its reply isn't stranded in the wrong conversation.
         if (epoch !== epochRef.current) return;
-        await runAssistant(decorate(withKbContext(withHistory(trimmed, history), context)), sources);
+        await runAssistant(
+          decorate(withKbContext(withHistory(trimmed, history), context)),
+          sources,
+        );
       } finally {
         if (epoch === epochRef.current) inFlightRef.current = false;
       }
@@ -398,20 +461,25 @@ export function useChat(opts: UseChatOptions) {
     [isStreaming, runAssistant, decorate, retrieve],
   );
 
-  /** Approve or deny the pending tool call; resumes the paused stream. */
-  const resolveApproval = React.useCallback(async (id: string, approve: boolean) => {
-    const prev = pendingApprovalRef.current;
-    const epoch = epochRef.current;
-    setPendingApproval(null);
-    try {
-      await api.resolveApproval(id, approve);
-    } catch {
-      // The resolve POST failed (transient blip). Restore the prompt so the user
-      // can retry, rather than silently letting the gateway's deadline auto-DENY
-      // an intended approve. Only restore while the same turn is still live.
-      if (epoch === epochRef.current && abortRef.current) setPendingApproval(prev);
-    }
-  }, []);
+  /** Approve or deny the pending tool call; resumes the paused stream.
+   *  `always` (approve only) allowlists the tool for the session; deny cancels the turn. */
+  const resolveApproval = React.useCallback(
+    async (id: string, approve: boolean, always = false) => {
+      const prev = pendingApprovalRef.current;
+      const epoch = epochRef.current;
+      setPendingApproval(null);
+      try {
+        await api.resolveApproval(id, approve, always);
+      } catch {
+        // The resolve POST failed (transient blip). Restore the prompt so the user
+        // can retry, rather than silently letting the gateway's deadline auto-DENY
+        // an intended approve. Only restore while the same turn is still live.
+        if (epoch === epochRef.current && abortRef.current)
+          setPendingApproval(prev);
+      }
+    },
+    [],
+  );
 
   /** Re-run the most recent user turn, replacing the last assistant reply. */
   const regenerate = React.useCallback(async () => {
@@ -432,7 +500,12 @@ export function useChat(opts: UseChatOptions) {
       });
       const { context, sources } = await retrieve(lastUser.content);
       if (epoch !== epochRef.current) return;
-      await runAssistant(decorate(withKbContext(withHistory(lastUser.content, history), context)), sources);
+      await runAssistant(
+        decorate(
+          withKbContext(withHistory(lastUser.content, history), context),
+        ),
+        sources,
+      );
     } finally {
       if (epoch === epochRef.current) inFlightRef.current = false;
     }
@@ -459,28 +532,32 @@ export function useChat(opts: UseChatOptions) {
   }, []);
 
   /** Load a past session transcript and continue it (multi-turn when backend supports session_id). */
-  const loadHistory = React.useCallback((history: SessionMessage[], id: string | null) => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    epochRef.current += 1;
-    inFlightRef.current = false;
-    setIsStreaming(false);
-    setPendingApproval(null);
-    setSessionId(id);
-    setConversationId(id ?? newConversationId());
-    setMessages(
-      history
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({
-          id: nextId("h"),
-          role: m.role === "user" ? "user" : "assistant",
-          // The gateway persists the SENT message, which may carry appended KB
-          // context and/or the GUI instruction. Strip both so they never
-          // resurface as a user bubble (and so regenerate() re-decorates clean).
-          content: m.role === "user" ? stripDecorations(m.content) : m.content,
-        })),
-    );
-  }, []);
+  const loadHistory = React.useCallback(
+    (history: SessionMessage[], id: string | null) => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+      epochRef.current += 1;
+      inFlightRef.current = false;
+      setIsStreaming(false);
+      setPendingApproval(null);
+      setSessionId(id);
+      setConversationId(id ?? newConversationId());
+      setMessages(
+        history
+          .filter((m) => m.role === "user" || m.role === "assistant")
+          .map((m) => ({
+            id: nextId("h"),
+            role: m.role === "user" ? "user" : "assistant",
+            // The gateway persists the SENT message, which may carry appended KB
+            // context and/or the GUI instruction. Strip both so they never
+            // resurface as a user bubble (and so regenerate() re-decorates clean).
+            content:
+              m.role === "user" ? stripDecorations(m.content) : m.content,
+          })),
+      );
+    },
+    [],
+  );
 
   // Thread-level token/cost totals for the context panel.
   const totals = React.useMemo(() => {
@@ -494,7 +571,12 @@ export function useChat(opts: UseChatOptions) {
       }
       toolCalls += m.toolCalls?.length || 0;
     }
-    return { tokens, cost, toolCalls, turns: messages.filter((m) => m.role === "user").length };
+    return {
+      tokens,
+      cost,
+      toolCalls,
+      turns: messages.filter((m) => m.role === "user").length,
+    };
   }, [messages]);
 
   return {

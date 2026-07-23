@@ -31,7 +31,12 @@ import {
   resolveHashRoute,
   rungToAutonomyPayload,
 } from "@/lib/console";
-import type { KbGroup, Personality, ProviderInfo, SessionSummary } from "@/lib/types";
+import type {
+  KbGroup,
+  Personality,
+  ProviderInfo,
+  SessionSummary,
+} from "@/lib/types";
 import { kbSearch } from "@/lib/attachments";
 import { useChat } from "@/hooks/use-chat";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -62,13 +67,17 @@ export function ConsoleShell({
   const [route, setRoute] = React.useState<Route>(initialRoute);
   const [sessions, setSessions] = React.useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = React.useState(true);
-  const [activeId, setActiveId] = React.useState<string | null>(initialSessionId ?? null);
+  const [activeId, setActiveId] = React.useState<string | null>(
+    initialSessionId ?? null,
+  );
   const [sessQuery, setSessQuery] = React.useState("");
 
   const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
   const [channels, setChannels] = React.useState<string[]>([]);
   const [skills, setSkills] = React.useState<string[]>([]);
-  const [personality, setPersonality] = React.useState<Personality | null>(null);
+  const [personality, setPersonality] = React.useState<Personality | null>(
+    null,
+  );
   const [temperature, setTemperature] = React.useState("");
   const [mcpCount, setMcpCount] = React.useState(0);
 
@@ -82,7 +91,8 @@ export function ConsoleShell({
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [authOn, setAuthOn] = React.useState(false);
 
-  const renderMode: "md" | "gui" = tweaks.render === "Generative UI" ? "gui" : "md";
+  const renderMode: "md" | "gui" =
+    tweaks.render === "Generative UI" ? "gui" : "md";
 
   // Latch: has THIS conversation ever ingested an attachment? Once true, KB
   // retrieval stays enabled for the conversation (the docs persist in the gateway
@@ -109,16 +119,28 @@ export function ConsoleShell({
   // group is in play (per-chat selection ∪ persona always-on). The group union is
   // sent to the gateway; the per-conversation attachment scope (`category`) is
   // always included by kbSearch. Stable identity so useChat opts stay steady.
-  const retrieveContext = React.useCallback(async (userText: string, conversationId: string) => {
-    const groups = Array.from(new Set([...selectedKbRef.current, ...alwaysOnKbRef.current]));
-    if (!hasReadyRef.current && groups.length === 0) return { context: "", sources: [] };
-    const { context, sources } = await kbSearch(userText, conversationId, groups);
-    // Dedupe document titles for the citation chips.
-    const titles = Array.from(
-      new Set(sources.map((s) => s.document_title).filter((t): t is string => !!t)),
-    );
-    return { context, sources: titles };
-  }, []);
+  const retrieveContext = React.useCallback(
+    async (userText: string, conversationId: string) => {
+      const groups = Array.from(
+        new Set([...selectedKbRef.current, ...alwaysOnKbRef.current]),
+      );
+      if (!hasReadyRef.current && groups.length === 0)
+        return { context: "", sources: [] };
+      const { context, sources } = await kbSearch(
+        userText,
+        conversationId,
+        groups,
+      );
+      // Dedupe document titles for the citation chips.
+      const titles = Array.from(
+        new Set(
+          sources.map((s) => s.document_title).filter((t): t is string => !!t),
+        ),
+      );
+      return { context, sources: titles };
+    },
+    [],
+  );
 
   const chat = useChat({
     provider: provider || undefined,
@@ -146,17 +168,20 @@ export function ConsoleShell({
       .catch(() => {});
   }, []);
 
-  const setTweak = React.useCallback(<K extends keyof Tweaks>(key: K, value: Tweaks[K]) => {
-    setTweaks((prev) => {
-      const next = { ...prev, [key]: value };
-      try {
-        localStorage.setItem(TWEAKS_KEY, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
+  const setTweak = React.useCallback(
+    <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => {
+      setTweaks((prev) => {
+        const next = { ...prev, [key]: value };
+        try {
+          localStorage.setItem(TWEAKS_KEY, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+        return next;
+      });
+    },
+    [],
+  );
 
   const toggleRail = () =>
     setRailCollapsed((c) => {
@@ -188,32 +213,53 @@ export function ConsoleShell({
 
   React.useEffect(() => {
     refreshSessions();
-    api.providers().then((r) => setProviders(r.providers)).catch(() => {});
-    api.channels().then((r) => setChannels(r.configured || [])).catch(() => {});
+    api
+      .providers()
+      .then((r) => setProviders(r.providers))
+      .catch(() => {});
+    api
+      .channels()
+      .then((r) => setChannels(r.configured || []))
+      .catch(() => {});
     api
       .skills()
-      .then((r) => setSkills((r.skills || []).filter((s) => s.enabled !== false).map((s) => s.name)))
+      .then((r) =>
+        setSkills(
+          (r.skills || [])
+            .filter((s) => s.enabled !== false)
+            .map((s) => s.name),
+        ),
+      )
       .catch(() => {});
     api
       .personality()
       .then((p) => {
         setPersonality(p);
-        alwaysOnKbRef.current = Array.isArray(p.always_on_kbs) ? p.always_on_kbs : [];
+        alwaysOnKbRef.current = Array.isArray(p.always_on_kbs)
+          ? p.always_on_kbs
+          : [];
       })
       .catch(() => {});
-    api.kbGroups().then(setKbGroups).catch(() => {});
+    api
+      .kbGroups()
+      .then(setKbGroups)
+      .catch(() => {});
     api
       .config()
       .then((c) => {
         const t = c?.default_temperature;
         if (t != null) setTemperature(String(t));
         const mcp = c?.mcp_servers;
-        if (mcp && typeof mcp === "object") setMcpCount(Object.keys(mcp).length);
+        if (mcp && typeof mcp === "object")
+          setMcpCount(Object.keys(mcp).length);
         // Seed the autonomy rung from the authoritative config (level + always_ask).
-        const auto = c?.autonomy as { level?: string; always_ask?: string[] } | undefined;
+        const auto = c?.autonomy as
+          { level?: string; always_ask?: string[] } | undefined;
         if (auto && !autonomySeeded.current) {
           autonomySeeded.current = true;
-          setAutonomyState(levelToRung(auto.level, auto.always_ask?.length || 0));
+          setAutonomyState(
+            levelToRung(auto.level, auto.always_ask?.length || 0),
+          );
         }
       })
       .catch(() => {});
@@ -227,7 +273,11 @@ export function ConsoleShell({
     api
       .setAutonomy(rungToAutonomyPayload(rung))
       .then(() => toast.success(`Autonomy → ${autonomyPreset(rung).label}`))
-      .catch((e) => toast.error(`Autonomy update failed: ${e instanceof Error ? e.message : e}`));
+      .catch((e) =>
+        toast.error(
+          `Autonomy update failed: ${e instanceof Error ? e.message : e}`,
+        ),
+      );
   }, []);
 
   // Refresh the session list after a turn finishes streaming.
@@ -257,7 +307,11 @@ export function ConsoleShell({
   // survive a refresh: /chat/<sessionId> in chat, #<tab> for ops routes.
   React.useEffect(() => {
     if (route === "chat") {
-      window.history.replaceState(null, "", activeId ? `/chat/${activeId}` : "/chat");
+      window.history.replaceState(
+        null,
+        "",
+        activeId ? `/chat/${activeId}` : "/chat",
+      );
     } else {
       window.history.replaceState(null, "", `#${route}`);
     }
@@ -280,7 +334,8 @@ export function ConsoleShell({
             el.isContentEditable);
         if (editable || document.querySelector('[role="dialog"]')) return;
         e.preventDefault();
-        const next = order[(order.indexOf(autonomyRef.current) + 1) % order.length];
+        const next =
+          order[(order.indexOf(autonomyRef.current) + 1) % order.length];
         changeAutonomy(next);
       }
     };
@@ -299,7 +354,9 @@ export function ConsoleShell({
       setRoute("chat");
       closeRailOnMobile();
     } catch (e) {
-      toast.error(`Could not load session: ${e instanceof Error ? e.message : e}`);
+      toast.error(
+        `Could not load session: ${e instanceof Error ? e.message : e}`,
+      );
     }
   };
 
@@ -323,7 +380,9 @@ export function ConsoleShell({
   };
 
   const toggleKb = React.useCallback((id: string) => {
-    setSelectedKbIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setSelectedKbIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }, []);
 
   // Deleting a session is irreversible and the trigger is a 13px icon sitting
@@ -331,7 +390,8 @@ export function ConsoleShell({
   // misclick that much easier. Every other destructive action in the console
   // already goes through ConfirmModal (memory, mcp, cron, channels, skills,
   // kb); this was the one exception.
-  const [pendingDelete, setPendingDelete] = React.useState<SessionSummary | null>(null);
+  const [pendingDelete, setPendingDelete] =
+    React.useState<SessionSummary | null>(null);
   const [deleting, setDeleting] = React.useState(false);
 
   const requestDelete = (session: SessionSummary, e: React.MouseEvent) => {
@@ -364,7 +424,11 @@ export function ConsoleShell({
   const [renamingId, setRenamingId] = React.useState<string | null>(null);
   const [draftTitle, setDraftTitle] = React.useState("");
 
-  const startRename = (id: string, title: string | null, e: React.MouseEvent) => {
+  const startRename = (
+    id: string,
+    title: string | null,
+    e: React.MouseEvent,
+  ) => {
     e.stopPropagation();
     setRenamingId(id);
     setDraftTitle(title || "");
@@ -384,7 +448,9 @@ export function ConsoleShell({
     if (!next || next === current) return;
     try {
       await api.setSessionTitle(id, next);
-      setSessions((prev) => prev.map((s) => (s.id === id ? { ...s, title: next } : s)));
+      setSessions((prev) =>
+        prev.map((s) => (s.id === id ? { ...s, title: next } : s)),
+      );
     } catch (e) {
       toast.error(`Rename failed: ${e instanceof Error ? e.message : e}`);
     }
@@ -400,7 +466,10 @@ export function ConsoleShell({
   const dense = tweaks.density === "Compact";
   const showRight = tweaks.rightPanel && route === "chat";
   const appClass =
-    "app" + (showRight ? "" : " no-right") + (railCollapsed ? " no-rail" : "") + (dense ? " dense" : "");
+    "app" +
+    (showRight ? "" : " no-right") +
+    (railCollapsed ? " no-rail" : "") +
+    (dense ? " dense" : "");
 
   const agentName = personality?.name?.trim() || "Atlas";
   const agentRole = personality?.role?.trim() || "AI employee";
@@ -408,7 +477,9 @@ export function ConsoleShell({
 
   const effectiveProvider = provider || status?.provider || "";
   const effectiveModel = model || status?.model || "";
-  const modelTag = effectiveModel ? effectiveModel.split("/").pop() || effectiveModel : "";
+  const modelTag = effectiveModel
+    ? effectiveModel.split("/").pop() || effectiveModel
+    : "";
 
   const navCount = (id: Route): number | undefined => {
     if (id === "channels") return channels.length || undefined;
@@ -434,12 +505,26 @@ export function ConsoleShell({
         : { color: "var(--destructive)", label: "Gateway offline" };
 
   return (
-    <div className={appClass} style={{ "--brand-sky": accent.sky, "--brand-deep-blue": accent.deep } as React.CSSProperties}>
+    <div
+      className={appClass}
+      style={
+        {
+          "--brand-sky": accent.sky,
+          "--brand-deep-blue": accent.deep,
+        } as React.CSSProperties
+      }
+    >
       <a href="#main-content" className="skip-link">
         Skip to content
       </a>
       {/* Mobile-only scrim behind the off-canvas rail; a tap dismisses it. */}
-      {!railCollapsed && <div className="rail-backdrop" onClick={toggleRail} aria-hidden="true" />}
+      {!railCollapsed && (
+        <div
+          className="rail-backdrop"
+          onClick={toggleRail}
+          aria-hidden="true"
+        />
+      )}
       {/* ===== Rail ===== */}
       {!railCollapsed && (
         <aside className="rail" aria-label="Sidebar">
@@ -479,7 +564,9 @@ export function ConsoleShell({
                   >
                     <Icon />
                     <span>{n.label}</span>
-                    {count != null && <span className="nav-count">{count}</span>}
+                    {count != null && (
+                      <span className="nav-count">{count}</span>
+                    )}
                   </button>
                 );
               })}
@@ -509,16 +596,22 @@ export function ConsoleShell({
                 </div>
                 <div className="sess">
                   {loadingSessions ? (
-                    <div className="auto-blurb px-2.5 py-1">Loading sessions…</div>
+                    <div className="auto-blurb px-2.5 py-1">
+                      Loading sessions…
+                    </div>
                   ) : filteredSessions.length === 0 ? (
                     <div className="auto-blurb px-2.5 py-1">
-                      {sessions.length === 0 ? "No sessions yet." : "No matches."}
+                      {sessions.length === 0
+                        ? "No sessions yet."
+                        : "No matches."}
                     </div>
                   ) : (
                     filteredSessions.map((s) => (
                       <div
                         key={s.id}
-                        className={"sess-item" + (s.id === activeId ? " active" : "")}
+                        className={
+                          "sess-item" + (s.id === activeId ? " active" : "")
+                        }
                         role="button"
                         tabIndex={0}
                         onClick={() => handleSelect(s.id)}
@@ -530,7 +623,10 @@ export function ConsoleShell({
                         }}
                       >
                         <div className="sess-row">
-                          <span className="chan-dot" style={{ background: channelDot(s.model || "") }} />
+                          <span
+                            className="chan-dot"
+                            style={{ background: channelDot(s.model || "") }}
+                          />
                           {renamingId === s.id ? (
                             <input
                               className="sess-title-input"
@@ -552,7 +648,9 @@ export function ConsoleShell({
                             />
                           ) : (
                             <>
-                              <span className="sess-title">{s.title || "Untitled session"}</span>
+                              <span className="sess-title">
+                                {s.title || "Untitled session"}
+                              </span>
                               <button
                                 type="button"
                                 className="sess-x edit"
@@ -591,7 +689,9 @@ export function ConsoleShell({
             <div className="agent-card">
               <div className="agent-ava">
                 {agentInitials}
-                <span className={"live" + (connection === "online" ? "" : " off")} />
+                <span
+                  className={"live" + (connection === "online" ? "" : " off")}
+                />
               </div>
               <div className="agent-meta">
                 <b>{agentName}</b>
@@ -609,7 +709,9 @@ export function ConsoleShell({
                   <button
                     key={p.id}
                     className={p.id === autonomy ? "on" : ""}
-                    style={p.id === autonomy ? { background: p.dot } : undefined}
+                    style={
+                      p.id === autonomy ? { background: p.dot } : undefined
+                    }
                     onClick={() => changeAutonomy(p.id)}
                   >
                     {p.label}
@@ -637,10 +739,17 @@ export function ConsoleShell({
 
           {route === "chat" ? (
             <>
-              <h1>{activeId ? activeSession?.title || "Session" : "New conversation"}</h1>
+              <h1>
+                {activeId
+                  ? activeSession?.title || "Session"
+                  : "New conversation"}
+              </h1>
               {chat.sessionId && (
                 <span className="crumb">
-                  <span className="chan-dot" style={{ background: "var(--brand-sky)" }} />
+                  <span
+                    className="chan-dot"
+                    style={{ background: "var(--brand-sky)" }}
+                  />
                   session {chat.sessionId.slice(0, 8)}
                 </span>
               )}
@@ -657,7 +766,12 @@ export function ConsoleShell({
           </span>
 
           {route === "chat" && (
-            <button className="icon-btn" onClick={handleNew} aria-label="New chat" title="New chat">
+            <button
+              className="icon-btn"
+              onClick={handleNew}
+              aria-label="New chat"
+              title="New chat"
+            >
               <Plus />
             </button>
           )}
@@ -668,7 +782,9 @@ export function ConsoleShell({
               aria-label="Toggle context panel"
               aria-pressed={tweaks.rightPanel}
               title="Toggle context panel"
-              style={tweaks.rightPanel ? { color: "var(--foreground)" } : undefined}
+              style={
+                tweaks.rightPanel ? { color: "var(--foreground)" } : undefined
+              }
             >
               <PanelRight />
             </button>
@@ -682,7 +798,12 @@ export function ConsoleShell({
             <SlidersHorizontal />
           </button>
           {authOn && (
-            <button className="icon-btn" onClick={logout} aria-label="Sign out" title="Sign out">
+            <button
+              className="icon-btn"
+              onClick={logout}
+              aria-label="Sign out"
+              title="Sign out"
+            >
               <LogOut />
             </button>
           )}
@@ -695,7 +816,11 @@ export function ConsoleShell({
             onAttachmentsReadyChange={markAttachmentsReady}
             messages={chat.messages}
             isStreaming={chat.isStreaming}
-            pending={chat.isStreaming && !chat.messages[chat.messages.length - 1]?.content && !(chat.messages[chat.messages.length - 1]?.toolCalls?.length)}
+            pending={
+              chat.isStreaming &&
+              !chat.messages[chat.messages.length - 1]?.content &&
+              !chat.messages[chat.messages.length - 1]?.toolCalls?.length
+            }
             onSend={chat.send}
             onStop={chat.stop}
             onRegenerate={chat.regenerate}
@@ -746,7 +871,12 @@ export function ConsoleShell({
         />
       )}
 
-      <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} tweaks={tweaks} setTweak={setTweak} />
+      <TweaksPanel
+        open={tweaksOpen}
+        onClose={() => setTweaksOpen(false)}
+        tweaks={tweaks}
+        setTweak={setTweak}
+      />
 
       <ConfirmModal
         open={!!pendingDelete}
@@ -768,7 +898,8 @@ export function ConsoleShell({
       <Modal
         open={!!chat.pendingApproval}
         onClose={() =>
-          chat.pendingApproval && chat.resolveApproval(chat.pendingApproval.id, false)
+          chat.pendingApproval &&
+          chat.resolveApproval(chat.pendingApproval.id, false)
         }
         title="🔧 Approve tool?"
         description={
@@ -782,13 +913,27 @@ export function ConsoleShell({
               <Button
                 variant="destructive"
                 size="sm"
-                onClick={() => chat.resolveApproval(chat.pendingApproval!.id, false)}
+                onClick={() =>
+                  chat.resolveApproval(chat.pendingApproval!.id, false)
+                }
               >
                 Deny
               </Button>
               <Button
+                variant="outline"
                 size="sm"
-                onClick={() => chat.resolveApproval(chat.pendingApproval!.id, true)}
+                title="Approve and don't ask again for this tool this session"
+                onClick={() =>
+                  chat.resolveApproval(chat.pendingApproval!.id, true, true)
+                }
+              >
+                Always
+              </Button>
+              <Button
+                size="sm"
+                onClick={() =>
+                  chat.resolveApproval(chat.pendingApproval!.id, true)
+                }
               >
                 Approve
               </Button>
