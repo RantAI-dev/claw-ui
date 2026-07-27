@@ -36,7 +36,11 @@ export interface StatusInfo {
   provider: string;
   model: string;
   memory_backend: string;
+  /** Raw enforcement level — `Supervised`, `ReadOnly`, or `Full`. */
   autonomy: string;
+  /** Active preset rung. Absent on older gateways: the level alone cannot tell
+   *  Manual from Smart, since both are `Supervised`. */
+  autonomy_preset?: string;
   workspace_dir: string;
   paired: boolean;
   runtime: unknown;

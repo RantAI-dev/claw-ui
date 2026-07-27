@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   AUTONOMY,
+  autonomyPreset,
   levelToRung,
   resolveHashRoute,
   rungToAutonomyPayload,
@@ -49,5 +50,24 @@ describe("autonomy rung encoding", () => {
     expect(levelToRung("read_only")).toBe("strict");
     expect(levelToRung("full")).toBe("off");
     expect(levelToRung("Full")).toBe("off");
+  });
+
+  it("labels a preset id directly", () => {
+    expect(autonomyPreset("manual").label).toBe("Manual");
+    expect(autonomyPreset("strict").label).toBe("Strict");
+    expect(autonomyPreset("off").label).toBe("Off");
+  });
+
+  it("labels a raw level only through levelToRung", () => {
+    // The Status tile composes these two: it prefers `/status`'s
+    // `autonomy_preset` and falls back to `levelToRung(autonomy)` on an older
+    // gateway. `autonomyPreset` alone does NOT understand the Debug level
+    // spellings — its alias map has no `readonly` entry, so a raw `ReadOnly`
+    // silently lands on the Smart default. Composing through `levelToRung` is
+    // what makes the fallback correct, and this pins that.
+    expect(autonomyPreset("ReadOnly").label).toBe("Smart"); // wrong on its own
+    expect(autonomyPreset(levelToRung("ReadOnly")).label).toBe("Strict");
+    expect(autonomyPreset(levelToRung("Full")).label).toBe("Off");
+    expect(autonomyPreset(levelToRung("Supervised")).label).toBe("Smart");
   });
 });
