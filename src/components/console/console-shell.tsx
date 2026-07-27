@@ -54,6 +54,10 @@ const RAIL_KEY = "rc_console_rail";
  *  characters, so this leaves headroom without letting a whole paragraph into
  *  the rail. */
 const MAX_TITLE_LEN = 120;
+/** How often to re-read the shared autonomy setting from the gateway. Deliberately
+ *  slower than the 15s status poll — this follows an operator flipping a preset in
+ *  the TUI or CLI, not a live metric. */
+const AUTONOMY_POLL_MS = 30000;
 
 export function ConsoleShell({
   initialRoute = "chat",
@@ -86,7 +90,11 @@ export function ConsoleShell({
 
   const [tweaks, setTweaks] = React.useState<Tweaks>(TWEAK_DEFAULTS);
   const [autonomy, setAutonomyState] = React.useState("smart");
-  const autonomySeeded = React.useRef(false);
+  // When our most recent autonomy write finished. Any config read that STARTED
+  // before that moment may still carry the pre-write value, so it is discarded
+  // rather than allowed to snap the control back to what the operator just
+  // changed away from.
+  const autonomyWrittenAt = React.useRef(0);
   const [railCollapsed, setRailCollapsed] = React.useState(false);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [authOn, setAuthOn] = React.useState(false);
@@ -211,7 +219,24 @@ export function ConsoleShell({
     }
   }, []);
 
+  // Project the gateway's autonomy config onto the 4-rung ladder. The rung is
+  // `level` + `always_ask` (see `levelToRung`); both the console and the
+  // TUI/CLI write that pair, so this reflects a preset switched on either
+  // surface.
+  const applyAutonomyFromConfig = React.useCallback(
+    (c: Record<string, unknown> | null | undefined, readStartedAt: number) => {
+      if (readStartedAt < autonomyWrittenAt.current) return;
+      const auto = c?.autonomy as
+        | { level?: string; always_ask?: string[] }
+        | undefined;
+      if (!auto) return;
+      setAutonomyState(levelToRung(auto.level, auto.always_ask?.length || 0));
+    },
+    [],
+  );
+
   React.useEffect(() => {
+    const configReadStartedAt = Date.now();
     refreshSessions();
     api
       .providers()
@@ -252,18 +277,58 @@ export function ConsoleShell({
         const mcp = c?.mcp_servers;
         if (mcp && typeof mcp === "object")
           setMcpCount(Object.keys(mcp).length);
-        // Seed the autonomy rung from the authoritative config (level + always_ask).
-        const auto = c?.autonomy as
-          { level?: string; always_ask?: string[] } | undefined;
-        if (auto && !autonomySeeded.current) {
-          autonomySeeded.current = true;
-          setAutonomyState(
-            levelToRung(auto.level, auto.always_ask?.length || 0),
-          );
-        }
+        applyAutonomyFromConfig(c, configReadStartedAt);
       })
       .catch(() => {});
-  }, [refreshSessions]);
+  }, [refreshSessions, applyAutonomyFromConfig]);
+
+  // Autonomy is shared state, not a console-local preference: `rantaiclaw
+  // autonomy <preset>`, the TUI's Shift+Tab, and a second console tab all write
+  // the same config. Re-read it on an interval so an open console follows a
+  // switch made elsewhere instead of showing its mount-time value until reload.
+  //
+  // Only while the tab is visible, and slower than the 15s status poll — this
+  // tracks an operator action, not a live metric. Mirrors `useGatewayStatus`:
+  // refresh immediately on becoming visible rather than waiting out a full
+  // interval, since a whole hidden period may have gone by.
+  React.useEffect(() => {
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    const stop = () => {
+      if (id !== null) {
+        clearInterval(id);
+        id = null;
+      }
+    };
+
+    const refresh = () => {
+      const startedAt = Date.now();
+      api
+        .config()
+        .then((c) => applyAutonomyFromConfig(c, startedAt))
+        .catch(() => {});
+    };
+
+    const sync = () => {
+      if (document.visibilityState === "hidden") {
+        stop();
+        return;
+      }
+      refresh();
+      if (id === null) id = setInterval(refresh, AUTONOMY_POLL_MS);
+    };
+
+    // Start the interval without an immediate read: the effect above already
+    // fetched the config on mount, and this one has nothing newer to offer yet.
+    if (document.visibilityState !== "hidden") {
+      id = setInterval(refresh, AUTONOMY_POLL_MS);
+    }
+    document.addEventListener("visibilitychange", sync);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", sync);
+    };
+  }, [applyAutonomyFromConfig]);
 
   // Persist an autonomy rung change to the gateway (maps 4 rungs → real level + always_ask).
   const autonomyRef = React.useRef(autonomy);
@@ -277,7 +342,10 @@ export function ConsoleShell({
         toast.error(
           `Autonomy update failed: ${e instanceof Error ? e.message : e}`,
         ),
-      );
+      )
+      .finally(() => {
+        autonomyWrittenAt.current = Date.now();
+      });
   }, []);
 
   // Refresh the session list after a turn finishes streaming.
