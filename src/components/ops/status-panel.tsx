@@ -4,12 +4,23 @@ import * as React from "react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
+import { autonomyPreset, levelToRung } from "@/lib/console";
 import { KeyVal, PanelFrame, RefreshButton, SectionTitle, SeverityBadge, StatTile } from "./shared";
 
 export function StatusPanel() {
   const status = useAsync(() => api.status(), []);
   const doctor = useAsync(() => api.doctor(), []);
   const s = status.data;
+  // Show the preset the rest of the console speaks in, not the raw enforcement
+  // level. `autonomy_preset` is what distinguishes Manual from Smart — both are
+  // `Supervised`. On an older gateway that omits it, fall back through
+  // `levelToRung`, which is the mapping that understands every spelling the
+  // gateway sends (`ReadOnly` from /status, `readonly` from /config); it can
+  // only ever report Smart for a supervised level, which is the most that
+  // payload supports.
+  const autonomyLabel = s
+    ? autonomyPreset(s.autonomy_preset ?? levelToRung(s.autonomy)).label
+    : "—";
 
   return (
     <div className="space-y-6">
@@ -24,7 +35,7 @@ export function StatusPanel() {
                 <StatTile label="Version" value={s.version} />
                 <StatTile label="Provider" value={s.provider || "—"} tone="accent" />
                 <StatTile label="Paired" value={s.paired ? "Yes" : "No"} tone={s.paired ? "success" : "warning"} />
-                <StatTile label="Autonomy" value={s.autonomy || "—"} />
+                <StatTile label="Autonomy" value={autonomyLabel} />
               </div>
               <Card className="mt-3 p-4">
                 <KeyVal k="Model" v={s.model || "—"} mono />
