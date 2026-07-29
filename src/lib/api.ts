@@ -28,6 +28,25 @@ import type {
   TelegramConnectResult,
 } from "./types";
 
+/**
+ * A non-2xx response, carrying the parsed body so callers can act on a
+ * structured error instead of only its message.
+ *
+ * `message` is unchanged from what `rc` used to throw, so every existing
+ * `catch (e) { toast(e.message) }` behaves exactly as before.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(message: string, status: number, body: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 async function rc<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/rc/${path}`, {
     ...init,
@@ -37,8 +56,10 @@ async function rc<T>(path: string, init?: RequestInit): Promise<T> {
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
     const detail = data?.detail || data?.error || res.statusText;
-    throw new Error(
+    throw new ApiError(
       typeof detail === "string" ? detail : JSON.stringify(detail),
+      res.status,
+      data,
     );
   }
   return data as T;
@@ -186,10 +207,14 @@ export const api = {
     if (!res.ok) throw new Error(d.detail || d.error || "ClawHub error");
     return d;
   },
-  installSkill: (slug: string) =>
+  // `reference` is a bare slug or the publisher-qualified `@owner/slug`.
+  // A bare slug that several publishers share comes back as `409
+  // ambiguous_skill_slug` with the candidates on `ApiError.body.matches` —
+  // the gateway never picks a publisher for us.
+  installSkill: (reference: string) =>
     rc<{ slug: string; installed: boolean }>("skills/install", {
       method: "POST",
-      body: JSON.stringify({ slug }),
+      body: JSON.stringify({ slug: reference }),
     }),
   uninstallSkill: (name: string) =>
     rc<{ name: string; removed: boolean }>(

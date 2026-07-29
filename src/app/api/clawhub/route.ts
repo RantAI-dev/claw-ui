@@ -10,6 +10,8 @@ interface ClawHubSkill {
   slug: string;
   displayName: string;
   summary: string;
+  ownerHandle?: string;
+  official?: boolean;
   stars?: number;
   downloads?: number;
   version?: string;
@@ -19,12 +21,28 @@ function norm(it: Record<string, unknown>): ClawHubSkill {
   const stats = (it.stats as Record<string, number> | undefined) ?? {};
   const latest = (it.latestVersion as Record<string, string> | undefined) ?? {};
   const tags = (it.tags as Record<string, string> | undefined) ?? {};
+  const owner = typeof it.ownerHandle === "string" ? it.ownerHandle : "";
+  // Search puts `downloads` at the top level and reports no star count, while
+  // the browse listing does the opposite. Reading only `stats` meant search
+  // results showed no popularity at all — the one number that helps tell two
+  // same-slug publishers apart.
+  const downloads =
+    typeof stats.downloads === "number"
+      ? stats.downloads
+      : typeof it.downloads === "number"
+        ? it.downloads
+        : undefined;
   return {
     slug: String(it.slug ?? ""),
     displayName: String(it.displayName ?? it.slug ?? ""),
     summary: String(it.summary ?? ""),
+    // ClawHub namespaces skills per publisher. Dropping this made four
+    // `weather` results render identically — one of them a verbatim fork of
+    // another — with no way to tell which one an Install button would fetch.
+    ownerHandle: owner || undefined,
+    official: it.official === true ? true : undefined,
     stars: typeof stats.stars === "number" ? stats.stars : undefined,
-    downloads: typeof stats.downloads === "number" ? stats.downloads : undefined,
+    downloads,
     version: latest.version ?? tags.latest ?? undefined,
   };
 }

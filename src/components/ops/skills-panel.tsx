@@ -5,6 +5,11 @@ import { Download, Loader2, Power, Search, Star, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { ClawHubSkill } from "@/lib/types";
+import {
+  candidatesFromError,
+  skillReference,
+  type SkillCandidate,
+} from "@/lib/clawhub";
 import { cn, formatNumber } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
 
@@ -24,6 +30,10 @@ export function SkillsPanel() {
   const [hubError, setHubError] = React.useState<string | null>(null);
   const [working, setWorking] = React.useState<string | null>(null);
   const [pendingUninstall, setPendingUninstall] = React.useState<string | null>(null);
+  const [ambiguous, setAmbiguous] = React.useState<{
+    reference: string;
+    candidates: SkillCandidate[];
+  } | null>(null);
 
   const installedNames = React.useMemo(
     () => new Set((installed.data?.skills || []).map((s) => s.name.toLowerCase())),
@@ -70,15 +80,26 @@ export function SkillsPanel() {
     }
   };
 
-  const install = async (slug: string) => {
-    setWorking(slug);
-    const t = toast.loading(`Installing ${slug}…`);
+  const install = async (reference: string) => {
+    setWorking(reference);
+    const t = toast.loading(`Installing ${reference}…`);
     try {
-      await api.installSkill(slug);
-      toast.success(`Installed ${slug}`, { id: t });
+      await api.installSkill(reference);
+      toast.success(`Installed ${reference}`, { id: t });
+      setAmbiguous(null);
       installed.refresh();
     } catch (e) {
-      toast.error(`Install failed: ${e instanceof Error ? e.message : e}`, { id: t });
+      // A slug several publishers share is a question, not a failure: the
+      // gateway answers 409 with the candidates. Ask which one rather than
+      // picking for the user — an install stages code the agent will read
+      // and act on, and popular slugs attract look-alike forks.
+      const candidates = candidatesFromError(e);
+      if (candidates) {
+        toast.dismiss(t);
+        setAmbiguous({ reference, candidates });
+      } else {
+        toast.error(`Install failed: ${e instanceof Error ? e.message : e}`, { id: t });
+      }
     } finally {
       setWorking(null);
     }
@@ -195,17 +216,26 @@ export function SkillsPanel() {
           ) : (
             <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {(hub || []).map((s) => {
+                const reference = skillReference(s);
                 const isInstalled = installedNames.has(s.slug.toLowerCase());
-                const busy = working === s.slug;
+                // Keyed on the reference, not the slug: several publishers
+                // share popular slugs, so `working === s.slug` put every
+                // same-slug card into the spinner on a single click.
+                const busy = working === reference;
                 return (
-                  <Card key={s.slug} className="flex flex-col gap-2 p-3">
+                  <Card key={reference} className="flex flex-col gap-2 p-3">
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="truncate text-sm font-semibold">{s.displayName}</span>
+                          {s.official && (
+                            <Badge variant="success" className="shrink-0">official</Badge>
+                          )}
                           {s.version && <span className="text-[10px] text-muted-foreground">v{s.version}</span>}
                         </div>
-                        <div className="truncate font-mono text-[10px] text-muted-foreground">{s.slug}</div>
+                        <div className="truncate font-mono text-[10px] text-muted-foreground">
+                          {reference}
+                        </div>
                       </div>
                       {isInstalled ? (
                         <Badge variant="success" className="shrink-0">installed</Badge>
@@ -213,7 +243,7 @@ export function SkillsPanel() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => install(s.slug)}
+                          onClick={() => install(reference)}
                           disabled={busy}
                           className="shrink-0"
                         >
@@ -259,6 +289,54 @@ export function SkillsPanel() {
         busy={working === pendingUninstall}
         onConfirm={uninstall}
       />
+
+      <Modal
+        open={!!ambiguous}
+        onClose={() => setAmbiguous(null)}
+        title="Which publisher?"
+        description={
+          ambiguous
+            ? `“${ambiguous.reference}” is published by ${ambiguous.candidates.length} owners on ClawHub. Installing runs their code, so pick the one you meant.`
+            : undefined
+        }
+      >
+        <div className="flex flex-col gap-2">
+          {(ambiguous?.candidates || []).map((c) => (
+            <div
+              key={c.reference}
+              className="flex items-center justify-between gap-2 rounded-md border p-2"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-mono text-xs">{c.reference}</div>
+                {c.url && (
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="truncate text-[10px] text-muted-foreground underline"
+                  >
+                    {c.url}
+                  </a>
+                )}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => install(c.reference)}
+                disabled={working === c.reference}
+                className="shrink-0"
+              >
+                {working === c.reference ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Download className="size-3.5" />
+                )}
+                Install
+              </Button>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
