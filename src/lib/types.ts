@@ -78,6 +78,13 @@ export interface ClawHubSkill {
   slug: string;
   displayName: string;
   summary: string;
+  /**
+   * Publisher handle. ClawHub namespaces skills per publisher, so this is
+   * what makes two same-slug results distinguishable. Absent on the browse
+   * listing, which reports no owner at all.
+   */
+  ownerHandle?: string;
+  official?: boolean;
   stars?: number;
   downloads?: number;
   version?: string;
