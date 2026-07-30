@@ -229,8 +229,13 @@ export function SkillsPanel() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <span className="truncate text-sm font-semibold">{s.displayName}</span>
+                          {/* `official` is a claim about the publisher;
+                              `installed` below is a fact about this machine.
+                              They can appear on the same card, so they must
+                              not share a colour — a trust signal that looks
+                              like a status badge stops reading as one. */}
                           {s.official && (
-                            <Badge variant="success" className="shrink-0">official</Badge>
+                            <Badge variant="accent" className="shrink-0">official</Badge>
                           )}
                           {s.version && <span className="text-[10px] text-muted-foreground">v{s.version}</span>}
                         </div>
@@ -311,7 +316,7 @@ export function SkillsPanel() {
                 <div className="flex items-center gap-2">
                   <span className="truncate font-mono text-xs">{c.reference}</span>
                   {c.official && (
-                    <Badge variant="success" className="shrink-0">official</Badge>
+                    <Badge variant="accent" className="shrink-0">official</Badge>
                   )}
                 </div>
                 {/* Choosing between bare references is choosing blind — one of
