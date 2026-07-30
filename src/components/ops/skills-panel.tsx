@@ -8,6 +8,8 @@ import type { ClawHubSkill } from "@/lib/types";
 import {
   candidateAnnotation,
   candidatesFromError,
+  indexInstalledSkills,
+  installStateFor,
   skillReference,
   type SkillCandidate,
 } from "@/lib/clawhub";
@@ -36,8 +38,12 @@ export function SkillsPanel() {
     candidates: SkillCandidate[];
   } | null>(null);
 
-  const installedNames = React.useMemo(
-    () => new Set((installed.data?.skills || []).map((s) => s.name.toLowerCase())),
+  // Indexed by publisher, not by name. ClawHub namespaces skills per
+  // publisher, so a name-keyed set marked all four `weather` cards installed
+  // once any one of them was — and missed entirely whenever a skill's manifest
+  // name differed from its directory slug.
+  const installedIndex = React.useMemo(
+    () => indexInstalledSkills(installed.data?.skills || []),
     [installed.data],
   );
 
@@ -218,7 +224,7 @@ export function SkillsPanel() {
             <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               {(hub || []).map((s) => {
                 const reference = skillReference(s);
-                const isInstalled = installedNames.has(s.slug.toLowerCase());
+                const state = installStateFor(s, installedIndex);
                 // Keyed on the reference, not the slug: several publishers
                 // share popular slugs, so `working === s.slug` put every
                 // same-slug card into the spinner on a single click.
@@ -243,8 +249,30 @@ export function SkillsPanel() {
                           {reference}
                         </div>
                       </div>
-                      {isInstalled ? (
-                        <Badge variant="success" className="shrink-0">installed</Badge>
+                      {state.kind === "installed" ||
+                      state.kind === "installed-unattributed" ? (
+                        <Badge
+                          variant="success"
+                          className="shrink-0"
+                          title={
+                            state.kind === "installed-unattributed"
+                              ? "This slug is installed, but the publisher was not recorded — reinstall to attribute it."
+                              : undefined
+                          }
+                        >
+                          installed
+                        </Badge>
+                      ) : state.kind === "other-publisher" ? (
+                        // The slug's directory holds someone else's copy. The
+                        // gateway refuses to overwrite it, so offering Install
+                        // here would promise something that cannot happen.
+                        <Badge
+                          variant="warning"
+                          className="shrink-0"
+                          title={`Installed from @${state.owner}. Uninstall it first to switch publishers.`}
+                        >
+                          @{state.owner} installed
+                        </Badge>
                       ) : (
                         <Button
                           size="sm"

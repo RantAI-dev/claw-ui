@@ -22,6 +22,82 @@ export function skillReference(skill: PublisherIdentified): string {
   return owner ? `@${owner}/${skill.slug}` : skill.slug;
 }
 
+/** An installed skill as `GET /api/v1/skills` reports it. */
+export interface InstalledSkillLike {
+  name: string;
+  clawhub?: { owner?: string; slug?: string };
+}
+
+/**
+ * Which local skills occupy which ClawHub identities.
+ *
+ * `references` holds `@owner/slug` for installs whose publisher was recorded.
+ * `unattributedSlugs` holds the slug alone for the rest — installs predating
+ * the provenance marker, or ones made from a slug unique enough that ClawHub
+ * resolved it without an owner. We know the slug is taken; not by whom.
+ */
+export interface InstalledSkillIndex {
+  references: Set<string>;
+  unattributedSlugs: Set<string>;
+}
+
+export function indexInstalledSkills(
+  skills: InstalledSkillLike[],
+): InstalledSkillIndex {
+  const references = new Set<string>();
+  const unattributedSlugs = new Set<string>();
+  for (const skill of skills) {
+    const owner = skill.clawhub?.owner?.trim();
+    const slug = skill.clawhub?.slug?.trim();
+    if (owner && slug) {
+      references.add(`@${owner}/${slug}`.toLowerCase());
+      continue;
+    }
+    // Fall back to the manifest name only when there is no recorded slug —
+    // the two can differ, which is why matching on `name` alone was wrong.
+    const fallback = slug || skill.name;
+    if (fallback) unattributedSlugs.add(fallback.toLowerCase());
+  }
+  return { references, unattributedSlugs };
+}
+
+/**
+ * What the browse card should offer.
+ *
+ * `other-publisher` is the case that used to be invisible: the slug's
+ * directory already holds someone else's copy. The gateway refuses to
+ * overwrite it, so showing an Install button there promises something that
+ * cannot happen — and showing "installed" (the old behaviour) claims a copy
+ * the user does not have.
+ */
+export type InstallState =
+  | { kind: "installed" }
+  | { kind: "installed-unattributed" }
+  | { kind: "other-publisher"; owner: string }
+  | { kind: "available" };
+
+export function installStateFor(
+  skill: PublisherIdentified,
+  index: InstalledSkillIndex,
+): InstallState {
+  const slug = skill.slug.trim().toLowerCase();
+  if (!slug) return { kind: "available" };
+
+  if (index.references.has(skillReference(skill).toLowerCase())) {
+    return { kind: "installed" };
+  }
+  if (index.unattributedSlugs.has(slug)) {
+    return { kind: "installed-unattributed" };
+  }
+  for (const reference of index.references) {
+    const separator = reference.indexOf("/");
+    if (separator > 0 && reference.slice(separator + 1) === slug) {
+      return { kind: "other-publisher", owner: reference.slice(1, separator) };
+    }
+  }
+  return { kind: "available" };
+}
+
 /** One publisher a shared slug could mean, as returned by the gateway's 409. */
 export interface SkillCandidate {
   owner: string;
