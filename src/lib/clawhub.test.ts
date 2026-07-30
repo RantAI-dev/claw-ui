@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   candidateAnnotation,
   candidatesFromError,
+  indexInstalledSkills,
+  installStateFor,
   skillReference,
 } from "./clawhub";
 
@@ -119,5 +121,69 @@ describe("candidatesFromError", () => {
     });
     expect(mixed).toHaveLength(1);
     expect(mixed?.[0].reference).toBe("@y/w");
+  });
+});
+
+describe("installStateFor", () => {
+  const index = (skills: Parameters<typeof indexInstalledSkills>[0]) =>
+    indexInstalledSkills(skills);
+
+  it("marks only the publisher that is actually installed", () => {
+    // The bug this exists for: a slug-keyed check marked all four `weather`
+    // cards installed the moment any one of them was.
+    const i = index([
+      { name: "weather", clawhub: { owner: "steipete", slug: "weather" } },
+    ]);
+    expect(
+      installStateFor({ slug: "weather", ownerHandle: "steipete" }, i).kind,
+    ).toBe("installed");
+    expect(
+      installStateFor({ slug: "weather", ownerHandle: "lfengwa2" }, i),
+    ).toEqual({ kind: "other-publisher", owner: "steipete" });
+  });
+
+  it("does not offer an install the gateway would refuse", () => {
+    // A different publisher owns the directory. Offering Install promises
+    // something that cannot happen; claiming "installed" claims a copy the
+    // user does not have. Neither — say who has it.
+    const i = index([
+      { name: "weather", clawhub: { owner: "steipete", slug: "weather" } },
+    ]);
+    const state = installStateFor(
+      { slug: "weather", ownerHandle: "tongguanghai" },
+      i,
+    );
+    expect(state.kind).toBe("other-publisher");
+  });
+
+  it("treats an install with no recorded publisher as unattributed", () => {
+    // Installed before provenance existed: the slug is taken, but not by a
+    // publisher we can name — so every same-slug card still reads installed.
+    const i = index([{ name: "weather" }]);
+    expect(installStateFor({ slug: "weather" }, i).kind).toBe(
+      "installed-unattributed",
+    );
+    expect(
+      installStateFor({ slug: "weather", ownerHandle: "steipete" }, i).kind,
+    ).toBe("installed-unattributed");
+  });
+
+  it("prefers the recorded slug over the manifest name", () => {
+    // The two can differ; matching on `name` alone missed those entirely.
+    const i = index([
+      { name: "Weather Tools", clawhub: { owner: "steipete", slug: "weather" } },
+    ]);
+    expect(
+      installStateFor({ slug: "weather", ownerHandle: "steipete" }, i).kind,
+    ).toBe("installed");
+  });
+
+  it("leaves unrelated skills installable", () => {
+    const i = index([
+      { name: "weather", clawhub: { owner: "steipete", slug: "weather" } },
+    ]);
+    expect(installStateFor({ slug: "github", ownerHandle: "steipete" }, i).kind).toBe(
+      "available",
+    );
   });
 });

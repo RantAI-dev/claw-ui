@@ -72,6 +72,18 @@ export interface Skill {
   enabled?: boolean;
   active?: boolean;
   reasons?: string[];
+  /**
+   * Which ClawHub publisher this copy came from. Omitted when the gateway has
+   * no record — a skill that never came from ClawHub (bundled, git, local
+   * path), or one installed before provenance was tracked. Absent means
+   * *unattributed*, not "not from ClawHub".
+   */
+  clawhub?: {
+    owner: string;
+    slug: string;
+    version: string;
+    reference: string;
+  };
 }
 
 export interface ClawHubSkill {
