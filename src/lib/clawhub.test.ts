@@ -1,6 +1,51 @@
 import { describe, expect, it } from "vitest";
 
-import { candidatesFromError, skillReference } from "./clawhub";
+import {
+  candidateAnnotation,
+  candidatesFromError,
+  skillReference,
+} from "./clawhub";
+
+describe("candidateAnnotation", () => {
+  const base = { owner: "steipete", reference: "@steipete/weather", url: "" };
+
+  it("says nothing when nothing is known", () => {
+    // An older gateway sends neither field, and the lookup behind them is
+    // best-effort. A bare reference is honest; "0 installs" would read as
+    // "nobody uses this", which is a claim we have not earned.
+    expect(candidateAnnotation(base)).toBe("");
+    expect(candidateAnnotation({ ...base, downloads: 0 })).toBe("");
+    expect(candidateAnnotation({ ...base, official: false })).toBe("");
+  });
+
+  it("reports installs and the official marker", () => {
+    expect(candidateAnnotation({ ...base, downloads: 165212 })).toBe(
+      "165,212 installs",
+    );
+    expect(
+      candidateAnnotation({ ...base, downloads: 165212, official: true }),
+    ).toBe("165,212 installs · official");
+    expect(candidateAnnotation({ ...base, official: true })).toBe("official");
+  });
+
+  it("separates the fork from the original it copies", () => {
+    // The concrete case this exists for: same slug, same display name, same
+    // summary — only these numbers tell them apart.
+    const original = candidateAnnotation({
+      ...base,
+      downloads: 165212,
+      official: true,
+    });
+    const fork = candidateAnnotation({
+      owner: "legionspace-hackathon",
+      reference: "@legionspace-hackathon/weather",
+      url: "",
+      downloads: 68,
+    });
+    expect(original).not.toBe(fork);
+    expect(fork).toBe("68 installs");
+  });
+});
 
 describe("skillReference", () => {
   it("qualifies the publisher when the endpoint reported one", () => {

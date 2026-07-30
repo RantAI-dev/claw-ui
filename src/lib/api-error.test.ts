@@ -27,8 +27,16 @@ describe("installSkill error handling", () => {
         owner: "steipete",
         reference: "@steipete/weather",
         url: "https://clawhub.ai/steipete/skills/weather",
+        downloads: 165212,
+        official: true,
       },
-      { owner: "lfengwa2", reference: "@lfengwa2/weather", url: "" },
+      {
+        owner: "lfengwa2",
+        reference: "@lfengwa2/weather",
+        url: "",
+        downloads: 57,
+        official: false,
+      },
     ],
   };
 
@@ -45,6 +53,12 @@ describe("installSkill error handling", () => {
     const candidates = candidatesFromError(error);
     expect(candidates).toHaveLength(2);
     expect(candidates?.[0].reference).toBe("@steipete/weather");
+
+    // The publisher signals have to survive the hop too, or the picker is
+    // back to asking the user to choose between bare references.
+    expect(candidates?.[0].downloads).toBe(165212);
+    expect(candidates?.[0].official).toBe(true);
+    expect(candidates?.[1].downloads).toBe(57);
   });
 
   it("keeps the message unchanged for existing catch sites", async () => {

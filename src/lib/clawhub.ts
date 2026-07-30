@@ -27,6 +27,31 @@ export interface SkillCandidate {
   owner: string;
   reference: string;
   url: string;
+  /**
+   * What the gateway knows about this publisher, joined in from ClawHub's
+   * search index. Optional because an older gateway does not send them, and
+   * because the lookup behind them is best-effort — absent or `0` means
+   * *unknown*, not unused.
+   */
+  downloads?: number;
+  official?: boolean;
+}
+
+/**
+ * Short summary of what is known about a publisher, for putting next to its
+ * reference. Empty when nothing is known — a bare reference is honest, while
+ * "0 installs" would read as "nobody uses this".
+ *
+ * Mirrors `AmbiguousMatch::annotation` on the Rust side so the console and the
+ * TUI describe a publisher the same way.
+ */
+export function candidateAnnotation(candidate: SkillCandidate): string {
+  const parts: string[] = [];
+  if (typeof candidate.downloads === "number" && candidate.downloads > 0) {
+    parts.push(`${candidate.downloads.toLocaleString()} installs`);
+  }
+  if (candidate.official) parts.push("official");
+  return parts.join(" · ");
 }
 
 /**
