@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { ClawHubSkill } from "@/lib/types";
 import {
+  candidateAnnotation,
   candidatesFromError,
   skillReference,
   type SkillCandidate,
@@ -307,7 +308,20 @@ export function SkillsPanel() {
               className="flex items-center justify-between gap-2 rounded-md border p-2"
             >
               <div className="min-w-0">
-                <div className="truncate font-mono text-xs">{c.reference}</div>
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-mono text-xs">{c.reference}</span>
+                  {c.official && (
+                    <Badge variant="success" className="shrink-0">official</Badge>
+                  )}
+                </div>
+                {/* Choosing between bare references is choosing blind — one of
+                    the four `weather` publishers is a verbatim fork of the top
+                    one, same name and summary. */}
+                {candidateAnnotation(c) && (
+                  <div className="text-[10px] text-muted-foreground">
+                    {candidateAnnotation(c)}
+                  </div>
+                )}
                 {c.url && (
                   <a
                     href={c.url}
