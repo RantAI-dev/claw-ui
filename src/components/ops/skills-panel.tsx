@@ -1,7 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { Download, Loader2, Power, Search, Star, Trash2 } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Pencil,
+  Plus,
+  Power,
+  Search,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { ClawHubSkill } from "@/lib/types";
@@ -23,6 +32,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
+import { SkillEditor } from "./skill-editor";
 
 export function SkillsPanel() {
   const installed = useAsync(() => api.skills(), []);
@@ -37,6 +47,10 @@ export function SkillsPanel() {
     reference: string;
     candidates: SkillCandidate[];
   } | null>(null);
+  // `null` = closed. `{mode:"create"}` or `{mode:"edit", slug}` = open.
+  const [editor, setEditor] = React.useState<
+    { mode: "create" } | { mode: "edit"; slug: string } | null
+  >(null);
 
   // Indexed by publisher, not by name. ClawHub namespaces skills per
   // publisher, so a name-keyed set marked all four `weather` cards installed
@@ -77,10 +91,12 @@ export function SkillsPanel() {
     return () => clearTimeout(t);
   }, [view, query]);
 
-  const toggle = async (name: string, enabled: boolean) => {
+  // Keyed on `slug`, not `name`: the gateway rejects a path parameter with a
+  // space in it, so passing the display name 400s for every hand-written skill.
+  const toggle = async (slug: string, label: string, enabled: boolean) => {
     try {
-      await api.setSkillEnabled(name, enabled);
-      toast.success(`${name} ${enabled ? "enabled" : "disabled"}`);
+      await api.setSkillEnabled(slug, enabled);
+      toast.success(`${label} ${enabled ? "enabled" : "disabled"}`);
       installed.refresh();
     } catch (e) {
       toast.error(String(e instanceof Error ? e.message : e));
@@ -113,12 +129,12 @@ export function SkillsPanel() {
   };
 
   const uninstall = async () => {
-    const name = pendingUninstall;
-    if (!name) return;
-    setWorking(name);
+    const slug = pendingUninstall;
+    if (!slug) return;
+    setWorking(slug);
     try {
-      await api.uninstallSkill(name);
-      toast.success(`Removed ${name}`);
+      const r = await api.uninstallSkill(slug);
+      toast.success(`Removed ${r.name}`);
       setPendingUninstall(null);
       installed.refresh();
     } catch (e) {
@@ -142,7 +158,14 @@ export function SkillsPanel() {
             { value: "browse", label: "Browse ClawHub" },
           ]}
         />
-        {view === "installed" && <RefreshButton onClick={installed.refresh} />}
+        {view === "installed" && (
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="outline" onClick={() => setEditor({ mode: "create" })}>
+              <Plus className="size-3.5" /> Write
+            </Button>
+            <RefreshButton onClick={installed.refresh} />
+          </div>
+        )}
       </div>
 
       {view === "installed" ? (
@@ -155,17 +178,33 @@ export function SkillsPanel() {
           <div className="space-y-2">
             {installed.data?.skills.map((s) => {
               const enabled = s.enabled !== false;
-              const busy = working === s.name;
+              const busy = working === s.slug;
+              // Without a slug the skill has no directory of its own (an
+              // open-skills file) and no route can act on it.
+              const slug = s.slug;
+              const editable = s.origin?.kind === "authored" && !!slug;
               return (
-                <Card key={s.name} className={cn("p-3", !enabled && "opacity-60")}>
+                <Card key={s.slug ?? s.name} className={cn("p-3", !enabled && "opacity-60")}>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold">{s.name}</span>
                     {s.version && <span className="text-[10px] text-muted-foreground">v{s.version}</span>}
+                    {editable && <Badge variant="secondary" className="text-[10px]">yours</Badge>}
                     {!enabled && <Badge variant="warning" className="text-[10px]">disabled</Badge>}
                     <div className="ml-auto flex items-center gap-1">
+                      {editable && slug && (
+                        <IconButton
+                          onClick={() => setEditor({ mode: "edit", slug })}
+                          disabled={busy}
+                          title="Edit"
+                          aria-label={`Edit ${s.name}`}
+                          className="disabled:opacity-50"
+                        >
+                          <Pencil className="size-3.5" />
+                        </IconButton>
+                      )}
                       <IconButton
-                        onClick={() => toggle(s.name, !enabled)}
-                        disabled={busy}
+                        onClick={() => slug && toggle(slug, s.name, !enabled)}
+                        disabled={busy || !slug}
                         title={enabled ? "Disable" : "Enable"}
                         aria-label={enabled ? `Disable ${s.name}` : `Enable ${s.name}`}
                         className={cn(
@@ -176,8 +215,8 @@ export function SkillsPanel() {
                         <Power className="size-3.5" />
                       </IconButton>
                       <IconButton
-                        onClick={() => setPendingUninstall(s.name)}
-                        disabled={busy}
+                        onClick={() => slug && setPendingUninstall(slug)}
+                        disabled={busy || !slug}
                         title="Uninstall"
                         aria-label={`Uninstall ${s.name}`}
                         className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
@@ -308,6 +347,16 @@ export function SkillsPanel() {
             </div>
           )}
         </div>
+      )}
+
+      {editor && (
+        <SkillEditor
+          mode={editor.mode}
+          slug={editor.mode === "edit" ? editor.slug : undefined}
+          existing={installed.data?.skills || []}
+          onClose={() => setEditor(null)}
+          onSaved={installed.refresh}
+        />
       )}
 
       <ConfirmModal

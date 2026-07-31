@@ -84,6 +84,25 @@ export interface Skill {
     version: string;
     reference: string;
   };
+  /**
+   * Directory name — the address every skill route takes. Prefer this over
+   * `name` whenever a skill has to be identified: `name` is free text from the
+   * manifest, and the gateway rejects a path parameter containing a space, so
+   * a skill called "Kopi Pagi" is only reachable at `kopi-pagi`.
+   *
+   * Omitted for entries with no directory of their own (open-skills files),
+   * which cannot be acted on at all.
+   */
+  slug?: string;
+  /**
+   * Who put this skill on disk, as the gateway resolved it. Absent means the
+   * origin could not be established, which must be read as **not editable** —
+   * never as "probably fine". Only `authored` unlocks editing.
+   */
+  origin?: {
+    kind: "authored" | "clawhub" | "bundled" | "git" | "local";
+    source: string | null;
+  };
 }
 
 export interface ClawHubSkill {

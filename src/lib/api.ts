@@ -189,14 +189,40 @@ export const api = {
     rc<{ runs: CronRun[]; count: number }>(
       `cron/${encodeURIComponent(id)}/runs?limit=${limit}`,
     ),
-  setSkillEnabled: (name: string, enabled: boolean) =>
+  // Skill routes address by `slug` (the directory name), not by `name`. The
+  // gateway runs the path parameter through `validate_slug`, which rejects
+  // spaces — so a skill whose display name is "Kopi Pagi" is only reachable at
+  // `kopi-pagi`. Passing `name` here 400s for every skill written by hand.
+  setSkillEnabled: (slug: string, enabled: boolean) =>
     rc<{ name: string; enabled: boolean }>(
-      `skills/${encodeURIComponent(name)}/enabled`,
+      `skills/${encodeURIComponent(slug)}/enabled`,
       {
         method: "PUT",
         body: JSON.stringify({ enabled }),
       },
     ),
+  // Raw SKILL.md. Both refuse (403) any skill the user did not author — its
+  // body becomes the agent's standing instructions, so only skills they own
+  // are editable here.
+  skillContent: (slug: string) =>
+    rc<{ slug: string; name: string; content: string }>(
+      `skills/${encodeURIComponent(slug)}/content`,
+    ),
+  saveSkillContent: (slug: string, content: string) =>
+    rc<{ slug: string; name: string; written: boolean }>(
+      `skills/${encodeURIComponent(slug)}/content`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      },
+    ),
+  // Creating takes the display name — the slug does not exist yet, and the
+  // server derives it from the `name:` inside `content`.
+  createSkill: (name: string, content: string) =>
+    rc<{ name: string; slug: string; created: boolean }>("skills", {
+      method: "POST",
+      body: JSON.stringify({ name, content }),
+    }),
   // ClawHub registry — browse top-by-stars, or search with q. Goes via the Next
   // /api/clawhub proxy (not the gateway).
   clawhub: async (q?: string): Promise<{ items: ClawHubSkill[] }> => {
@@ -216,9 +242,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ slug: reference }),
     }),
-  uninstallSkill: (name: string) =>
+  uninstallSkill: (slug: string) =>
     rc<{ name: string; removed: boolean }>(
-      `skills/${encodeURIComponent(name)}`,
+      `skills/${encodeURIComponent(slug)}`,
       {
         method: "DELETE",
       },
