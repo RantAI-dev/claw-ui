@@ -37,12 +37,40 @@ describe("readFields", () => {
     expect(readFields(DOC.replace("## Instructions", "## Steps"))).toBeNull();
   });
 
-  it("returns null when name is empty", () => {
-    expect(readFields(DOC.replace("name: Kopi Pagi", "name:   "))).toBeNull();
+  it("still reads a document whose name is blank", () => {
+    // This asserted `toBeNull()` before, which encoded the bug: a blank name
+    // is the normal starting state of a skill being written, not a document
+    // the form cannot handle. Whether it is *saveable* is a separate question
+    // the editor and the gateway both answer.
+    const blank = readFields(DOC.replace("name: Kopi Pagi", "name:   "));
+    expect(blank).not.toBeNull();
+    expect(blank?.name).toBe("");
+    expect(blank?.description).toBe("Panduan menyeduh kopi V60.");
   });
 
-  it("reads the template it ships", () => {
-    expect(readFields(emptyTemplate("Kopi Pagi"))).not.toBeNull();
+  it("returns null when the name key is missing entirely", () => {
+    // Distinct from an empty value: there is no line for the form to patch.
+    const noName = "---\ndescription: x\n---\n\n## Instructions\n- a\n";
+    expect(readFields(noName)).toBeNull();
+  });
+
+  it("reads the template the editor actually opens with", () => {
+    // Regression. The earlier version of this test passed a name —
+    // `emptyTemplate("Kopi Pagi")` — but the editor calls `emptyTemplate()`
+    // with none, so the empty-name path was never exercised. `readFields`
+    // rejected it, and every new skill opened straight into the markdown view
+    // under "this file's structure was changed by hand". Caught by clicking
+    // the button, not by this suite.
+    const fields = readFields(emptyTemplate());
+    expect(fields).not.toBeNull();
+    expect(fields?.name).toBe("");
+    // The template ships one empty bullet, so the form opens with a single
+    // blank step ready to type into rather than no rows at all.
+    expect(fields?.instructions).toEqual([""]);
+  });
+
+  it("reads the template when a name is supplied", () => {
+    expect(readFields(emptyTemplate("Kopi Pagi"))?.name).toBe("Kopi Pagi");
   });
 });
 
@@ -53,6 +81,23 @@ describe("writeField", () => {
     expect(out).toContain("## Troubleshooting");
     expect(out).toContain("Terlalu asam: gilingan lebih halus.");
     expect(readFields(out)?.description).toBe("Diperbarui.");
+  });
+
+  it("keeps the title heading in step with the name", () => {
+    // Regression: the form patched only the frontmatter, so a skill created
+    // through the console shipped with a bare `# ` as its visible title — and
+    // that heading is part of the body the model reads.
+    const out = writeField(emptyTemplate(), "name", "Kopi Sore");
+    expect(out).toContain("name: Kopi Sore");
+    expect(out).toContain("# Kopi Sore");
+    expect(out).not.toMatch(/^# *$/m);
+  });
+
+  it("does not mistake a sub-heading for the title", () => {
+    const out = writeField(DOC, "name", "Kopi Sore");
+    expect(out).toContain("# Kopi Sore");
+    expect(out).toContain("## Instructions");
+    expect(out).toContain("## Troubleshooting");
   });
 
   it("leaves the other fields untouched", () => {
