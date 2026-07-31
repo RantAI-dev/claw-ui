@@ -111,14 +111,25 @@ function instructionsSpan(
  * shape the Form view can safely patch.
  *
  * `null` is not a failure — it means "edit this in Markdown". The caller
- * disables the Form tab rather than degrading field by field, so there is one
+ * hides the Form tab rather than degrading field by field, so there is one
  * rule to explain instead of a matrix.
+ *
+ * An **empty** `name:` is fine here. This answers "can the form locate its
+ * regions", not "is this ready to save" — and a skill being created starts
+ * with exactly that: a `name:` key with nothing after it, waiting for the user
+ * to type. Rejecting it meant every new skill opened straight into the
+ * markdown view under a message saying its structure had been changed by hand,
+ * which was both wrong and alarming. Saving is still blocked on a blank name
+ * by the editor, and by the gateway after that.
+ *
+ * A *missing* `name:` key is still `null`: the form would have no line to
+ * patch.
  */
 export function readFields(md: string): SkillFields | null {
   const fm = frontmatterSpan(md);
   if (!fm) return null;
   const name = readFrontmatterValue(fm.body, "name");
-  if (name === null || name.trim() === "") return null;
+  if (name === null) return null;
   const instructions = instructionsSpan(md);
   if (!instructions) return null;
 
@@ -144,6 +155,11 @@ function patchFrontmatter(md: string, key: string, rendered: string): string {
   return md.slice(0, fm.start) + lines.join("\n") + md.slice(fm.end);
 }
 
+/** Replace the first H1 with `name`, leaving `##`+ headings alone. */
+function patchTitle(md: string, name: string): string {
+  return md.replace(/^#(?!#)[ \t]*[^\n]*$/m, `# ${name}`.trimEnd());
+}
+
 /**
  * Return a new document with one field replaced. Every byte outside that
  * field's region is preserved — including sections the form has no concept of.
@@ -154,8 +170,22 @@ export function writeField<K extends keyof SkillFields>(
   value: SkillFields[K],
 ): string {
   switch (key) {
-    case "name":
-      return patchFrontmatter(md, "name", oneLine(value as string));
+    case "name": {
+      // No frontmatter means no `name:` line to patch, so this field has no
+      // region at all — leave the document exactly as it is rather than
+      // rewriting the title alone and leaving the two disagreeing.
+      if (!frontmatterSpan(md)) return md;
+      const name = oneLine(value as string);
+      // The title heading is a second region holding the same fact, and it is
+      // part of the body the model reads. Patching only the frontmatter left
+      // documents whose visible title was a bare `# ` — the template starts
+      // with `# ` and nothing ever filled it in.
+      //
+      // `#(?!#)` so `## Instructions` and deeper headings are untouched, and
+      // only the first match, so a heading further down that happens to be an
+      // H1 stays where the user put it.
+      return patchTitle(patchFrontmatter(md, "name", name), name);
+    }
     case "description":
       return patchFrontmatter(md, "description", oneLine(value as string));
     case "tags": {
