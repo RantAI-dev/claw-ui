@@ -80,10 +80,16 @@ export function SkillEditor({
 
   // A document the form cannot locate regions in is edited as markdown. One
   // rule, rather than a per-field degradation matrix.
+  //
+  // Derived, not stored. An effect that pushed `setView("markdown")` whenever
+  // the form was unavailable latched permanently in edit mode: `md` is empty
+  // until the fetch lands, empty does not parse, so the effect fired once and
+  // nothing ever put the view back. Every pencil click opened in markdown.
+  //
+  // Deriving it means the transient cannot stick — the same reason the
+  // document itself is one piece of state rather than two.
   const formAvailable = fields !== null;
-  React.useEffect(() => {
-    if (!formAvailable) setView("markdown");
-  }, [formAvailable]);
+  const effectiveView = formAvailable ? view : "markdown";
 
   const name = fields?.name.trim() ?? "";
   const derivedSlug = slugify(name);
@@ -174,7 +180,7 @@ export function SkillEditor({
               button invites clicking, and the note below already says why. */}
           {formAvailable ? (
             <Segmented
-              value={view}
+              value={effectiveView}
               onChange={setView}
               options={[
                 { value: "form", label: "Form" },
@@ -188,7 +194,7 @@ export function SkillEditor({
             </p>
           )}
 
-          {view === "form" && fields ? (
+          {effectiveView === "form" && fields ? (
             <div className="space-y-4">
               <Field label="Name" hint={mode === "edit" ? undefined : `Folder: ${derivedSlug || "—"}`}>
                 <Input
