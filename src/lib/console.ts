@@ -60,6 +60,13 @@ export const NAV: NavDef[] = [
   { id: "config", label: "Configuration", icon: SlidersHorizontal },
 ];
 
+/**
+ * Broadcast by the Skills panel after it installs, removes, writes, or toggles
+ * a skill. The nav badge is a snapshot the console shell takes once at load, so
+ * without this it kept reporting the count from before the user's own edit.
+ */
+export const SKILLS_CHANGED = "rantaiclaw:skills-changed";
+
 /** Legacy hash ids that resolve to a current route — the Knowledge Graph is now
  *  a lens inside Knowledge Bases, not a top-level route. */
 const ROUTE_ALIASES: Record<string, Route> = { kbgraph: "kb" };

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Plus, X } from "lucide-react";
+import { FilePen, Loader2, Plus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Skill } from "@/lib/types";
 import {
@@ -11,9 +11,10 @@ import {
   writeField,
   type SkillFields,
 } from "@/lib/skill-md";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Drawer } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
-import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
@@ -53,6 +54,10 @@ export function SkillEditor({
   const [loading, setLoading] = React.useState(mode === "edit");
   const [saving, setSaving] = React.useState(false);
   const [loadError, setLoadError] = React.useState<string | null>(null);
+  // A blank name is the *starting* state of a new skill, not a mistake the user
+  // has made yet. Flagging it the moment the panel opens greets every new skill
+  // with a red error, so the complaint waits until the field has been used.
+  const [nameTouched, setNameTouched] = React.useState(false);
 
   React.useEffect(() => {
     if (mode !== "edit" || !slug) return;
@@ -93,6 +98,13 @@ export function SkillEditor({
 
   const name = fields?.name.trim() ?? "";
   const derivedSlug = slugify(name);
+
+  // The drawer's shared chrome autofocuses its close button. Land in the field
+  // the user came here to fill instead — a new skill starts with typing a name.
+  const nameRef = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (mode === "create") nameRef.current?.focus();
+  }, [mode]);
 
   // Collision on BOTH keys: two different display names can slugify to one
   // directory, so checking names alone leaves the other collision reachable.
@@ -151,138 +163,187 @@ export function SkillEditor({
   };
 
   return (
-    <Modal
-      open
+    <Drawer
+      eyebrow={mode === "create" ? "New skill" : "Editing"}
+      title={mode === "create" ? "Write a skill" : name || slug}
+      icon={<FilePen className="size-4" />}
       onClose={onClose}
-      title={mode === "create" ? "Write a skill" : `Edit · ${slug}`}
-      className="max-w-2xl"
-      footer={
-        <div className="flex items-center justify-end gap-2">
+      className="max-w-3xl"
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-12 font-mono text-xs text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading…
+          </div>
+        ) : loadError ? (
+          <p className="py-8 text-center text-sm text-destructive">{loadError}</p>
+        ) : (
+          <div className="space-y-5">
+            {/* Hidden rather than disabled when the form can't be used: a dead
+                button invites clicking, and the note below already says why. */}
+            {formAvailable ? (
+              <Segmented
+                value={effectiveView}
+                onChange={setView}
+                options={[
+                  { value: "form", label: "Form" },
+                  { value: "markdown", label: "Markdown" },
+                ]}
+              />
+            ) : (
+              <p className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
+                This file’s structure was changed by hand, so the form view can’t
+                be used. Keep editing here — nothing is lost.
+              </p>
+            )}
+
+            {effectiveView === "form" && fields ? (
+              <div className="space-y-5">
+                <Field
+                  label="Name"
+                  htmlFor="skill-name"
+                  hint={
+                    mode === "edit"
+                      ? "Renaming isn’t supported here — create a new skill instead."
+                      : `Folder: ${derivedSlug || "—"}`
+                  }
+                  problem={nameTouched ? nameProblem : null}
+                >
+                  <Input
+                    id="skill-name"
+                    ref={nameRef}
+                    value={fields.name}
+                    onChange={(e) => {
+                      setNameTouched(true);
+                      patch("name", e.target.value);
+                    }}
+                    onBlur={() => setNameTouched(true)}
+                    // Renaming would keep the old folder while the manifest
+                    // claimed a new name, and would orphan the config entry that
+                    // tracks whether the skill is enabled. The gateway refuses
+                    // it; do not let the user type a change we will throw away.
+                    readOnly={mode === "edit"}
+                    className={
+                      mode === "edit"
+                        ? "cursor-not-allowed bg-muted/40 text-muted-foreground"
+                        : undefined
+                    }
+                    placeholder="Kopi Pagi"
+                  />
+                </Field>
+
+                <Field
+                  label="Description"
+                  htmlFor="skill-description"
+                  hint="The model reads this to decide when to use the skill. Be specific."
+                >
+                  <Textarea
+                    id="skill-description"
+                    value={fields.description}
+                    onChange={(e) => patch("description", e.target.value)}
+                    rows={3}
+                    className="resize-y"
+                    placeholder="Panduan menyeduh kopi V60 — rasio, suhu, dan waktu bloom."
+                  />
+                </Field>
+
+                <Field label="Tags" htmlFor="skill-tags" hint="Enter or comma adds a tag.">
+                  <TagInput
+                    tags={fields.tags}
+                    onChange={(tags) => patch("tags", tags)}
+                  />
+                </Field>
+
+                <Field label="Instructions" hint="Enter adds the next step.">
+                  <ListInput
+                    items={fields.instructions}
+                    onChange={(items) => patch("instructions", items)}
+                  />
+                </Field>
+              </div>
+            ) : (
+              <Textarea
+                id="skill-markdown"
+                aria-label="SKILL.md source"
+                value={md}
+                onChange={(e) => setMd(e.target.value)}
+                rows={22}
+                spellCheck={false}
+                className="min-h-[26rem] resize-y font-mono text-xs"
+              />
+            )}
+
+            {collision && <p className="text-xs text-destructive">{collision}</p>}
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 px-5 py-3">
+        {/* The cap used to surface only as a 413 after a failed save. Showing
+            the running size makes the limit something you can steer away from. */}
+        <span
+          className={cn(
+            "font-mono text-[10px]",
+            tooLarge ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {(encodedSize / 1024).toFixed(1)} / 64 KB
+          {tooLarge && " — too large to save"}
+        </span>
+        <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={onClose} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={!canSave}>
+          <Button
+            onClick={save}
+            disabled={!canSave}
+            title={!canSave && nameProblem ? nameProblem : undefined}
+          >
             {saving && <Loader2 className="size-3.5 animate-spin" />}
             {mode === "create" ? "Save skill" : "Save changes"}
           </Button>
         </div>
-      }
-    >
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-12 font-mono text-xs text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Loading…
-        </div>
-      ) : loadError ? (
-        <p className="py-8 text-center text-sm text-destructive">{loadError}</p>
-      ) : (
-        <div className="space-y-4">
-          {/* Hidden rather than disabled when the form can't be used: a dead
-              button invites clicking, and the note below already says why. */}
-          {formAvailable ? (
-            <Segmented
-              value={effectiveView}
-              onChange={setView}
-              options={[
-                { value: "form", label: "Form" },
-                { value: "markdown", label: "Markdown" },
-              ]}
-            />
-          ) : (
-            <p className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
-              This file’s structure was changed by hand, so the form view can’t
-              be used. Keep editing here — nothing is lost.
-            </p>
-          )}
-
-          {effectiveView === "form" && fields ? (
-            <div className="space-y-4">
-              <Field label="Name" hint={mode === "edit" ? undefined : `Folder: ${derivedSlug || "—"}`}>
-                <Input
-                  value={fields.name}
-                  onChange={(e) => patch("name", e.target.value)}
-                  // Renaming would keep the old folder while the manifest
-                  // claimed a new name, and would orphan the config entry that
-                  // tracks whether the skill is enabled. The gateway refuses
-                  // it; do not let the user type a change we will throw away.
-                  readOnly={mode === "edit"}
-                  className={mode === "edit" ? "opacity-70" : undefined}
-                  placeholder="Kopi Pagi"
-                />
-              </Field>
-              {mode === "edit" && (
-                <p className="-mt-3 text-[10px] text-muted-foreground">
-                  Renaming isn’t supported here — create a new skill instead.
-                </p>
-              )}
-
-              <Field
-                label="Description"
-                hint="The model reads this to decide when to use the skill. Be specific."
-              >
-                <Textarea
-                  value={fields.description}
-                  onChange={(e) => patch("description", e.target.value)}
-                  rows={3}
-                  className="resize-y"
-                />
-              </Field>
-
-              <Field label="Tags">
-                <TagInput
-                  tags={fields.tags}
-                  onChange={(tags) => patch("tags", tags)}
-                />
-              </Field>
-
-              <Field label="Instructions">
-                <ListInput
-                  items={fields.instructions}
-                  onChange={(items) => patch("instructions", items)}
-                />
-              </Field>
-            </div>
-          ) : (
-            <Textarea
-              value={md}
-              onChange={(e) => setMd(e.target.value)}
-              rows={20}
-              spellCheck={false}
-              className="resize-y font-mono text-xs"
-            />
-          )}
-
-          {nameProblem && (
-            <p className="text-xs text-destructive">{nameProblem}</p>
-          )}
-          {collision && <p className="text-xs text-destructive">{collision}</p>}
-          {tooLarge && (
-            <p className="text-xs text-destructive">
-              {Math.round(encodedSize / 1024)} KB — over the gateway’s 64 KB
-              limit. Shorten it before saving.
-            </p>
-          )}
-        </div>
-      )}
-    </Modal>
+      </div>
+    </Drawer>
   );
 }
 
 function Field({
   label,
+  htmlFor,
   hint,
+  problem,
   children,
 }: {
   label: string;
+  /** Omit for groups of inputs — the children carry their own `aria-label`. */
+  htmlFor?: string;
   hint?: string;
+  problem?: string | null;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium text-muted-foreground">
-        {label}
-      </label>
+      {/* A `<label>` with nothing to point at is worse than a heading: it looks
+          clickable and does nothing, and AT announces an orphan. */}
+      {htmlFor ? (
+        <label
+          htmlFor={htmlFor}
+          className="block text-xs font-medium text-muted-foreground"
+        >
+          {label}
+        </label>
+      ) : (
+        <span className="block text-xs font-medium text-muted-foreground">
+          {label}
+        </span>
+      )}
       {children}
-      {hint && <p className="text-[10px] text-muted-foreground">{hint}</p>}
+      {problem ? (
+        <p className="text-[10px] text-destructive">{problem}</p>
+      ) : (
+        hint && <p className="text-[10px] text-muted-foreground">{hint}</p>
+      )}
     </div>
   );
 }
@@ -302,24 +363,25 @@ function TagInput({
     setDraft("");
   };
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-background p-1.5">
       {tags.map((t) => (
         <span
           key={t}
-          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-0.5 text-xs"
+          className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
         >
           {t}
           <button
             type="button"
             onClick={() => onChange(tags.filter((x) => x !== t))}
             aria-label={`Remove tag ${t}`}
-            className="text-muted-foreground hover:text-destructive"
+            className="cursor-pointer text-muted-foreground hover:text-destructive"
           >
             <X className="size-3" />
           </button>
         </span>
       ))}
       <Input
+        id="skill-tags"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
@@ -329,8 +391,8 @@ function TagInput({
           }
         }}
         onBlur={add}
-        placeholder="add tag"
-        className="h-7 w-28 text-xs"
+        placeholder={tags.length ? "add another" : "add tag"}
+        className="h-7 w-28 flex-1 border-0 bg-transparent px-1.5 text-xs shadow-none focus-visible:ring-0"
       />
     </div>
   );
@@ -343,8 +405,25 @@ function ListInput({
   items: string[];
   onChange: (items: string[]) => void;
 }) {
+  const refs = React.useRef<(HTMLInputElement | null)[]>([]);
+  const [focusAt, setFocusAt] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    if (focusAt === null) return;
+    refs.current[focusAt]?.focus();
+    setFocusAt(null);
+  }, [focusAt, items.length]);
+
   const set = (i: number, v: string) =>
     onChange(items.map((x, idx) => (idx === i ? v : x)));
+
+  const insertAfter = (i: number) => {
+    const next = [...items];
+    next.splice(i + 1, 0, "");
+    onChange(next);
+    setFocusAt(i + 1);
+  };
+
   return (
     <div className="space-y-1.5">
       {items.map((item, i) => (
@@ -353,15 +432,27 @@ function ListInput({
             {i + 1}
           </span>
           <Input
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
             value={item}
+            aria-label={`Step ${i + 1}`}
             onChange={(e) => set(i, e.target.value)}
+            // Enter continues the list. Reaching for the mouse after every
+            // step is what makes writing more than two of them tedious.
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                insertAfter(i);
+              }
+            }}
             className="h-8 text-xs"
           />
           <button
             type="button"
             onClick={() => onChange(items.filter((_, idx) => idx !== i))}
             aria-label={`Remove step ${i + 1}`}
-            className="text-muted-foreground hover:text-destructive"
+            className="cursor-pointer text-muted-foreground hover:text-destructive"
           >
             <X className="size-3.5" />
           </button>
@@ -370,7 +461,7 @@ function ListInput({
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => onChange([...items, ""])}
+        onClick={() => insertAfter(items.length - 1)}
         className="text-xs"
       >
         <Plus className="size-3.5" /> Add step

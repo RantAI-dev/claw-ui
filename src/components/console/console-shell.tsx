@@ -30,6 +30,7 @@ import {
   type Route,
   resolveHashRoute,
   rungToAutonomyPayload,
+  SKILLS_CHANGED,
 } from "@/lib/console";
 import type {
   KbGroup,
@@ -235,6 +236,26 @@ export function ConsoleShell({
     [],
   );
 
+  const refreshSkills = React.useCallback(() => {
+    api
+      .skills()
+      .then((r) =>
+        setSkills(
+          (r.skills || [])
+            .filter((s) => s.enabled !== false)
+            .map((s) => s.name),
+        ),
+      )
+      .catch(() => {});
+  }, []);
+
+  // The nav badge is a snapshot taken at load. Listen for the Skills panel's
+  // own writes so it does not keep showing a count the user just changed.
+  React.useEffect(() => {
+    window.addEventListener(SKILLS_CHANGED, refreshSkills);
+    return () => window.removeEventListener(SKILLS_CHANGED, refreshSkills);
+  }, [refreshSkills]);
+
   React.useEffect(() => {
     const configReadStartedAt = Date.now();
     refreshSessions();
@@ -246,16 +267,7 @@ export function ConsoleShell({
       .channels()
       .then((r) => setChannels(r.configured || []))
       .catch(() => {});
-    api
-      .skills()
-      .then((r) =>
-        setSkills(
-          (r.skills || [])
-            .filter((s) => s.enabled !== false)
-            .map((s) => s.name),
-        ),
-      )
-      .catch(() => {});
+    refreshSkills();
     api
       .personality()
       .then((p) => {
@@ -280,7 +292,7 @@ export function ConsoleShell({
         applyAutonomyFromConfig(c, configReadStartedAt);
       })
       .catch(() => {});
-  }, [refreshSessions, applyAutonomyFromConfig]);
+  }, [refreshSessions, applyAutonomyFromConfig, refreshSkills]);
 
   // Autonomy is shared state, not a console-local preference: `rantaiclaw
   // autonomy <preset>`, the TUI's Shift+Tab, and a second console tab all write
