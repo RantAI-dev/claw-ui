@@ -17,6 +17,16 @@ tags: [coffee, v60]
 Terlalu asam: gilingan lebih halus.
 `;
 
+/** Type `text` the way the form does — one keystroke at a time, each one a
+ *  full write-into-the-markdown / read-back-out round trip. */
+function type(md: string, key: "name" | "description", text: string): string {
+  let doc = md;
+  for (const ch of text) {
+    doc = writeField(doc, key, (readFields(doc)?.[key] ?? "") + ch);
+  }
+  return doc;
+}
+
 describe("readFields", () => {
   it("reads the four editable fields", () => {
     expect(readFields(DOC)).toEqual({
@@ -113,6 +123,28 @@ describe("writeField", () => {
     const out = writeField(DOC, "instructions", ["Satu", "Dua", "Tiga"]);
     expect(readFields(out)?.instructions).toEqual(["Satu", "Dua", "Tiga"]);
     expect(out).toContain("## Troubleshooting");
+  });
+
+  it("lets a space be typed in the middle of a value", () => {
+    // Regression. The form has no state of its own: every keystroke writes the
+    // whole field into the markdown and reads it back out. Both halves used to
+    // trim, so a trailing space was deleted before the next character arrived
+    // and "Kopi Pagi" could only ever be typed as "KopiPagi".
+    expect(readFields(type(emptyTemplate(), "name", "Kopi Pagi"))?.name).toBe(
+      "Kopi Pagi",
+    );
+    const blank = writeField(DOC, "description", "");
+    expect(
+      readFields(type(blank, "description", "Dua kata"))?.description,
+    ).toBe("Dua kata");
+  });
+
+  it("keeps a step the user has emptied out", () => {
+    // Same root cause on the list: normalizing during editing dropped a blank
+    // row, so "Add step" did nothing while other steps existed, and clearing a
+    // step deleted it mid-edit.
+    const out = writeField(DOC, "instructions", ["Satu", ""]);
+    expect(readFields(out)?.instructions).toEqual(["Satu", ""]);
   });
 
   it("collapses a multi-line description to one line", () => {
