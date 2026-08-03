@@ -53,7 +53,7 @@ export const NAV: NavDef[] = [
   { id: "providers", label: "Providers", icon: Cpu },
   { id: "tools", label: "Tools & Autonomy", icon: ShieldCheck },
   { id: "cron", label: "Schedules", icon: CalendarClock },
-  { id: "skills", label: "ClawHub Skills", icon: Blocks },
+  { id: "skills", label: "Skills", icon: Blocks },
   { id: "kb", label: "Knowledge Bases", icon: Library },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "persona", label: "Persona", icon: UserCog },
@@ -104,9 +104,9 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
     blurb: "Recurring agent jobs on cron expressions — create, pause, run now, or delete.",
   },
   skills: {
-    title: "ClawHub Skills",
+    title: "Skills",
     eyebrow: "Capabilities",
-    blurb: "Installed skills and the ClawHub marketplace — install, enable, and remove capabilities.",
+    blurb: "Skills the agent can use — write your own, or install them from the ClawHub marketplace.",
   },
   kb: {
     title: "Knowledge Bases",
