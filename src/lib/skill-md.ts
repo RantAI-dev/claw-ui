@@ -35,13 +35,22 @@ function frontmatterSpan(md: string): { body: string; start: number; end: number
   return { body, start, end: start + body.length };
 }
 
-/** Value of a single-line `key: value` entry inside the frontmatter. */
+/**
+ * Value of a single-line `key: value` entry inside the frontmatter.
+ *
+ * Only the leading separator is stripped. Trailing whitespace is part of the
+ * value here because the form types *through* this function: every keystroke
+ * writes the field into the document and reads it straight back, so trimming
+ * the end deleted the space between two words before the second one could be
+ * typed. Leading whitespace has no such round trip — it is indistinguishable
+ * from the `key: ` separator, and the gateway's loader trims both ends anyway.
+ */
 function readFrontmatterValue(body: string, key: string): string | null {
   for (const line of body.split(/\r?\n/)) {
     const idx = line.indexOf(":");
     if (idx === -1) continue;
     if (line.slice(0, idx).trim() !== key) continue;
-    return line.slice(idx + 1).trim();
+    return line.slice(idx + 1).replace(/^[ \t]+/, "");
   }
   return null;
 }
@@ -71,9 +80,17 @@ function sanitizeTag(tag: string): string {
     .trim();
 }
 
-/** Collapse to one line. Same reason as `sanitizeTag`: the loader is line-based. */
+/**
+ * Collapse to one line. Same reason as `sanitizeTag`: the loader is line-based,
+ * so a line break inside a value would be read as the start of a new key.
+ *
+ * A line break is the only thing that has to go. This used to trim as well,
+ * which ran on every keystroke and deleted the space between two words before
+ * the second one could be typed. Whitespace at the ends is insignificant to the
+ * loader, so leaving it costs nothing.
+ */
 function oneLine(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return value.replace(/[\r\n]+/g, " ");
 }
 
 /** The `## Instructions` list: bounds of the block and its `- ` items. */
@@ -95,7 +112,10 @@ function instructionsSpan(
     // the next heading, or prose. Trailing blanks before it are not consumed.
     if (!isBullet && !isBlank) break;
     if (isBullet) {
-      items.push(line.replace(/^[ \t]*-[ \t]+/, "").trim());
+      // Marker off the front, stray CR off the back — nothing else. Trimming
+      // here would strip a trailing space the moment it was typed, the same
+      // way it did in the frontmatter.
+      items.push(line.replace(/^[ \t]*-[ \t]+/, "").replace(/\r$/, ""));
       consumed += line.length + 1;
     } else if (items.length === 0) {
       consumed += line.length + 1; // blank line between heading and first item
@@ -134,8 +154,8 @@ export function readFields(md: string): SkillFields | null {
   if (!instructions) return null;
 
   return {
-    name: name.trim(),
-    description: (readFrontmatterValue(fm.body, "description") ?? "").trim(),
+    name,
+    description: readFrontmatterValue(fm.body, "description") ?? "",
     tags: parseTagList(readFrontmatterValue(fm.body, "tags")),
     instructions: instructions.items,
   };
@@ -195,7 +215,12 @@ export function writeField<K extends keyof SkillFields>(
     case "instructions": {
       const span = instructionsSpan(md);
       if (!span) return md;
-      const items = (value as string[]).map((i) => oneLine(i)).filter(Boolean);
+      // Blank rows are kept. Dropping them normalized the list while the user
+      // was still editing it: "Add step" appeared to do nothing whenever a
+      // step already existed, and clearing a step's text deleted the row out
+      // from under the cursor. An empty `- ` reads back as `""`, so the round
+      // trip holds.
+      const items = (value as string[]).map((i) => oneLine(i));
       const block = items.length ? `\n${items.map((i) => `- ${i}`).join("\n")}\n` : "\n- \n";
       return md.slice(0, span.start) + block + md.slice(span.end);
     }

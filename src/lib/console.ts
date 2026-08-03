@@ -53,12 +53,19 @@ export const NAV: NavDef[] = [
   { id: "providers", label: "Providers", icon: Cpu },
   { id: "tools", label: "Tools & Autonomy", icon: ShieldCheck },
   { id: "cron", label: "Schedules", icon: CalendarClock },
-  { id: "skills", label: "ClawHub Skills", icon: Blocks },
+  { id: "skills", label: "Skills", icon: Blocks },
   { id: "kb", label: "Knowledge Bases", icon: Library },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "persona", label: "Persona", icon: UserCog },
   { id: "config", label: "Configuration", icon: SlidersHorizontal },
 ];
+
+/**
+ * Broadcast by the Skills panel after it installs, removes, writes, or toggles
+ * a skill. The nav badge is a snapshot the console shell takes once at load, so
+ * without this it kept reporting the count from before the user's own edit.
+ */
+export const SKILLS_CHANGED = "rantaiclaw:skills-changed";
 
 /** Legacy hash ids that resolve to a current route — the Knowledge Graph is now
  *  a lens inside Knowledge Bases, not a top-level route. */
@@ -104,9 +111,9 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
     blurb: "Recurring agent jobs on cron expressions — create, pause, run now, or delete.",
   },
   skills: {
-    title: "ClawHub Skills",
+    title: "Skills",
     eyebrow: "Capabilities",
-    blurb: "Installed skills and the ClawHub marketplace — install, enable, and remove capabilities.",
+    blurb: "Skills the agent can use — write your own, or install them from the ClawHub marketplace.",
   },
   kb: {
     title: "Knowledge Bases",
