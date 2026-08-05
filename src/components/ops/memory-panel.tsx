@@ -12,9 +12,8 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
+import { MEMORY_CATEGORIES } from "@/lib/types";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
-
-const MEMORY_CATEGORIES = ["core", "daily"];
 
 export function MemoryPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.memory(100), []);
@@ -30,8 +29,14 @@ export function MemoryPanel() {
     if (!content.trim()) return;
     setBusy(true);
     try {
-      await api.addMemory({ content: content.trim(), category });
-      toast.success("Fact stored");
+      const stored = await api.addMemory({ content: content.trim(), category });
+      // The server generates a key when none is given; showing it is what makes
+      // the entry addressable afterwards.
+      toast.success(
+        stored.notes?.length
+          ? `Stored as ${stored.key} — ${stored.notes.join("; ")}`
+          : `Stored as ${stored.key}`,
+      );
       setContent("");
       refresh();
     } catch (e) {
@@ -60,7 +65,13 @@ export function MemoryPanel() {
   return (
     <div className="space-y-4">
       <SectionTitle action={<RefreshButton onClick={refresh} />}>
-        Memory entries {data && <span className="text-muted-foreground">· {data.count}</span>}
+        Memory entries{" "}
+        {data && (
+          <span className="text-muted-foreground">
+            · {data.count}
+            {data.total > data.count ? ` of ${data.total}` : ""}
+          </span>
+        )}
       </SectionTitle>
 
       <Card className="space-y-2 p-3">

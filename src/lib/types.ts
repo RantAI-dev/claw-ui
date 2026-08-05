@@ -133,6 +133,9 @@ export type CronSchedule =
   | { kind: "at"; at: string }
   | { kind: "every"; every_ms: number };
 
+/** Categories the backend recognises. Anything else is stored as a custom one. */
+export const MEMORY_CATEGORIES = ["core", "daily", "conversation"] as const;
+
 export interface MemoryEntry {
   key: string;
   category: string;

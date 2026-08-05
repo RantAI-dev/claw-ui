@@ -93,8 +93,10 @@ export const api = {
       method: "DELETE",
     }),
   skills: () => rc<{ skills: Skill[]; count: number }>("skills"),
-  memory: (limit = 100) =>
-    rc<{ entries: MemoryEntry[]; count: number }>(`memory?limit=${limit}`),
+  memory: (limit = 100, offset = 0) =>
+    rc<{ entries: MemoryEntry[]; count: number; total: number; listed: number; offset: number }>(
+      `memory?limit=${limit}&offset=${offset}`,
+    ),
   memoryStats: () => rc<MemoryStats>("memory/stats"),
   personality: () => rc<Personality>("personality"),
   setPersonality: (body: {
@@ -297,7 +299,7 @@ export const api = {
     category?: string;
     session_id?: string;
   }) =>
-    rc<{ key: string; stored: boolean }>("memory", {
+    rc<{ key: string; stored: boolean; notes: string[] }>("memory", {
       method: "POST",
       body: JSON.stringify(body),
     }),
