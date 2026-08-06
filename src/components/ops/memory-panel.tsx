@@ -15,6 +15,18 @@ import { toast } from "sonner";
 import { MEMORY_CATEGORIES } from "@/lib/types";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
+
+/** Keys the server generates when the caller supplied none. */
+function isGeneratedKey(key: string): boolean {
+  return /^memory_[0-9a-f-]{36}$/i.test(key);
+}
+
+/** Enough of a memory to tell one row from another in a label. */
+function previewOf(content: string): string {
+  const flat = content.replace(/\s+/g, " ").trim();
+  return flat.length > 48 ? `${flat.slice(0, 48)}…` : flat;
+}
+
 export function MemoryPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.memory(100), []);
   const [content, setContent] = React.useState("");
@@ -46,6 +58,17 @@ export function MemoryPanel() {
     }
   };
 
+  const copyKey = async (key: string) => {
+    try {
+      await navigator.clipboard.writeText(key);
+      toast.success("Key copied");
+    } catch {
+      // Clipboard is blocked outside a secure context; show the key so it can
+      // still be selected by hand rather than failing silently.
+      toast.message(key);
+    }
+  };
+
   const del = async () => {
     const key = pendingForget?.key;
     if (!key) return;
@@ -65,10 +88,11 @@ export function MemoryPanel() {
   return (
     <div className="space-y-4">
       <SectionTitle action={<RefreshButton onClick={refresh} />}>
-        Memory entries{" "}
+        Memory entries
         {data && (
           <span className="text-muted-foreground">
-            · {data.count}
+            {" · "}
+            {data.count}
             {data.total > data.count ? ` of ${data.total}` : ""}
           </span>
         )}
@@ -119,8 +143,8 @@ export function MemoryPanel() {
                     <IconButton
                       onClick={() => setPendingForget({ key: e.key, content: e.content })}
                       disabled={w}
-                      title="Forget"
-                      aria-label="Forget this memory"
+                      title={`Forget "${previewOf(e.content)}"`}
+                      aria-label={`Forget "${previewOf(e.content)}"`}
                       className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                     >
                       {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -128,9 +152,20 @@ export function MemoryPanel() {
                   </div>
                 </div>
                 <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <span className="truncate font-mono">{e.key}</span>
-                  <span>·</span>
                   <span className="shrink-0">{relativeTime(e.timestamp)}</span>
+                  <span>·</span>
+                  {/* A generated key is an address, not a name: it is 43
+                      characters of UUID that only matters when reaching this
+                      entry from the API or CLI. Keep it available — clicking
+                      copies it — without letting it outweigh the content. */}
+                  <button
+                    type="button"
+                    onClick={() => copyKey(e.key)}
+                    title={`Copy key: ${e.key}`}
+                    className="min-w-0 truncate font-mono transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-sm"
+                  >
+                    {isGeneratedKey(e.key) ? "copy key" : e.key}
+                  </button>
                 </div>
               </Card>
             );
