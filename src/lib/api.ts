@@ -93,10 +93,23 @@ export const api = {
       method: "DELETE",
     }),
   skills: () => rc<{ skills: Skill[]; count: number }>("skills"),
-  memory: (limit = 100, offset = 0) =>
-    rc<{ entries: MemoryEntry[]; count: number; total: number; listed: number; offset: number }>(
-      `memory?limit=${limit}&offset=${offset}`,
-    ),
+  memory: (
+    limit = 100,
+    offset = 0,
+    opts: { q?: string; category?: string } = {},
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    // Absent params mean "no filter" server-side, so only send what narrows.
+    if (opts.q?.trim()) params.set("q", opts.q.trim());
+    if (opts.category) params.set("category", opts.category);
+    return rc<{
+      entries: MemoryEntry[];
+      count: number;
+      total: number;
+      listed: number;
+      offset: number;
+    }>(`memory?${params}`);
+  },
   memoryStats: () => rc<MemoryStats>("memory/stats"),
   personality: () => rc<Personality>("personality"),
   setPersonality: (body: {

@@ -142,6 +142,8 @@ export interface MemoryEntry {
   content: string;
   timestamp: number | string | null;
   session_id: string | null;
+  /** Relevance, 0–1, relative to the best hit. Only a search ranks. */
+  score?: number | null;
 }
 
 export interface MemoryStats {
