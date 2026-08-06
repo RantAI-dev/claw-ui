@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ChevronRight, FileText } from "lucide-react";
+import { AlertTriangle, Brain, ChevronRight, FileText } from "lucide-react";
+import { summariseRecalledMemories } from "@/lib/recalled-memories";
 import type { ChatMessage, ToolCall } from "@/lib/types";
 import { toolIcon } from "@/lib/console";
 import { formatNumber, formatUsd } from "@/lib/utils";
@@ -153,6 +154,21 @@ function BotTurn({
                 <span className="src-chip" key={`${s}-${i}`} title={s}>
                   <FileText />
                   {s}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {m.recalledMemories && m.recalledMemories.length > 0 && !m.streaming && (
+            /* Memory is recalled without the user asking for it, so an answer
+               leaning on a remembered fact is unreadable without this. Same
+               chip row as Sources — both answer "what informed this?". */
+            <div className="src-chips">
+              <span className="src-label">Recalled:</span>
+              {summariseRecalledMemories(m.recalledMemories).map((label, i) => (
+                <span className="src-chip" key={`${label}-${i}`} title={`Memory: ${label}`}>
+                  <Brain />
+                  {label}
                 </span>
               ))}
             </div>

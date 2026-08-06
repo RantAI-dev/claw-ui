@@ -351,6 +351,7 @@ export type ChatEvent =
   | { type: "tool_call_start"; id: string; name: string; args: unknown }
   | { type: "tool_call_end"; id: string; ok: boolean; output_preview: string }
   | { type: "approval_request"; id: string; tool: string; args: unknown }
+  | { type: "memory_recalled"; keys: string[] }
   | { type: "error"; message: string }
   | { type: "done"; text: string; cancelled: boolean; session_id?: string | null }
   | { type: "reload_complete" }
@@ -371,6 +372,10 @@ export interface ChatMessage {
   cancelled?: boolean;
   /** KB document titles retrieved for this assistant turn (citations). */
   sources?: string[];
+  /** Keys of stored memories injected into this turn's prompt. Like `sources`,
+   *  this is what informed the answer — the difference is that memory is
+   *  recalled without the user asking, which is exactly why it has to be shown. */
+  recalledMemories?: string[];
   /** Filenames the user had attached when sending this user turn. */
   attachments?: string[];
 }
