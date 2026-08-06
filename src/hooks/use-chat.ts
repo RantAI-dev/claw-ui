@@ -343,6 +343,16 @@ export function useChat(opts: UseChatOptions) {
               };
             });
             break;
+          case "memory_recalled":
+            // Arrives before the first chunk. Guard the shape: an assistant
+            // turn claiming memories it did not use is worse than showing none.
+            patch(assistantId, (m) => ({
+              ...m,
+              recalledMemories: Array.isArray(ev.keys)
+                ? ev.keys.filter((k): k is string => typeof k === "string")
+                : [],
+            }));
+            break;
           case "usage":
             patch(assistantId, (m) => ({
               ...m,
