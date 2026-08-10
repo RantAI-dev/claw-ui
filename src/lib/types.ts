@@ -281,6 +281,11 @@ export interface KbReExtractResult {
   document_id: string;
   entities: number;
   relations: number;
+  /** Chunks the extractor failed on. Non-zero with zero entities means the
+   * extraction failed — not "no entities". Older gateways omit it. */
+  failed_chunks?: number;
+  /** First failure reason (short; never the upstream body). */
+  error?: string;
 }
 
 export interface ChannelsInfo {

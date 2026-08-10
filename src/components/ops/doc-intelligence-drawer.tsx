@@ -57,10 +57,19 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
     const t = toast.loading("Re-extracting intelligence…");
     try {
       const r = await api.kbReExtractDocument(documentId);
-      toast.success(
-        `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations in this document`,
-        { id: t },
-      );
+      if ((r.failed_chunks ?? 0) > 0) {
+        // Partial failure: some chunks extracted, some did not — say both.
+        toast.warning(
+          `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations — ` +
+            `${formatNumber(r.failed_chunks ?? 0)} chunks failed${r.error ? ` (${r.error})` : ""}`,
+          { id: t },
+        );
+      } else {
+        toast.success(
+          `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations in this document`,
+          { id: t },
+        );
+      }
       intel.refresh();
     } catch (e) {
       toast.error(`Re-extract failed: ${e instanceof Error ? e.message : String(e)}`, { id: t });
