@@ -26,7 +26,11 @@ export function ProvidersPanel() {
 
   React.useEffect(() => {
     if (secrets.data?.provider) setProvider(secrets.data.provider);
-    if (secrets.data?.api_url) setUrl(secrets.data.api_url);
+    // Mirror the server's value even when it is absent. A truthy guard here only
+    // ever filled the field and never emptied it, so a base URL that the gateway
+    // stopped returning — including one it now withholds because it held an API
+    // key — stayed on screen until a page reload.
+    setUrl(secrets.data?.api_url ?? "");
   }, [secrets.data?.provider, secrets.data?.api_url]);
   React.useEffect(() => {
     if (info.data?.model) setModel(info.data.model);
@@ -107,17 +111,33 @@ export function ProvidersPanel() {
             defaultModel={info.data?.model}
           />
         </div>
-        <Input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="API base URL (optional)"
-        />
-        <Input
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-          type="password"
-          placeholder="API key for this provider (leave blank to keep current)"
-        />
+        {/* Labelled, not placeholder-only: these two fields sit next to each
+            other, one takes a URL and one takes a credential, and a placeholder
+            disappears the moment either is focused. Pasting a key into the base
+            URL field put it in config.toml in plaintext. */}
+        <div className="space-y-1">
+          <label htmlFor="provider-api-url" className="text-xs text-muted-foreground">
+            API base URL — optional, not your API key
+          </label>
+          <Input
+            id="provider-api-url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://api.example.com/v1"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="provider-api-key" className="text-xs text-muted-foreground">
+            API key for this provider
+          </label>
+          <Input
+            id="provider-api-key"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            type="password"
+            placeholder="Leave blank to keep the current key"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" onClick={save} disabled={busy || !provider}>
             <KeyRound className="size-4" /> Save provider &amp; key
