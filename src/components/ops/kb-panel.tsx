@@ -71,6 +71,14 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 type LibraryView = "documents" | "graph";
 
 export function KbPanel() {
+  // Gate on activation BEFORE mounting the library: KbList fetches on mount
+  // and a 503 from a disabled/keyless KB stacked error panels under the
+  // activation card (plan 106). Older gateways omit `enabled`; treat
+  // configured-as-enabled there.
+  const kbStatus = useAsync(() => api.getKnowledge(), []);
+  const kbEnabled = kbStatus.data
+    ? (kbStatus.data.enabled ?? kbStatus.data.embedding_configured)
+    : false;
   const groups = useAsync(() => api.kbGroups(), []);
   const [selected, setSelected] = React.useState<KbGroup | null>(null);
   const [view, setView] = React.useState<LibraryView>("documents");
@@ -85,10 +93,15 @@ export function KbPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups.data]);
 
+  if (kbStatus.loading) return null;
+  if (!kbEnabled) {
+    // Activation screen only — no Documents/Graph chrome, no doomed fetches.
+    return <KnowledgeSettingsCard onChanged={kbStatus.refresh} />;
+  }
+
   return (
     <div className="space-y-4">
-      {/* Self-refreshes on save via its own useAsync — no parent state needed. */}
-      <KnowledgeSettingsCard />
+      <KnowledgeSettingsCard onChanged={kbStatus.refresh} />
 
       <Segmented
         value={view}

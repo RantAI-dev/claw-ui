@@ -395,10 +395,11 @@ export const api = {
   // ---- Knowledge Base credentials ([knowledge] config) ----
   getKnowledge: () => rc<KnowledgeStatus>("config/knowledge"),
   setKnowledge: (body: {
+    enabled?: boolean;
     embedding_api_key?: string;
     vision_api_key?: string;
   }) =>
-    rc<{ embedding_configured: boolean; vision_configured: boolean }>(
+    rc<{ enabled?: boolean; embedding_configured: boolean; vision_configured: boolean }>(
       "config/knowledge",
       {
         method: "PUT",

@@ -320,8 +320,9 @@ export function KnowledgeGraph({
           title="No graph to show"
           hint={
             <>
-              No entities have been extracted yet. Intelligence extraction may be disabled
-              (<code>KB_INTELLIGENCE_ENABLED</code>) or not yet run for these documents.
+              No entities have been extracted for these documents yet. Check the Graph tab&apos;s
+              status for the cause (extraction off, or no credential under Knowledge Base
+              settings), or use a document&apos;s <em>Re-extract</em>.
             </>
           }
         />
