@@ -232,6 +232,10 @@ export interface KbGraphEdge {
 export interface KbCapability {
   intelligence_enabled: boolean;
   extraction_model: string;
+  /** Presence-only credential signal — the key itself never crosses the API. */
+  credential_configured?: boolean;
+  graphrag_enabled?: boolean;
+  resolution?: string;
 }
 export interface KbGraph {
   nodes: KbGraphNode[];

@@ -6,7 +6,7 @@ import type {
   KbGraphNode,
 } from "@/lib/types";
 
-export type GraphState = "loading" | "disabled" | "empty" | "ready";
+export type GraphState = "loading" | "disabled" | "no-credential" | "empty" | "ready";
 
 /**
  * Derive the honest render state from the capability signal + scope-wide entity
@@ -20,6 +20,11 @@ export function deriveGraphState(
 ): GraphState {
   if (loading && !hasData) return "loading";
   if (cap && !cap.intelligence_enabled) return "disabled";
+  // Enabled but no key resolves: extraction fails per chunk and is
+  // swallowed server-side, so without this distinction the operator sees
+  // the same "empty" state as a genuinely entity-free corpus.
+  if (cap && cap.intelligence_enabled && cap.credential_configured === false)
+    return "no-credential";
   return (corpusEntities ?? 0) === 0 ? "empty" : "ready";
 }
 
