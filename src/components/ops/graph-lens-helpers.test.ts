@@ -47,3 +47,23 @@ describe("deriveGraphState", () => {
     );
   });
 });
+
+describe("deriveGraphState as used by the drawer (plan 111)", () => {
+  // The drawer passes corpusEntities=0, loading=false, hasData=true and
+  // branches its empty-state on the result — pin the three branches it
+  // renders so drawer and graph tab cannot drift apart again.
+  it("drawer branch: disabled", () => {
+    expect(deriveGraphState(cap({ intelligence_enabled: false }), 0, false, true)).toBe(
+      "disabled",
+    );
+  });
+  it("drawer branch: no-credential", () => {
+    expect(deriveGraphState(cap({ credential_configured: false }), 0, false, true)).toBe(
+      "no-credential",
+    );
+  });
+  it("drawer branch: genuinely empty (incl. missing capability)", () => {
+    expect(deriveGraphState(cap(), 0, false, true)).toBe("empty");
+    expect(deriveGraphState(undefined, 0, false, true)).toBe("empty");
+  });
+});
