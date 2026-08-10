@@ -177,6 +177,8 @@ export interface KbGroup {
 }
 
 export interface KnowledgeStatus {
+  /** Whether the KB is active. Optional: older gateways omit it. */
+  enabled?: boolean;
   embedding_configured: boolean;
   vision_configured: boolean;
   /** Effective source of the embedding key, reported without revealing it. */
