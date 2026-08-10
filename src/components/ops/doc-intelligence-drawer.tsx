@@ -4,6 +4,7 @@ import * as React from "react";
 import { Loader2, Network, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { deriveGraphState } from "./graph-lens-helpers";
 import { useAsync } from "@/hooks/use-async";
 import { formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -103,27 +104,34 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
         <EmptyState
           icon={<Network className="size-6" />}
           title="No entities found"
-          hint={
-            intel.data?.capability && !intel.data.capability.intelligence_enabled ? (
-              <>
-                Intelligence extraction is disabled — enable it with{" "}
-                <code>KB_INTELLIGENCE_ENABLED</code>, or use <em>Re-extract</em>, which works
-                while disabled.
-              </>
-            ) : intel.data?.capability &&
-              intel.data.capability.credential_configured === false ? (
-              <>
-                Extraction is enabled but no API key resolves for the extraction endpoint, so
-                extraction fails silently. Add a key under Knowledge Base settings (or set{" "}
-                <code>OPENROUTER_API_KEY</code>), then <em>Re-extract</em>.
-              </>
-            ) : (
+          hint={(() => {
+            // Same pure function as the graph tab — the two surfaces
+            // disagreeing about WHY it is empty is how this started
+            // (plan 111 reuses plan 097's deriveGraphState).
+            const state = deriveGraphState(intel.data?.capability, 0, false, true);
+            if (state === "disabled")
+              return (
+                <>
+                  Intelligence extraction is disabled — enable it with{" "}
+                  <code>KB_INTELLIGENCE_ENABLED</code>, or use <em>Re-extract</em>, which works
+                  while disabled.
+                </>
+              );
+            if (state === "no-credential")
+              return (
+                <>
+                  Extraction is enabled but no API key resolves for the extraction endpoint, so
+                  extraction fails silently. Add a key under Knowledge Base settings (or set{" "}
+                  <code>OPENROUTER_API_KEY</code>), then <em>Re-extract</em>.
+                </>
+              );
+            return (
               <>
                 No entities are stored for this document — it may genuinely yield none. Try{" "}
                 <em>Re-extract</em>.
               </>
-            )
-          }
+            );
+          })()}
         />
       ) : (
         <Tabs defaultValue="entities">

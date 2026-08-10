@@ -4,10 +4,13 @@
 // retrieved on each send and injected into the SENT message only.
 
 // Accepted upload extensions: documents + common code/text formats.
+// Source of truth: RantAIClaw src/kb/file/mod.rs (MARKDOWN/PDF/IMAGE/TEXT
+// extension lists) — every entry here MUST appear there or the upload
+// transfers fully and then fails server-side. .docx/.xlsx are deliberately
+// absent: they need the non-default kb-office build feature (RantAIClaw
+// plan 111 option (a) — a stock gateway rejects them after the transfer).
 export const ACCEPT_EXTS = [
   ".pdf",
-  ".docx",
-  ".xlsx",
   ".md",
   ".txt",
   ".csv",
@@ -31,7 +34,6 @@ export const ACCEPT_EXTS = [
   ".yml",
   ".toml",
   ".html",
-  ".css",
   ".sql",
 ];
 
@@ -43,9 +45,11 @@ export function acceptAttr(): string {
   return ACCEPT_EXTS.join(",");
 }
 
-// Images are ingested the same way as documents — the KB's vision-LLM extractor
-// reads them into searchable text at ingest time (no vision chat model needed).
-export const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
+// Images are ingested the same way as documents — the KB's vision-LLM
+// extractor posts them to a chat-completions endpoint at ingest time, so a
+// vision-capable model AND a credential ARE required (the old comment
+// claimed otherwise — plan 111).
+export const IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".heic"];
 
 /** Value for an image <input type="file" accept=...> attribute. */
 export function imageAcceptAttr(): string {

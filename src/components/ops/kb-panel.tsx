@@ -666,7 +666,10 @@ function KbDetail({
     }
   };
 
-  const docCount = docs.data?.length ?? group.document_count ?? 0;
+  // Server count first (correct since RantAIClaw plan 100 — soft-deleted
+  // excluded): preferring the locally-fetched list length quietly hid a
+  // server-side divergence instead of revealing it (plan 111).
+  const docCount = group.document_count ?? docs.data?.length ?? 0;
 
   return (
     <div className="space-y-4">
