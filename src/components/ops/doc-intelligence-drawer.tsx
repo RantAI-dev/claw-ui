@@ -58,7 +58,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
     try {
       const r = await api.kbReExtractDocument(documentId);
       toast.success(
-        `Extracted ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations`,
+        `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations in this document`,
         { id: t },
       );
       intel.refresh();
