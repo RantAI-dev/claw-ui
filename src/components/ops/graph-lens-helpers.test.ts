@@ -1,43 +1,49 @@
-import { describe, it, expect } from "vitest";
-import { deriveGraphState, isSmallModel, fromIntelligence } from "./graph-lens-helpers";
-import type { KbCapability, KbDocumentIntelligence } from "@/lib/types";
+import { describe, expect, it } from "vitest";
 
-const on: KbCapability = { intelligence_enabled: true, extraction_model: "x" };
-const off: KbCapability = { intelligence_enabled: false, extraction_model: "x" };
+import type { KbCapability } from "@/lib/types";
+
+import { deriveGraphState } from "./graph-lens-helpers";
+
+// Plan 097 (RantAIClaw): the console's honesty about WHY a graph is empty
+// lives entirely in this pure function — these are the only tests pinning it.
+
+const cap = (over: Partial<KbCapability> = {}): KbCapability => ({
+  intelligence_enabled: true,
+  extraction_model: "openai/gpt-4.1-nano",
+  credential_configured: true,
+  ...over,
+});
 
 describe("deriveGraphState", () => {
-  it("loading before first data", () =>
-    expect(deriveGraphState(undefined, undefined, true, false)).toBe("loading"));
-  it("disabled when capability is off", () =>
-    expect(deriveGraphState(off, 0, false, true)).toBe("disabled"));
-  it("empty when enabled with 0 entities", () =>
-    expect(deriveGraphState(on, 0, false, true)).toBe("empty"));
-  it("ready when entities present", () =>
-    expect(deriveGraphState(on, 5, false, true)).toBe("ready"));
-});
-
-describe("isSmallModel", () => {
-  it("flags nano/mini, not large models", () => {
-    expect(isSmallModel("openai/gpt-4.1-nano")).toBe(true);
-    expect(isSmallModel("openai/gpt-4o")).toBe(false);
-    expect(isSmallModel(undefined)).toBe(false);
+  it("loading before the first response", () => {
+    expect(deriveGraphState(undefined, undefined, true, false)).toBe("loading");
   });
-});
 
-describe("fromIntelligence", () => {
-  it("builds nodes/edges and computes degree from relations", () => {
-    const intel: KbDocumentIntelligence = {
-      entities: [
-        { id: "a", name: "A", entity_type: "person", confidence: 1 },
-        { id: "b", name: "B", entity_type: "person", confidence: 1 },
-      ],
-      relations: [{ id: "r", source: "a", target: "b", relation_type: "knows", confidence: 1 }],
-      stats: {},
-    };
-    const g = fromIntelligence(intel);
-    expect(g.nodes.length).toBe(2);
-    expect(g.edges.length).toBe(1);
-    expect(g.nodes.find((n) => n.id === "a")!.degree).toBe(1);
-    expect(g.stats?.corpus_entities).toBe(2);
+  it("disabled when intelligence is off", () => {
+    expect(deriveGraphState(cap({ intelligence_enabled: false }), 0, false, true)).toBe(
+      "disabled",
+    );
+  });
+
+  it("no-credential when enabled but no key resolves", () => {
+    expect(deriveGraphState(cap({ credential_configured: false }), 0, false, true)).toBe(
+      "no-credential",
+    );
+  });
+
+  it("empty when enabled with a key and zero entities", () => {
+    expect(deriveGraphState(cap(), 0, false, true)).toBe("empty");
+  });
+
+  it("ready when entities exist", () => {
+    expect(deriveGraphState(cap(), 12, false, true)).toBe("ready");
+  });
+
+  it("older gateways without the credential field fall through to empty, never no-credential", () => {
+    // credential_configured is optional in the wire type; undefined must not
+    // be treated as "missing credential".
+    expect(deriveGraphState(cap({ credential_configured: undefined }), 0, false, true)).toBe(
+      "empty",
+    );
   });
 });

@@ -159,6 +159,21 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
               </>
             }
           />
+        ) : graphState === "no-credential" ? (
+          <EmptyState
+            icon={<Network className="size-6" />}
+            title="Extraction is on, but no credential resolves"
+            hint={
+              <>
+                Intelligence extraction is enabled but no API key resolves for the extraction
+                endpoint, so every extraction attempt fails silently. Add a key under Knowledge
+                Base settings (or set <code>OPENROUTER_API_KEY</code>).
+                {data?.capability?.extraction_model && (
+                  <ModelNote model={data.capability.extraction_model} />
+                )}
+              </>
+            }
+          />
         ) : graphState === "empty" ? (
           <EmptyState
             icon={<Network className="size-6" />}

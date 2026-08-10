@@ -95,11 +95,25 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           icon={<Network className="size-6" />}
           title="No entities found"
           hint={
-            <>
-              No entities are stored for this document. Extraction may not have run yet (enable
-              it with <code>KB_INTELLIGENCE_ENABLED</code>), or the document yielded none. Try
-              Re-extract.
-            </>
+            intel.data?.capability && !intel.data.capability.intelligence_enabled ? (
+              <>
+                Intelligence extraction is disabled — enable it with{" "}
+                <code>KB_INTELLIGENCE_ENABLED</code>, or use <em>Re-extract</em>, which works
+                while disabled.
+              </>
+            ) : intel.data?.capability &&
+              intel.data.capability.credential_configured === false ? (
+              <>
+                Extraction is enabled but no API key resolves for the extraction endpoint, so
+                extraction fails silently. Add a key under Knowledge Base settings (or set{" "}
+                <code>OPENROUTER_API_KEY</code>), then <em>Re-extract</em>.
+              </>
+            ) : (
+              <>
+                No entities are stored for this document — it may genuinely yield none. Try{" "}
+                <em>Re-extract</em>.
+              </>
+            )
           }
         />
       ) : (
