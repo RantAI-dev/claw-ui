@@ -71,14 +71,27 @@ const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 type LibraryView = "documents" | "graph";
 
 export function KbPanel() {
-  // Gate on activation BEFORE mounting the library: KbList fetches on mount
-  // and a 503 from a disabled/keyless KB stacked error panels under the
-  // activation card (plan 106). Older gateways omit `enabled`; treat
-  // configured-as-enabled there.
+  // Gate on activation BEFORE mounting the library. The library lives in a
+  // CHILD component (KbPanelBody) because hooks fire on mount regardless of
+  // what is rendered — a `useAsync(kbGroups)` in THIS component would fetch
+  // even while the early-return shows only the activation card. Caught by
+  // the live browser drive: the render was gated but the request was not
+  // (plan 106 requires no kb/groups call while off). Older gateways omit
+  // `enabled`; treat configured-as-enabled there.
   const kbStatus = useAsync(() => api.getKnowledge(), []);
   const kbEnabled = kbStatus.data
     ? (kbStatus.data.enabled ?? kbStatus.data.embedding_configured)
     : false;
+
+  if (kbStatus.loading) return null;
+  if (!kbEnabled) {
+    // Activation screen only — no Documents/Graph chrome, no doomed fetches.
+    return <KnowledgeSettingsCard onChanged={kbStatus.refresh} />;
+  }
+  return <KbPanelBody onStatusChanged={kbStatus.refresh} />;
+}
+
+function KbPanelBody({ onStatusChanged }: { onStatusChanged: () => void }) {
   const groups = useAsync(() => api.kbGroups(), []);
   const [selected, setSelected] = React.useState<KbGroup | null>(null);
   const [view, setView] = React.useState<LibraryView>("documents");
@@ -93,15 +106,9 @@ export function KbPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups.data]);
 
-  if (kbStatus.loading) return null;
-  if (!kbEnabled) {
-    // Activation screen only — no Documents/Graph chrome, no doomed fetches.
-    return <KnowledgeSettingsCard onChanged={kbStatus.refresh} />;
-  }
-
   return (
     <div className="space-y-4">
-      <KnowledgeSettingsCard onChanged={kbStatus.refresh} />
+      <KnowledgeSettingsCard onChanged={onStatusChanged} />
 
       <Segmented
         value={view}
