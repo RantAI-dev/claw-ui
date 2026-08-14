@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, api } from "./api";
+import { ApiError, api, describeApiError } from "./api";
 import { candidatesFromError } from "./clawhub";
 
 function stubFetch(status: number, body: unknown) {
@@ -77,5 +77,26 @@ describe("installSkill error handling", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       slug: "@steipete/weather",
     });
+  });
+});
+
+describe("describeApiError", () => {
+  it("distinguishes a session expiry from a restarting gateway from a bad request", () => {
+    // All three used to render identically, because every caller flattened the
+    // error to `.message`.
+    const auth = describeApiError(new ApiError("token expired", 401, null));
+    const down = describeApiError(new ApiError("bad gateway", 502, null));
+    const bad = describeApiError(new ApiError("model is required", 400, null));
+
+    expect(auth).toContain("sign in again");
+    expect(down).toContain("may be restarting");
+    expect(bad).toBe("model is required");
+
+    expect(new Set([auth, down, bad]).size).toBe(3);
+  });
+
+  it("passes a non-ApiError through unchanged", () => {
+    expect(describeApiError(new Error("boom"))).toBe("boom");
+    expect(describeApiError("plain string")).toBe("plain string");
   });
 });

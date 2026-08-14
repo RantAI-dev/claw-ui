@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Eye, EyeOff, Save } from "lucide-react";
 import { api } from "@/lib/api";
+import { maskConfigForDisplay } from "@/lib/console";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -66,12 +67,12 @@ export function ConfigPanel() {
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
         >
           {showRaw ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          {showRaw ? "Hide" : "Show"} full config (secrets redacted)
+          {showRaw ? "Hide" : "Show"} full config (API keys and MCP env values masked)
         </button>
         {showRaw && (
           <PanelFrame loading={cfg.loading} error={cfg.error} onRefresh={cfg.refresh}>
             <pre className="mt-2 max-h-[60vh] overflow-auto rounded-lg border border-border bg-muted p-3 font-mono text-[11px] scrollbar-thin">
-              {JSON.stringify(cfg.data, null, 2)}
+              {JSON.stringify(maskConfigForDisplay(cfg.data), null, 2)}
             </pre>
           </PanelFrame>
         )}

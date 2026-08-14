@@ -23,7 +23,7 @@ import {
   Sparkles,
   Eye,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import {
   acceptAttr,
@@ -64,7 +64,7 @@ const DEFAULT_KB_COLOR = "var(--brand-sky)";
 type SortOption = "newest" | "oldest" | "name" | "retrieved";
 type ViewMode = "grid" | "list";
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
+const errMsg = (e: unknown) => (describeApiError(e));
 
 // ─────────────────────────────────────────────────────────────────────────────
 

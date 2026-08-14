@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Loader2, Network, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { deriveGraphState } from "./graph-lens-helpers";
 import { useAsync } from "@/hooks/use-async";
 import { formatNumber } from "@/lib/utils";
@@ -73,7 +73,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
       }
       intel.refresh();
     } catch (e) {
-      toast.error(`Re-extract failed: ${e instanceof Error ? e.message : String(e)}`, { id: t });
+      toast.error(`Re-extract failed: ${describeApiError(e)}`, { id: t });
     } finally {
       setReextracting(false);
     }

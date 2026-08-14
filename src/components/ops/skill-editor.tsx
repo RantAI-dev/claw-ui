@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { FilePen, Loader2, Plus, X } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, describeApiError } from "@/lib/api";
 import type { Skill } from "@/lib/types";
 import {
   emptyTemplate,
@@ -69,7 +69,7 @@ export function SkillEditor({
         if (!cancelled) setMd(r.content);
       })
       .catch((e) => {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setLoadError(describeApiError(e));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -152,7 +152,7 @@ export function SkillEditor({
       onClose();
     } catch (e) {
       const status = e instanceof ApiError ? e.status : undefined;
-      const detail = e instanceof Error ? e.message : String(e);
+      const detail = describeApiError(e);
       if (status === 409) toast.error(`Name already taken: ${detail}`);
       else if (status === 413)
         toast.error("Too large to save — the gateway caps bodies at 64 KB.");
