@@ -64,12 +64,23 @@ export function PanelFrame({
   error,
   empty,
   onRefresh,
+  loaded,
   children,
 }: {
   loading?: boolean;
   error?: string | null;
   empty?: boolean;
   onRefresh?: () => void;
+  /**
+   * Whether this panel has ever successfully loaded.
+   *
+   * With it, a REFRESH failure keeps the content on screen and shows the error
+   * as a non-blocking strip; without it (still the default for callers that do
+   * not pass it) any error blanked the whole panel — which made the most likely
+   * outcome of a *successful* save an error screen, indistinguishable to the
+   * operator from the save having failed.
+   */
+  loaded?: boolean;
   children: React.ReactNode;
 }) {
   if (loading) {
@@ -77,6 +88,23 @@ export function PanelFrame({
       <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
         <Loader2 className="size-4 animate-spin" /> Loading…
       </div>
+    );
+  }
+  if (error && loaded) {
+    // Refresh failure: keep what is on screen, say what went wrong.
+    return (
+      <>
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 font-mono text-[11px] text-destructive">
+          <AlertTriangle className="size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{error}</span>
+          {onRefresh && (
+            <Button variant="ghost" size="sm" onClick={onRefresh}>
+              <RefreshCw /> Retry
+            </Button>
+          )}
+        </div>
+        {children}
+      </>
     );
   }
   if (error) {

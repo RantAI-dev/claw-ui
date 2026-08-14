@@ -3,6 +3,7 @@
 import * as React from "react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
+import { useGatewayStatus } from "@/hooks/use-gateway-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,20 +40,82 @@ function telegramAllowlist(config: Record<string, unknown> | null): string[] {
   return Array.isArray(allowed) ? (allowed as string[]) : [];
 }
 
+/**
+ * What saving `next` would do to a server list that has moved since the editor
+ * was seeded from `seeded`.
+ *
+ * The POST replaces the allowlist wholesale, so anyone who self-onboarded via
+ * `/claim` after the panel loaded is silently revoked. The backend deliberately
+ * re-reads the freshest config under a lock to avoid clobbering them; the
+ * console defeated that by sending a stale snapshot back.
+ *
+ * Returns `null` when the server matches what the editor was seeded from —
+ * nothing to warn about.
+ */
+export function allowlistDrift(
+  seeded: string[],
+  server: string[],
+  next: string[],
+): { wouldRevoke: string[]; alsoChanged: string[] } | null {
+  const seededSet = new Set(seeded);
+  const serverSet = new Set(server);
+  const addedOnServer = server.filter((u) => !seededSet.has(u));
+  const goneFromServer = seeded.filter((u) => !serverSet.has(u));
+  if (addedOnServer.length === 0 && goneFromServer.length === 0) return null;
+  const nextSet = new Set(next);
+  return {
+    // Only the ones the operator's box does NOT already carry: an entry they
+    // typed back in is not being revoked.
+    wouldRevoke: addedOnServer.filter((u) => !nextSet.has(u)),
+    alsoChanged: goneFromServer,
+  };
+}
+
 export function ChannelsPanel() {
-  const { data, loading, error, refresh } = useAsync(() => api.channels(), []);
+  const { data, loading, error, refresh, loaded } = useAsync(() => api.channels(), []);
   const cfg = useAsync(() => api.config(), []);
   const tgConnected = !!data?.configured.includes("telegram");
+  const gateway = useGatewayStatus();
+  // Set while the gateway is reloading because of a save we just made, so the
+  // panel can say so instead of presenting the outage as a load error.
+  const [reloading, setReloading] = React.useState(false);
+  const settleTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const refreshNow = () => {
+  const refreshNow = React.useCallback(() => {
     refresh();
     cfg.refresh();
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refresh, cfg.refresh]);
+
   // Channel config changes reload the runtime (a few seconds), so refetch after a
-  // short settle delay — an instant refetch would race the gateway restart.
-  const refreshAfterReload = () => {
-    setTimeout(refreshNow, 3000);
-  };
+  // short settle delay — an instant refetch would race the gateway restart. The
+  // timer is held in a ref and cleared on unmount; it used to be a bare
+  // `setTimeout` that fired into an unmounted tree.
+  const refreshAfterReload = React.useCallback(() => {
+    setReloading(true);
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    settleTimer.current = setTimeout(refreshNow, 3000);
+  }, [refreshNow]);
+
+  React.useEffect(
+    () => () => {
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+    },
+    [],
+  );
+
+  // Leave the reloading state when the gateway answers again — and give up
+  // after a bounded window rather than spinning forever, naming the recovery.
+  React.useEffect(() => {
+    if (!reloading) return undefined;
+    if (gateway.connection === "online") {
+      setReloading(false);
+      refreshNow();
+      return undefined;
+    }
+    const giveUp = setTimeout(() => setReloading(false), 60_000);
+    return () => clearTimeout(giveUp);
+  }, [reloading, gateway.connection, refreshNow]);
 
   return (
     <div>
@@ -62,9 +125,17 @@ export function ChannelsPanel() {
       {/* Gate on the config fetch too: the allowlist editor is seeded from
           GET /config, so rendering it before config loads (or after it fails)
           would let "Save allowlist" persist an empty deny-all list. */}
+      {reloading && (
+        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+          Reloading the runtime after your change… the panel keeps its content and
+          refreshes on its own. If it does not come back, run{" "}
+          <code>systemctl --user reset-failed rantaiclaw.service</code> and start it again.
+        </div>
+      )}
       <PanelFrame
         loading={loading || cfg.loading}
         error={error || cfg.error}
+        loaded={loaded && cfg.loaded}
         onRefresh={refreshNow}
       >
         <TelegramCard
@@ -105,6 +176,12 @@ function TelegramCard({
   const [users, setUsers] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
+  // Set when the server's allowlist has moved since the editor was seeded, so
+  // saving would revoke someone the operator never saw.
+  const [drift, setDrift] = React.useState<{
+    wouldRevoke: string[];
+    alsoChanged: string[];
+  } | null>(null);
 
   // Prefill the allowlist editor with the saved list once connected.
   const savedAllowlist = allowedUsers.join(", ");
@@ -118,9 +195,13 @@ function TelegramCard({
       .map((s) => s.trim())
       .filter(Boolean);
 
+  // Both, not either. The gateway sets `warning` when the allowlist is empty or
+  // contains `*`, and puts the restart notice in `note` — so the `else if` here
+  // suppressed the restart notice in exactly the two states an operator is most
+  // likely to be in while editing.
   const notify = (r: { warning?: string | null; note?: string }) => {
     if (r.warning) toast.warning(r.warning);
-    else if (r.note) toast.message(r.note);
+    if (r.note) toast.message(r.note);
   };
 
   const connect = async () => {
@@ -140,11 +221,19 @@ function TelegramCard({
     }
   };
 
-  const saveAllowlist = async () => {
+  // The POST replaces the list wholesale, and the editor is seeded from a
+  // snapshot taken when the panel loaded — so anyone who self-onboarded via
+  // `/claim` since then is silently revoked. The backend goes out of its way to
+  // avoid clobbering that (it re-reads the freshest config under a lock); this
+  // makes the console stop defeating it, by showing the operator the removal and
+  // asking first.
+  const runSave = async () => {
     setBusy(true);
     try {
       const r = await api.updateTelegramAllowlist(parseUsers());
-      toast.success("Allowlist updated");
+      // What the SERVER stored, not what was requested. A mismatch between the
+      // two is exactly what an operator needs to see.
+      toast.success(`Allowlist updated — ${r.allowed_users} sender(s) allowed`);
       notify(r);
       onReload();
     } catch (e) {
@@ -152,6 +241,31 @@ function TelegramCard({
     } finally {
       setBusy(false);
     }
+  };
+
+  const saveAllowlist = async () => {
+    setBusy(true);
+    let fresh: string[] | null = null;
+    try {
+      fresh = telegramAllowlist(await api.config());
+    } catch {
+      // A failed pre-check must not block the save — it is a courtesy, not a
+      // gate. Falling through means the operator gets the old behaviour, which
+      // is what they would have had anyway.
+      fresh = null;
+    } finally {
+      setBusy(false);
+    }
+
+    if (fresh) {
+      const d = allowlistDrift(allowedUsers, fresh, parseUsers());
+      if (d) {
+        setDrift(d);
+        return;
+      }
+    }
+
+    await runSave();
   };
 
   const disconnect = async () => {
@@ -254,6 +368,32 @@ function TelegramCard({
       confirmLabel="Disconnect"
       busy={busy}
       onConfirm={disconnect}
+    />
+    <ConfirmModal
+      open={drift !== null}
+      onClose={() => setDrift(null)}
+      title="The allowlist changed while this was open"
+      description={
+        drift
+          ? [
+              drift.wouldRevoke.length > 0
+                ? `Saving now removes: ${drift.wouldRevoke.join(", ")} — added on the server since this panel loaded (a /claim or /bind, most likely).`
+                : "",
+              drift.alsoChanged.length > 0
+                ? `Already removed on the server: ${drift.alsoChanged.join(", ")}.`
+                : "",
+              "Save anyway to replace the server's list with what is in the box.",
+            ]
+              .filter(Boolean)
+              .join(" ")
+          : ""
+      }
+      confirmLabel="Save anyway"
+      busy={busy}
+      onConfirm={async () => {
+        setDrift(null);
+        await runSave();
+      }}
     />
     </>
   );
