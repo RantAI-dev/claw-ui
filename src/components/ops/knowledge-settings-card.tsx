@@ -3,7 +3,7 @@
 import * as React from "react";
 import { BookOpen } from "lucide-react";
 import { toast } from "sonner";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -57,7 +57,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
       toast.success(okMessage);
       return true;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = describeApiError(e);
       // The gateway probes the key before persisting; its 400 belongs on
       // the form, not (only) in a toast.
       if (body.embedding_api_key) setFormError(msg);

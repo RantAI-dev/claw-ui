@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { resolveGatewayUrl } from "./gateway-path";
-import { isCrossSiteWrite, isStateChanging } from "./request-origin";
+import {
+  expectedHosts,
+  isCrossSiteWrite,
+  isStateChanging,
+  isUnexpectedHost,
+} from "./request-origin";
 
 const GW = "http://127.0.0.1:9393";
 
@@ -152,5 +157,44 @@ describe("cross-site write rejection", () => {
         isCrossSiteWrite(m, { secFetchSite: "cross-site", origin: null, host: HOST }),
       ).toBe(true);
     }
+  });
+});
+
+describe("expected-Host allowlist", () => {
+  const loopback = expectedHosts({});
+
+  it("rejects a rebound DNS name that satisfies the same-origin check", () => {
+    // `evil.test` resolves to 127.0.0.1, so Origin and Host agree and the
+    // cross-site check passes — the page's script then reads the full config
+    // and issues writes, all signed with the gateway token.
+    expect(
+      isCrossSiteWrite("POST", {
+        secFetchSite: null,
+        origin: "http://evil.test:3939",
+        host: "evil.test:3939",
+      }),
+    ).toBe(false);
+    expect(isUnexpectedHost("evil.test:3939", loopback)).toBe(true);
+  });
+
+  it("serves loopback by default, with or without a port", () => {
+    for (const host of ["localhost:3939", "127.0.0.1:3939", "localhost", "127.0.0.1"]) {
+      expect(isUnexpectedHost(host, loopback)).toBe(false);
+    }
+  });
+
+  it("honours the operator's configured hosts, bare or as an origin", () => {
+    const allowed = expectedHosts({
+      devOrigins: "http://192.168.1.20:3939",
+      allowedHosts: "console.lan",
+    });
+    expect(isUnexpectedHost("192.168.1.20:3939", allowed)).toBe(false);
+    expect(isUnexpectedHost("console.lan:3939", allowed)).toBe(false);
+    // Still not anything else.
+    expect(isUnexpectedHost("evil.test", allowed)).toBe(true);
+  });
+
+  it("refuses a request with no Host at all", () => {
+    expect(isUnexpectedHost(null, loopback)).toBe(true);
   });
 });

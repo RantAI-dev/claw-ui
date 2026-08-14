@@ -47,6 +47,33 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * An operator-facing sentence for a failed request.
+ *
+ * `ApiError` has carried `status` and the parsed `body` since it was written,
+ * and its comment says callers can act on it — but two of roughly twenty-two
+ * mutation handlers did, and the rest flattened it to `.message`. So a session
+ * expiry, a restarting gateway and a genuine 400 all rendered identically, and
+ * the operator had no way to tell "log in again" from "wait a moment" from
+ * "your input was wrong".
+ */
+export function describeApiError(e: unknown): string {
+  if (!(e instanceof ApiError)) {
+    return e instanceof Error ? e.message : String(e);
+  }
+  switch (e.status) {
+    case 401:
+    case 403:
+      return `Not authorised — sign in again. (${e.message})`;
+    case 502:
+    case 503:
+    case 504:
+      return `The gateway is unreachable — it may be restarting. (${e.message})`;
+    default:
+      return e.message;
+  }
+}
+
 async function rc<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api/rc/${path}`, {
     ...init,

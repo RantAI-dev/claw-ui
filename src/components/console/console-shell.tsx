@@ -23,9 +23,11 @@ import {
   DEFAULT_ACCENT,
   autonomyPreset,
   channelDot,
+  autonomyReadIsStale,
   initials,
   levelToRung,
   NAV,
+  nextCycledRung,
   ROUTE_META,
   type Route,
   resolveHashRoute,
@@ -226,7 +228,7 @@ export function ConsoleShell({
   // surface.
   const applyAutonomyFromConfig = React.useCallback(
     (c: Record<string, unknown> | null | undefined, readStartedAt: number) => {
-      if (readStartedAt < autonomyWrittenAt.current) return;
+      if (autonomyReadIsStale(readStartedAt, autonomyWrittenAt.current)) return;
       const auto = c?.autonomy as
         | { level?: string; always_ask?: string[] }
         | undefined;
@@ -346,19 +348,39 @@ export function ConsoleShell({
   const autonomyRef = React.useRef(autonomy);
   autonomyRef.current = autonomy;
   const changeAutonomy = React.useCallback((rung: string) => {
+    // Captured BEFORE the optimistic set, so a failed write can put it back.
+    // Without this the console displayed a rung the gateway was not on — "Off"
+    // while it ran Manual, or the reverse for an operator who believed they had
+    // just locked the agent down.
+    const previous = autonomyRef.current;
     setAutonomyState(rung);
     api
       .setAutonomy(rungToAutonomyPayload(rung))
-      .then(() => toast.success(`Autonomy → ${autonomyPreset(rung).label}`))
-      .catch((e) =>
-        toast.error(
-          `Autonomy update failed: ${e instanceof Error ? e.message : e}`,
-        ),
-      )
-      .finally(() => {
+      .then(() => {
+        // Stamped in `then` only. In `finally`, a FAILED write armed the
+        // staleness guard and discarded the very read that would have corrected
+        // the screen.
         autonomyWrittenAt.current = Date.now();
+        toast.success(`Autonomy → ${autonomyPreset(rung).label}`);
+      })
+      .catch((e) => {
+        setAutonomyState(previous);
+        toast.error(
+          `Autonomy unchanged (still ${autonomyPreset(previous).label}): ${
+            e instanceof Error ? e.message : e
+          }`,
+        );
+        // Re-read once rather than waiting on the 30-second poll, which also
+        // stops while the tab is hidden.
+        const startedAt = Date.now();
+        api
+          .config()
+          .then((c) => applyAutonomyFromConfig(c, startedAt))
+          .catch(() => {
+            /* the toast above already told them; a failed re-read adds noise */
+          });
       });
-  }, []);
+  }, [applyAutonomyFromConfig]);
 
   // Refresh the session list after a turn finishes streaming.
   const prevStreaming = React.useRef(false);
@@ -413,9 +435,15 @@ export function ConsoleShell({
             el.tagName === "SELECT" ||
             el.isContentEditable);
         if (editable || document.querySelector('[role="dialog"]')) return;
+        // `nextCycledRung` skips `off` ("no prompts") — this binding is one
+        // keypress from any button, link or rail item, with no confirmation.
+        // Selecting `off` stays possible from the autonomy menu.
+        const next = nextCycledRung(autonomyRef.current);
+        // Only swallow the key when it actually does something. The
+        // unconditional `preventDefault()` broke reverse-tab navigation across
+        // the whole console.
+        if (!next || next === autonomyRef.current) return;
         e.preventDefault();
-        const next =
-          order[(order.indexOf(autonomyRef.current) + 1) % order.length];
         changeAutonomy(next);
       }
     };

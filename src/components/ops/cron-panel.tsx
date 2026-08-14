@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import type { CronJob, CronRun, CronSchedule } from "@/lib/types";
 import { CRON_PRESETS, describeCron, validateCron } from "@/lib/cron";
 import { useAsync } from "@/hooks/use-async";
@@ -43,6 +43,11 @@ export function CronPanel() {
   const [model, setModel] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
+  // A run the security policy refused, with the full reason — the operator can
+  // re-issue it explicitly.
+  const [pendingApproval, setPendingApproval] = React.useState<{ id: string; reason: string } | null>(
+    null,
+  );
   const [deleting, setDeleting] = React.useState(false);
   const [editing, setEditing] = React.useState<CronJob | null>(null);
   const [history, setHistory] = React.useState<CronJob | null>(null);
@@ -129,17 +134,30 @@ export function CronPanel() {
       toast.error(String(e instanceof Error ? e.message : e));
     }
   };
-  const run = async (id: string) => {
+  const run = async (id: string, approved = false) => {
     const t = toast.loading("Running job…");
     try {
-      const r = await api.runCron(id);
-      toast[r.success ? "success" : "error"](r.success ? "Job ran" : "Job failed", {
-        id: t,
-        description: (r.output || "").slice(0, 200),
-      });
+      const r = await api.runCron(id, approved);
+      const output = r.output || "";
+      if (r.success) {
+        toast.success("Job ran", { id: t, description: output.slice(0, 200) });
+        refresh();
+        return;
+      }
+      // A refusal by the security policy is not a failed job, and the reason
+      // used to be truncated at 200 characters — which is exactly where the
+      // policy's explanation lives. `approved=true` existed on the API with no
+      // caller, so a gated job was simply unrunnable from the console. It is a
+      // privileged path, so it is never sent silently.
+      if (!approved && /approval|not approved|denied|policy/i.test(output)) {
+        setPendingApproval({ id, reason: output });
+        toast.dismiss(t);
+        return;
+      }
+      toast.error("Job failed", { id: t, description: output.slice(0, 200) });
       refresh();
     } catch (e) {
-      toast.error(`Run failed: ${e instanceof Error ? e.message : e}`, { id: t });
+      toast.error(`Run failed: ${describeApiError(e)}`, { id: t });
     }
   };
   const del = async () => {
@@ -386,6 +404,18 @@ export function CronPanel() {
         busy={deleting}
         onConfirm={del}
       />
+      <ConfirmModal
+        open={!!pendingApproval}
+        onClose={() => setPendingApproval(null)}
+        title="This job needs approval to run"
+        description={pendingApproval?.reason}
+        confirmLabel="Run with approval"
+        onConfirm={async () => {
+          const p = pendingApproval;
+          setPendingApproval(null);
+          if (p) await run(p.id, true);
+        }}
+      />
     </div>
   );
 }
@@ -548,7 +578,7 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
     api
       .cronRuns(job.id)
       .then((r) => alive && setRuns(r.runs))
-      .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => alive && setError(describeApiError(e)));
     return () => {
       alive = false;
     };

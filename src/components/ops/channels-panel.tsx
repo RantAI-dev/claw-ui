@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +38,26 @@ function telegramAllowlist(config: Record<string, unknown> | null): string[] {
   const tg = cc?.["telegram"] as Record<string, unknown> | undefined;
   const allowed = tg?.["allowed_users"];
   return Array.isArray(allowed) ? (allowed as string[]) : [];
+}
+
+/**
+ * Who may approve a gated tool call, and whether the gate is on at all.
+ *
+ * `approval_owners` and `autonomous_tools` appeared nowhere in this console —
+ * so an operator could read a connected channel with no owners and not know
+ * that anything needing approval is auto-denied, or that `autonomous_tools`
+ * bypasses the gate entirely and runs everything unprompted.
+ */
+export function approvalBoundary(config: Record<string, unknown> | null): {
+  owners: string[];
+  autonomousTools: boolean;
+} {
+  const cc = config?.["channels_config"] as Record<string, unknown> | undefined;
+  const owners = cc?.["approval_owners"];
+  return {
+    owners: Array.isArray(owners) ? (owners as string[]) : [],
+    autonomousTools: cc?.["autonomous_tools"] === true,
+  };
 }
 
 /**
@@ -141,6 +161,7 @@ export function ChannelsPanel() {
         <TelegramCard
           connected={tgConnected}
           allowedUsers={telegramAllowlist(cfg.data)}
+          boundary={approvalBoundary(cfg.data)}
           onReload={refreshAfterReload}
         />
 
@@ -166,10 +187,12 @@ export function ChannelsPanel() {
 function TelegramCard({
   connected,
   allowedUsers,
+  boundary,
   onReload,
 }: {
   connected: boolean;
   allowedUsers: string[];
+  boundary: { owners: string[]; autonomousTools: boolean };
   onReload: () => void;
 }) {
   const [token, setToken] = React.useState("");
@@ -215,7 +238,7 @@ function TelegramCard({
       setToken("");
       onReload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(describeApiError(e));
     } finally {
       setBusy(false);
     }
@@ -237,7 +260,7 @@ function TelegramCard({
       notify(r);
       onReload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(describeApiError(e));
     } finally {
       setBusy(false);
     }
@@ -277,7 +300,7 @@ function TelegramCard({
       setConfirmDisconnect(false);
       onReload();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(describeApiError(e));
     } finally {
       setBusy(false);
     }
@@ -312,6 +335,33 @@ function TelegramCard({
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />
+            {/* Who may approve a gated tool call, and whether the gate is on
+                at all. Neither value appeared anywhere in this console, so a
+                connected channel with no owners looked the same as one with
+                them — and `autonomous_tools` silently voided both. */}
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px]">
+              {boundary.autonomousTools ? (
+                <div className="font-medium text-destructive">
+                  ⚠ autonomous_tools = true — messages on this channel run tools without
+                  approval. The owner list below does not restrain them.
+                </div>
+              ) : boundary.owners.length === 0 ? (
+                <div className="text-muted-foreground">
+                  No approval owners — anything needing approval is auto-denied. Set
+                  <code className="mx-1">channels_config.approval_owners</code>, or send
+                  <code className="mx-1">/claim &lt;code&gt;</code> from the chat.
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
+                  <span>May approve tool calls:</span>
+                  {boundary.owners.map((o) => (
+                    <Badge key={o} variant="secondary" className="font-mono text-[10px]">
+                      {o}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">
                 Saving reloads the runtime to apply — no need to re-enter the bot token.

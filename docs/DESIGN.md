@@ -129,7 +129,7 @@ Base: `${RANTAICLAW_GATEWAY_URL}/api/v1`. Auth: `Authorization: Bearer <token>` 
    key, encrypted at rest via `Config::save()`, never echoed).
 7. **Personality** ✅ — `PUT /api/v1/personality` wired into the Persona panel.
 8. **Auth** ✅ (frontend) — optional password gate (`src/proxy.ts` + signed HttpOnly cookie),
-   enabled via `RANTAICLAW_UI_PASSWORD`.
+   enabled per `docs/auth.md`; the cookie is signed with `RANTAICLAW_UI_SECRET`.
 
 This brings the management surface to **minimal parity with the Hermes web UI**.
 

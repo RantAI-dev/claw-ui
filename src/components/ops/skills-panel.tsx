@@ -13,7 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { ClawHubSkill, Skill } from "@/lib/types";
 import {
@@ -87,7 +87,7 @@ export function SkillsPanel() {
           const { items } = await api.clawhub(query.trim() || undefined);
           setHub(items);
         } catch (e) {
-          setHubError(e instanceof Error ? e.message : String(e));
+          setHubError(describeApiError(e));
           setHub([]);
         } finally {
           setHubLoading(false);
@@ -130,12 +130,18 @@ export function SkillsPanel() {
   // Keyed on `slug`, not `name`: the gateway rejects a path parameter with a
   // space in it, so passing the display name 400s for every hand-written skill.
   const toggle = async (slug: string, label: string, enabled: boolean) => {
+    // The busy flag was never set here, so the control's `disabled` never
+    // engaged during the write and a second click raced the first.
+    setWorking(slug);
     try {
-      await api.setSkillEnabled(slug, enabled);
-      toast.success(`${label} ${enabled ? "enabled" : "disabled"}`);
+      const r = await api.setSkillEnabled(slug, enabled);
+      // Report what the server did, not what was asked for.
+      toast.success(`${label} ${r.enabled ? "enabled" : "disabled"}`);
       reload();
     } catch (e) {
-      toast.error(String(e instanceof Error ? e.message : e));
+      toast.error(describeApiError(e));
+    } finally {
+      setWorking(null);
     }
   };
 

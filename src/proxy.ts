@@ -13,7 +13,7 @@ import {
 } from "@/lib/auth";
 import { idleTimeoutMs } from "@/lib/auth-required";
 import { isBackgroundPath, SESSION_EXPIRED } from "@/lib/activity";
-import { isCrossSiteWrite } from "@/lib/request-origin";
+import { expectedHosts, isCrossSiteWrite, isUnexpectedHost } from "@/lib/request-origin";
 
 // Gate every page and proxy route behind the session cookie when a password is
 // configured. Static assets, the login page, and the auth endpoints stay open.
@@ -54,6 +54,21 @@ export default async function proxy(req: NextRequest) {
   });
   if (crossSite) {
     return NextResponse.json({ error: "cross_site_request_blocked" }, { status: 403 });
+  }
+
+  // Expected-Host allowlist. The cross-site check above compares Origin against
+  // the request's own Host, so a rebound DNS name satisfies it — both headers
+  // agree, and the page's script gets to issue privileged writes signed with the
+  // gateway token. Applies to every `/api/rc/*` request, reads included: the
+  // config dump is as much of a prize as a write.
+  if (req.nextUrl.pathname.startsWith("/api/rc/")) {
+    const allowed = expectedHosts({
+      devOrigins: process.env.RANTAICLAW_UI_DEV_ORIGINS,
+      allowedHosts: process.env.RANTAICLAW_UI_ALLOWED_HOSTS,
+    });
+    if (isUnexpectedHost(req.headers.get("host"), allowed)) {
+      return NextResponse.json({ error: "unexpected_host" }, { status: 403 });
+    }
   }
 
   if (!(await authEnabled())) return NextResponse.next();

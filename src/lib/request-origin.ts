@@ -70,3 +70,52 @@ export function isCrossSiteWrite(
   }
   return false;
 }
+
+/**
+ * Hosts the console will answer `/api/rc/*` on.
+ *
+ * The Origin check above compares Origin against the request's own Host, which
+ * is correct and bind-address independent — but it means a **rebound DNS name**
+ * satisfies it: the attacker's page is served from `evil.test`, `evil.test`
+ * resolves to 127.0.0.1, and both headers then agree. The page's script can
+ * read the full config and issue privileged writes, all signed with the gateway
+ * token.
+ *
+ * Loopback by default, plus whatever `RANTAICLAW_UI_DEV_ORIGINS` already
+ * carries, so an operator on a LAN address is not locked out silently — a
+ * lockout that looks like an outage is its own failure.
+ */
+export function expectedHosts(env: {
+  devOrigins?: string | null;
+  allowedHosts?: string | null;
+}): string[] {
+  const hosts = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
+  for (const raw of [env.allowedHosts, env.devOrigins]) {
+    if (!raw) continue;
+    for (const entry of raw.split(",")) {
+      const v = entry.trim();
+      if (!v) continue;
+      // Accept either a bare host or a full origin.
+      try {
+        hosts.add(new URL(v).host);
+        hosts.add(new URL(v).hostname);
+      } catch {
+        hosts.add(v);
+      }
+    }
+  }
+  return [...hosts];
+}
+
+/**
+ * Whether the `Host` this request arrived on is one the console serves.
+ *
+ * A missing Host is refused: every browser sends one, and something that does
+ * not is not a context this gate exists to protect.
+ */
+export function isUnexpectedHost(host: string | null, allowed: string[]): boolean {
+  if (!host) return true;
+  // Compare on the hostname alone — the port is the console's own and varies.
+  const hostname = host.replace(/:\d+$/, "");
+  return !allowed.some((a) => a === host || a === hostname || a.replace(/:\d+$/, "") === hostname);
+}

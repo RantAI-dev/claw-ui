@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowlistDrift } from "./channels-panel";
+import { allowlistDrift, approvalBoundary } from "./channels-panel";
 
 describe("allowlistDrift", () => {
   it("is silent when the server matches what the editor was seeded from", () => {
@@ -25,5 +25,28 @@ describe("allowlistDrift", () => {
   it("reports entries the server dropped as well", () => {
     const d = allowlistDrift(["alice", "bob"], ["alice"], ["alice", "bob"]);
     expect(d?.alsoChanged).toEqual(["bob"]);
+  });
+});
+
+describe("approvalBoundary", () => {
+  it("reads owners and the autonomous_tools flag out of GET /config", () => {
+    const b = approvalBoundary({
+      channels_config: { approval_owners: ["1360247715"], autonomous_tools: false },
+    });
+    expect(b.owners).toEqual(["1360247715"]);
+    expect(b.autonomousTools).toBe(false);
+  });
+
+  it("reports the flag that voids the owner list", () => {
+    // With this true, an operator reading "no owners" would conclude channel
+    // senders cannot trigger tools — while every message runs them unprompted.
+    const b = approvalBoundary({ channels_config: { autonomous_tools: true } });
+    expect(b.autonomousTools).toBe(true);
+    expect(b.owners).toEqual([]);
+  });
+
+  it("is empty, not undefined, for a config with no channels section", () => {
+    expect(approvalBoundary(null)).toEqual({ owners: [], autonomousTools: false });
+    expect(approvalBoundary({})).toEqual({ owners: [], autonomousTools: false });
   });
 });

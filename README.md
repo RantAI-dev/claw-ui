@@ -16,13 +16,15 @@ OpenClaw-style ops panels.
   history with resume / full-text search / rename / delete, inline tool-call cards, syntax-highlighted
   code blocks, regenerate, model/provider switching, Stop, and a context/details side panel.
 - **Ops** — live metric bar + panels, most now **interactive**:
-  - status & doctor, sessions, usage, providers, channels, memory (read-only views)
+  - status & doctor, sessions, usage, providers, memory (read-only views)
+  - **Channels** — connect a Telegram bot and edit its sender allowlist
   - **Cron** — create agent jobs, enable/disable, run-now, delete
   - **Skills** — enable/disable toggles
   - **Config** — edit the default model + view full config (secrets redacted)
   - **Secrets** — set the active provider key (encrypted at rest, never echoed)
   - **Persona** — switch presets
-- **Auth** — optional password gate (signed HttpOnly cookie); set `RANTAICLAW_UI_PASSWORD` to enable.
+- **Auth** — optional login gate (signed HttpOnly cookie). See [docs/auth.md](docs/auth.md) for how
+  it is enabled and what `RANTAICLAW_UI_SECRET` is for.
 
 Hardened for self-hosting: server-side proxy (token never reaches the browser), CSP + security
 headers, standalone Docker image, health endpoint, graceful gateway-down handling.
@@ -48,8 +50,8 @@ bun install
 bun run dev                       # → http://127.0.0.1:3939
 ```
 
-If the gateway requires pairing, run `bun run pair` (reads the pairing code you paste in, calls
-`POST /pair`, writes the token into `.env.local`), or use `scripts/dev.sh` to do it all.
+If the gateway requires pairing, put the token from `POST /pair` into `RANTAICLAW_TOKEN` in
+`.env.local`, or run `scripts/dev.sh`, which does the pairing and writes it for you.
 
 ## Configuration
 
@@ -57,6 +59,9 @@ If the gateway requires pairing, run `bun run pair` (reads the pairing code you 
 |---|---|---|
 | `RANTAICLAW_GATEWAY_URL` | `http://127.0.0.1:3000` | Gateway base URL (server-side only) |
 | `RANTAICLAW_TOKEN` | _(empty)_ | Bearer token from `POST /pair`; empty when `require_pairing=false` |
+| `RANTAICLAW_UI_SECRET` | _(empty)_ | Cookie-signing secret. Required when login is enabled — the console refuses to serve a forgeable session without it. `rantaiclaw ui start` generates one |
+| `RANTAICLAW_UI_TRUST_PROXY` | `0` | Set to `1` behind a TLS-terminating reverse proxy, so the session cookie is marked `Secure` from `X-Forwarded-Proto` |
+| `RANTAICLAW_UI_ALLOWED_HOSTS` | loopback | Extra `Host` values the BFF answers `/api/rc/*` on. Loopback is always allowed; add a LAN name or address here if you reach the console by one |
 
 ## Remote access
 

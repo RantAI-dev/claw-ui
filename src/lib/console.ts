@@ -167,6 +167,38 @@ export const AUTONOMY: AutonomyPreset[] = [
   { id: "off", label: "Off", blurb: "Autonomous execution, no prompts. Trusted envs only.", dot: "var(--accent-green)" },
 ];
 
+/**
+ * The rung Shift+Tab should move to from `current`.
+ *
+ * `off` — "autonomous execution, no prompts" — is deliberately unreachable by
+ * cycling: the binding is one keypress with no confirmation, fired from any
+ * non-editable focus. Selecting it stays possible from the autonomy menu.
+ * Returns `null` when there is nothing to move to, which is also the signal not
+ * to `preventDefault()` — the unconditional call broke reverse-tab navigation
+ * everywhere in the console.
+ */
+export function nextCycledRung(current: string): string | null {
+  const cyclable = AUTONOMY.filter((p) => p.id !== "off").map((p) => p.id);
+  if (cyclable.length === 0) return null;
+  const at = cyclable.indexOf(current);
+  // Cycling out of `off` lands on the safest rung rather than staying put.
+  if (at === -1) return cyclable[0];
+  return cyclable[(at + 1) % cyclable.length];
+}
+
+/**
+ * Whether a config read that began at `readStartedAt` should be discarded
+ * because a local write has since claimed the value.
+ *
+ * The write stamp used to be set in `.finally()`, so a **failed** write armed
+ * the guard and discarded the very read that would have corrected the screen —
+ * leaving the console showing a rung the gateway is not on, for up to the
+ * 30-second poll (which also stops while the tab is hidden).
+ */
+export function autonomyReadIsStale(readStartedAt: number, writtenAt: number): boolean {
+  return readStartedAt < writtenAt;
+}
+
 /** Gateway `autonomy.level` names → the preset ladder. */
 const AUTONOMY_ALIAS: Record<string, string> = {
   supervised: "smart",
@@ -274,4 +306,29 @@ export function initials(name: string): string {
   if (parts.length === 0) return "AI";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/**
+ * A config dump safe to put on screen.
+ *
+ * The backend redacts by key-name suffix, which cannot cover
+ * `mcp_servers.*.env` — those are arbitrary operator-chosen names holding
+ * arbitrary values, and API keys live there routinely. The panel's label said
+ * "secrets redacted" over exactly that gap. This masks the env **values**
+ * client-side; the key names stay, so the operator can still see what is set.
+ */
+export function maskConfigForDisplay(config: unknown): unknown {
+  if (!config || typeof config !== "object") return config;
+  const clone = structuredClone(config) as Record<string, unknown>;
+  const servers = clone.mcp_servers;
+  if (!servers || typeof servers !== "object") return clone;
+  for (const server of Object.values(servers as Record<string, unknown>)) {
+    if (!server || typeof server !== "object") continue;
+    const env = (server as Record<string, unknown>).env;
+    if (!env || typeof env !== "object") continue;
+    for (const key of Object.keys(env as Record<string, unknown>)) {
+      (env as Record<string, unknown>)[key] = "••••••••";
+    }
+  }
+  return clone;
 }
