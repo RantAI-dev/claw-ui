@@ -3,9 +3,9 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   test: {
-    // `node` by default; a component test opts into jsdom with a
-    // `// @vitest-environment jsdom` docblock. Switching the whole suite to
-    // jsdom would slow every pure-function test for the sake of a few.
+    // `node` by default; a component test opts into a DOM with a
+    // `// @vitest-environment happy-dom` docblock. Switching the whole suite
+    // would slow every pure-function test for the sake of a few.
     environment: "node",
     // `.tsx` was not collected at all, so no React component in this repo could
     // be tested even if a test existed — and none did.
