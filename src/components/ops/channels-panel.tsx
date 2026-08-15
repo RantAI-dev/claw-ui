@@ -72,6 +72,18 @@ export function approvalBoundary(config: Record<string, unknown> | null): {
  * Returns `null` when the server matches what the editor was seeded from —
  * nothing to warn about.
  */
+/**
+ * Whether the channel status on screen is last-known rather than current.
+ *
+ * `PanelFrame` deliberately keeps content on screen when a *refresh* fails —
+ * right for a list, wrong for a live status. The badge is the runtime's state,
+ * and rendering the last known one as current told an operator "connected"
+ * while the gateway that would know was offline.
+ */
+export function statusIsStale(error: string | null | undefined, connection: string): boolean {
+  return !!error || connection !== "online";
+}
+
 export function allowlistDrift(
   seeded: string[],
   server: string[],
@@ -96,6 +108,7 @@ export function ChannelsPanel() {
   const cfg = useAsync(() => api.config(), []);
   const tgConnected = !!data?.configured.includes("telegram");
   const gateway = useGatewayStatus();
+  const staleStatus = statusIsStale(error, gateway.connection);
   // Set while the gateway is reloading because of a save we just made, so the
   // panel can say so instead of presenting the outage as a load error.
   const [reloading, setReloading] = React.useState(false);
@@ -137,6 +150,21 @@ export function ChannelsPanel() {
     return () => clearTimeout(giveUp);
   }, [reloading, gateway.connection, refreshNow]);
 
+  // Recover from an outage the operator did not cause.
+  //
+  // The effect above only fires while `reloading`, which is set exclusively by
+  // `refreshAfterReload` — i.e. only after the operator saved something. A
+  // gateway that went down and came back on its own left the panel showing
+  // "fetch failed" indefinitely, next to a header that had already recovered to
+  // "Daemon live", until someone clicked Retry. Refetch on the offline→online
+  // edge so the two surfaces cannot disagree.
+  const wasOffline = React.useRef(false);
+  React.useEffect(() => {
+    const online = gateway.connection === "online";
+    if (online && wasOffline.current) refreshNow();
+    wasOffline.current = !online;
+  }, [gateway.connection, refreshNow]);
+
   return (
     <div>
       <SectionTitle action={<RefreshButton onClick={refreshNow} />}>
@@ -160,6 +188,7 @@ export function ChannelsPanel() {
       >
         <TelegramCard
           connected={tgConnected}
+          statusStale={staleStatus}
           allowedUsers={telegramAllowlist(cfg.data)}
           boundary={approvalBoundary(cfg.data)}
           onReload={refreshAfterReload}
@@ -186,11 +215,14 @@ export function ChannelsPanel() {
 
 function TelegramCard({
   connected,
+  statusStale,
   allowedUsers,
   boundary,
   onReload,
 }: {
   connected: boolean;
+  /** The last fetch failed or the gateway is offline — say so, do not guess. */
+  statusStale: boolean;
   allowedUsers: string[];
   boundary: { owners: string[]; autonomousTools: boolean };
   onReload: () => void;
@@ -312,7 +344,11 @@ function TelegramCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           Telegram
-          {connected ? (
+          {statusStale ? (
+            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+              status unknown
+            </Badge>
+          ) : connected ? (
             <Badge variant="success" className="text-[10px] uppercase tracking-wide">
               connected
             </Badge>
