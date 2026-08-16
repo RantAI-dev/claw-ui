@@ -28,6 +28,7 @@ import {
   levelToRung,
   NAV,
   nextCycledRung,
+  shiftTabCyclesAutonomy,
   ROUTE_META,
   type Route,
   resolveHashRoute,
@@ -424,20 +425,22 @@ export function ConsoleShell({
     const order = AUTONOMY.map((p) => p.id);
     const onKey = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key === "Tab") {
-        // Shift+Tab is the universal "focus previous" key — do NOT hijack it while
-        // the user is typing or a dialog is open (that would break reverse-tab and
-        // could flip autonomy by accident). Only cycle from a non-editable context.
-        const el = document.activeElement as HTMLElement | null;
-        const editable =
-          !!el &&
-          (el.tagName === "INPUT" ||
-            el.tagName === "TEXTAREA" ||
-            el.tagName === "SELECT" ||
-            el.isContentEditable);
-        if (editable || document.querySelector('[role="dialog"]')) return;
-        // `nextCycledRung` skips `off` ("no prompts") — this binding is one
-        // keypress from any button, link or rail item, with no confirmation.
-        // Selecting `off` stays possible from the autonomy menu.
+        // Shift+Tab is the universal "focus previous" key. Exempting only text
+        // fields was not enough: from a button or a link the binding still
+        // fired, swallowed the key, and moved an approval-gating setting with
+        // no confirmation. `shiftTabCyclesAutonomy` narrows it to a deliberate
+        // context — nothing focused, or focus already on the autonomy control.
+        if (
+          !shiftTabCyclesAutonomy(
+            document.activeElement,
+            !!document.querySelector('[role="dialog"]'),
+          )
+        ) {
+          return;
+        }
+        // `nextCycledRung` skips `off` ("no prompts") — cycling is still one
+        // keypress with no confirmation. Selecting `off` stays possible from
+        // the autonomy menu.
         const next = nextCycledRung(autonomyRef.current);
         // Only swallow the key when it actually does something. The
         // unconditional `preventDefault()` broke reverse-tab navigation across

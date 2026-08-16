@@ -175,9 +175,12 @@ export const api = {
       body: JSON.stringify({ allowed_users }),
     }),
   disconnectTelegram: () =>
-    rc<{ disconnected: boolean; channel: string }>("channels/telegram", {
-      method: "DELETE",
-    }),
+    rc<{ disconnected: boolean; channel: string; restarts_runtime?: boolean }>(
+      "channels/telegram",
+      {
+        method: "DELETE",
+      },
+    ),
   providers: () =>
     rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   // Model catalog for a provider — resolved by the gateway from the SAME on-disk

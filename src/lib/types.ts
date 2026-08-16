@@ -305,6 +305,12 @@ export interface TelegramConnectResult {
   experimental?: boolean;
   warning?: string | null;
   note?: string;
+  /**
+   * Whether this save bounces the channels runtime. Optional so an older
+   * gateway (which omits it) reads as `false` — the right default, since the
+   * common save is an allowlist edit that is picked up live.
+   */
+  restarts_runtime?: boolean;
 }
 
 export interface ProviderInfo {
