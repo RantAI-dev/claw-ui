@@ -61,7 +61,7 @@ If the gateway requires pairing, put the token from `POST /pair` into `RANTAICLA
 | `RANTAICLAW_TOKEN` | _(empty)_ | Bearer token from `POST /pair`; empty when `require_pairing=false` |
 | `RANTAICLAW_UI_SECRET` | _(empty)_ | Cookie-signing secret. Required when login is enabled — the console refuses to serve a forgeable session without it. `rantaiclaw ui start` generates one |
 | `RANTAICLAW_UI_TRUST_PROXY` | `0` | Set to `1` behind a TLS-terminating reverse proxy, so the session cookie is marked `Secure` from `X-Forwarded-Proto` |
-| `RANTAICLAW_UI_ALLOWED_HOSTS` | loopback | Extra `Host` values the BFF answers `/api/rc/*` on. Loopback is always allowed; add a LAN name or address here if you reach the console by one |
+| `RANTAICLAW_UI_ALLOWED_HOSTS` | loopback + any IP literal | Extra `Host` values the BFF answers `/api/rc/*` on. Loopback and IP-literal hosts (a LAN address, for example) are always allowed; set this only when you reach the console by a DNS name (tunnel domain, `console.lan`) |
 
 ## Remote access
 

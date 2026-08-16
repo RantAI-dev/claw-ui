@@ -107,15 +107,39 @@ export function expectedHosts(env: {
   return [...hosts];
 }
 
+/** Whether `hostname` (port already stripped) is an IP literal. */
+function isIpLiteral(hostname: string): boolean {
+  // IPv4: exactly four octets, each 0-255. `127.0.0.1.evil.test` has five
+  // dot-parts and fails the shape check — a name that merely *contains* an IP
+  // is still a name.
+  const v4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) return v4.slice(1).every((o) => Number(o) <= 255);
+  // IPv6 arrives bracketed in a Host header (`[::1]`, `[fe80::1]`). Bare
+  // colon form is accepted too — it costs nothing and `::1` is already in
+  // the default set. The colon requirement is the discriminator: a DNS name
+  // can never carry one.
+  const v6 = hostname.startsWith("[") && hostname.endsWith("]")
+    ? hostname.slice(1, -1)
+    : hostname;
+  return v6.includes(":") && /^[0-9a-fA-F:.]+$/.test(v6);
+}
+
 /**
  * Whether the `Host` this request arrived on is one the console serves.
  *
  * A missing Host is refused: every browser sends one, and something that does
  * not is not a context this gate exists to protect.
+ *
+ * An IP-literal Host is always served: DNS rebinding — the attack this gate
+ * blocks — works by pointing a *name* at the console's address, and the
+ * browser then sends that name as Host. A literal IP means the browser was
+ * pointed at the address itself. Which addresses the console answers on is
+ * the bind address's decision, not this gate's.
  */
 export function isUnexpectedHost(host: string | null, allowed: string[]): boolean {
   if (!host) return true;
   // Compare on the hostname alone — the port is the console's own and varies.
   const hostname = host.replace(/:\d+$/, "");
+  if (isIpLiteral(hostname)) return false;
   return !allowed.some((a) => a === host || a === hostname || a.replace(/:\d+$/, "") === hostname);
 }

@@ -75,13 +75,20 @@ export interface ChatPaneProps {
   alwaysOnKbIds: string[];
 }
 
-function ConnectionBanner({
+export function ConnectionBanner({
   needsAuth,
   error,
 }: {
   needsAuth: boolean;
   error: string | null;
 }) {
+  // The BFF's own Host-allowlist 403 (`proxy.ts`), not a gateway failure —
+  // telling the operator to restart the gateway would point them at the
+  // wrong subsystem entirely. Only rendered client-side (the banner appears
+  // after a status poll fails), so `window` is safe here.
+  const blockedHost = error?.includes("unexpected_host")
+    ? window.location.hostname
+    : null;
   return (
     <div
       className={
@@ -99,6 +106,12 @@ function ConnectionBanner({
       <span>
         {needsAuth ? (
           <>Gateway requires pairing — register a token, then restart the daemon.</>
+        ) : blockedHost ? (
+          <>
+            Console reached via unlisted host “{blockedHost}”. Add it to
+            RANTAICLAW_UI_ALLOWED_HOSTS and restart the console, or open via
+            localhost.
+          </>
         ) : (
           <>Gateway unreachable. Start the agent gateway, then retry{error ? ` — ${error}` : ""}.</>
         )}

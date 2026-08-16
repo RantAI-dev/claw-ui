@@ -183,12 +183,31 @@ describe("expected-Host allowlist", () => {
     }
   });
 
+  it("serves any IP-literal Host without configuration — rebinding needs a name", () => {
+    // DNS rebinding works by pointing a *name* at the console's address; the
+    // browser then sends that name as Host. An IP literal in Host means the
+    // browser was pointed at the address itself — not a rebinding vector.
+    for (const host of [
+      "192.168.1.20:3939",
+      "10.0.0.5",
+      "[::1]:3939",
+      "[fe80::1]:3939",
+    ]) {
+      expect(isUnexpectedHost(host, loopback)).toBe(false);
+    }
+  });
+
+  it("does not mistake a name containing an IP for an IP literal", () => {
+    expect(isUnexpectedHost("127.0.0.1.evil.test:3939", loopback)).toBe(true);
+    expect(isUnexpectedHost("999.1.1.1", loopback)).toBe(true);
+  });
+
   it("honours the operator's configured hosts, bare or as an origin", () => {
     const allowed = expectedHosts({
-      devOrigins: "http://192.168.1.20:3939",
+      devOrigins: "http://console.dev.lan:3939",
       allowedHosts: "console.lan",
     });
-    expect(isUnexpectedHost("192.168.1.20:3939", allowed)).toBe(false);
+    expect(isUnexpectedHost("console.dev.lan:3939", allowed)).toBe(false);
     expect(isUnexpectedHost("console.lan:3939", allowed)).toBe(false);
     // Still not anything else.
     expect(isUnexpectedHost("evil.test", allowed)).toBe(true);
