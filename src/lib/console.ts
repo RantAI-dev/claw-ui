@@ -187,6 +187,34 @@ export function nextCycledRung(current: string): string | null {
 }
 
 /**
+ * Whether ⇧⇥ should cycle autonomy from this focus, instead of doing what
+ * Shift+Tab does everywhere else on the web — move focus backwards.
+ *
+ * It claims the key only when nothing interactive holds focus, or when focus is
+ * already inside the autonomy control the ⇧⇥ hint is printed on. The guard used
+ * to exempt only text fields and dialogs, so from a button, a link or a rail
+ * item the binding fired and `preventDefault()` swallowed the key: reverse-tab
+ * stopped working across the console, and each press moved an approval-gating
+ * setting with no confirmation. A keyboard user tabbing backwards out of the
+ * page had no way to know they had changed it.
+ *
+ * `railSelector` is the autonomy control's own container — focus inside it is a
+ * deliberate context, so cycling there is what the printed hint promises.
+ */
+export function shiftTabCyclesAutonomy(
+  active: Element | null,
+  hasDialog: boolean,
+  railSelector = ".auto-pick",
+): boolean {
+  if (hasDialog) return false;
+  // Nothing interactive is focused, so the key has no reverse-tab work to do.
+  if (!active || active.tagName === "BODY" || active.tagName === "HTML") {
+    return true;
+  }
+  return !!active.closest(railSelector);
+}
+
+/**
  * Whether a config read that began at `readStartedAt` should be discarded
  * because a local write has since claimed the value.
  *

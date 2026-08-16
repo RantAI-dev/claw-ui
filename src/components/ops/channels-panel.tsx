@@ -120,12 +120,19 @@ export function ChannelsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refresh, cfg.refresh]);
 
-  // Channel config changes reload the runtime (a few seconds), so refetch after a
-  // short settle delay — an instant refetch would race the gateway restart. The
-  // timer is held in a ref and cleared on unmount; it used to be a bare
-  // `setTimeout` that fired into an unmounted tree.
-  const refreshAfterReload = React.useCallback(() => {
-    setReloading(true);
+  // A save that changes the bot token reloads the runtime (a few seconds), so
+  // refetch after a short settle delay — an instant refetch would race the
+  // restart. The timer is held in a ref and cleared on unmount; it used to be a
+  // bare `setTimeout` that fired into an unmounted tree.
+  //
+  // `restarting` comes from the gateway's `restarts_runtime`, because only the
+  // gateway knows: an allowlist-only edit is picked up live and never restarts
+  // anything. This used to enter the reloading state after *every* save, and the
+  // effect below cleared it on the next run — the gateway had never gone
+  // offline — so the "Reloading the runtime…" banner could not render at all in
+  // the ordinary case, and rendered a promise nothing would keep in the rest.
+  const refreshAfterReload = React.useCallback((restarting: boolean) => {
+    if (restarting) setReloading(true);
     if (settleTimer.current) clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(refreshNow, 3000);
   }, [refreshNow]);
@@ -225,7 +232,7 @@ function TelegramCard({
   statusStale: boolean;
   allowedUsers: string[];
   boundary: { owners: string[]; autonomousTools: boolean };
-  onReload: () => void;
+  onReload: (restartsRuntime: boolean) => void;
 }) {
   const [token, setToken] = React.useState("");
   const [users, setUsers] = React.useState("");
@@ -268,7 +275,7 @@ function TelegramCard({
       toast.success(`Connected Telegram @${r.bot_username}`);
       notify(r);
       setToken("");
-      onReload();
+      onReload(r.restarts_runtime === true);
     } catch (e) {
       toast.error(describeApiError(e));
     } finally {
@@ -290,7 +297,7 @@ function TelegramCard({
       // two is exactly what an operator needs to see.
       toast.success(`Allowlist updated — ${r.allowed_users} sender(s) allowed`);
       notify(r);
-      onReload();
+      onReload(r.restarts_runtime === true);
     } catch (e) {
       toast.error(describeApiError(e));
     } finally {
@@ -326,11 +333,11 @@ function TelegramCard({
   const disconnect = async () => {
     setBusy(true);
     try {
-      await api.disconnectTelegram();
+      const r = await api.disconnectTelegram();
       toast.success("Disconnected Telegram");
       setUsers("");
       setConfirmDisconnect(false);
-      onReload();
+      onReload(r.restarts_runtime === true);
     } catch (e) {
       toast.error(describeApiError(e));
     } finally {
@@ -400,7 +407,9 @@ function TelegramCard({
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">
-                Saving reloads the runtime to apply — no need to re-enter the bot token.
+                Saved straight into the running channel — no restart, and no need
+                to re-enter the bot token. Changing the token is the one edit that
+                reloads the runtime.
               </span>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={saveAllowlist} disabled={busy}>
