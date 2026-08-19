@@ -29,6 +29,24 @@ function fmtWhen(ts: string | number | null): string {
   }
 }
 
+// Mirrors the Rust `Display for Schedule`. The stored `expression` string is
+// empty for at/every jobs, so render from the structured `schedule` instead of
+// falling back to the bare kind word ("at"/"every") with no time.
+function formatSchedule(s: CronSchedule): string {
+  switch (s.kind) {
+    case "cron":
+      return s.tz ? `${s.expr} (${s.tz})` : s.expr;
+    case "at":
+      return `at ${fmtWhen(s.at)}`;
+    case "every": {
+      const mins = s.every_ms / 60000;
+      return Number.isInteger(mins) && mins >= 1
+        ? `every ${mins} min`
+        : `every ${s.every_ms}ms`;
+    }
+  }
+}
+
 export function CronPanel() {
   const { data, loading, error, refresh, refreshing } = useAsync(() => api.cron(), []);
   const [jobKind, setJobKind] = React.useState<"agent" | "shell">("agent");
@@ -337,7 +355,7 @@ export function CronPanel() {
                   {!j.enabled && <Badge variant="warning" className="text-[10px]">paused</Badge>}
                 </div>
                 <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  {j.expression || j.schedule.kind} · next {fmtWhen(j.next_run)}
+                  {formatSchedule(j.schedule)} · next {fmtWhen(j.next_run)}
                   {j.last_status ? ` · last: ${j.last_status} (${fmtWhen(j.last_run)})` : ""}
                 </div>
                 {(j.prompt || j.command) && (
