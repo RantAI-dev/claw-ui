@@ -203,7 +203,14 @@ export const api = {
     model?: string;
     session_target?: "isolated" | "main";
     delete_after_run?: boolean;
-  }) => rc<CronJob>("cron", { method: "POST", body: JSON.stringify(body) }),
+    // `warning` is present (additive) when a shell job was created but its
+    // command would be refused by the scheduler's fire-time gate, so it will not
+    // run on its schedule.
+  }) =>
+    rc<CronJob & { warning?: string }>("cron", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   updateCron: (
     id: string,
     body: {

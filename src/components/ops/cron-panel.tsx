@@ -129,8 +129,16 @@ export function CronPanel() {
           };
     setBusy(true);
     try {
-      await api.createCron(payload);
-      toast.success("Cron job created");
+      const created = await api.createCron(payload);
+      // The API creates the job either way, but attaches `warning` when a shell
+      // job's command would be refused by the scheduler's fire-time gate — i.e.
+      // it will not run on its schedule. Surface that instead of a plain success
+      // so the operator isn't left thinking a silently-inert job is scheduled.
+      if (created.warning) {
+        toast.warning(created.warning);
+      } else {
+        toast.success("Cron job created");
+      }
       setPrompt("");
       setCommand("");
       setName("");
