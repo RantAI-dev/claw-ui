@@ -74,8 +74,13 @@ const ROUTE_ALIASES: Record<string, Route> = { kbgraph: "kb" };
 /** Map a URL hash to a live route: alias legacy ids, else the id if it is a real
  *  route, else null. */
 export function resolveHashRoute(h: string): Route | null {
-  if (h in ROUTE_ALIASES) return ROUTE_ALIASES[h];
-  return NAV.some((n) => n.id === h) || h in ROUTE_META ? (h as Route) : null;
+  // `Object.hasOwn`, not `in`: `in` walks the prototype chain, so a crafted
+  // `#constructor` / `#__proto__` / `#toString` would resolve to an inherited
+  // member and crash the route.
+  if (Object.hasOwn(ROUTE_ALIASES, h)) return ROUTE_ALIASES[h];
+  return NAV.some((n) => n.id === h) || Object.hasOwn(ROUTE_META, h)
+    ? (h as Route)
+    : null;
 }
 
 export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: string }> = {

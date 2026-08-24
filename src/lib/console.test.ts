@@ -20,6 +20,13 @@ describe("resolveHashRoute", () => {
   it("returns null for an unknown hash", () => {
     expect(resolveHashRoute("nope")).toBeNull();
   });
+  it("returns null for inherited Object members (no prototype-chain resolution)", () => {
+    // `in` walks the prototype chain; a crafted hash must not resolve to an
+    // inherited member and crash the route.
+    for (const h of ["constructor", "__proto__", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(resolveHashRoute(h)).toBeNull();
+    }
+  });
 });
 
 describe("autonomy rung encoding", () => {

@@ -18,6 +18,27 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("rc checks res.ok before parsing the body", () => {
+  it("carries the status on a non-JSON error body instead of throwing a SyntaxError", async () => {
+    // A proxy 502 often returns an HTML page. Parsing before checking res.ok
+    // threw a SyntaxError with no status, so describeApiError could not tell a
+    // restart from anything else.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 502,
+        statusText: "Bad Gateway",
+        text: async () => "<html><body>502 Bad Gateway</body></html>",
+      }),
+    );
+    const error = await api.status().catch((e) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error.status).toBe(502);
+    expect(describeApiError(error)).toMatch(/unreachable|restart/i);
+  });
+});
+
 describe("installSkill error handling", () => {
   const ambiguousBody = {
     error: "ambiguous_skill_slug",
