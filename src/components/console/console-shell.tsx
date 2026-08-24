@@ -4,6 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import {
+  Download,
   GitFork,
   LogOut,
   PanelLeftClose,
@@ -16,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
+import { toMarkdown } from "@/lib/transcript-export";
 import { brand } from "@/lib/branding";
 import { relativeTime } from "@/lib/utils";
 import {
@@ -608,6 +610,29 @@ export function ConsoleShell({
     }
   };
 
+  const handleExport = async (session: SessionSummary, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const detail = await api.session(session.id);
+      const md = toMarkdown(detail);
+      const safe = (detail.title || detail.id || "session")
+        .replace(/[^\w.-]+/g, "_")
+        .slice(0, 60);
+      const blob = new Blob([md], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safe}.md`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Transcript exported");
+    } catch (err) {
+      toast.error(`Export failed: ${describeApiError(err)}`);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     const { id } = pendingDelete;
@@ -911,6 +936,15 @@ export function ConsoleShell({
                                 title="Rename"
                               >
                                 <Pencil className="size-[13px]" />
+                              </button>
+                              <button
+                                type="button"
+                                className="sess-x"
+                                onClick={(e) => handleExport(s, e)}
+                                aria-label={`Export session: ${s.title || "Untitled session"}`}
+                                title="Export transcript"
+                              >
+                                <Download className="size-[13px]" />
                               </button>
                               <button
                                 type="button"
