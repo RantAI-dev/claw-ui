@@ -23,7 +23,7 @@ function argsTarget(args: unknown): string {
 }
 
 /** One quiet collapsible "Activity · N tools" disclosure for a turn's tool calls. */
-function Activity({ tools, defaultOpen }: { tools: ToolCall[]; defaultOpen: boolean }) {
+const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: ToolCall[]; defaultOpen: boolean }) {
   const [open, setOpen] = React.useState(defaultOpen);
   const running = tools.some((t) => !t.done);
 
@@ -76,9 +76,9 @@ function Activity({ tools, defaultOpen }: { tools: ToolCall[]; defaultOpen: bool
       )}
     </div>
   );
-}
+});
 
-function BotTurn({
+const BotTurn = React.memo(function BotTurn({
   m,
   agentName,
   agentInitials,
@@ -97,7 +97,7 @@ function BotTurn({
   renderMode: "md" | "gui";
   onAction: (value: string) => void;
 }) {
-  const display = stripThink(m.content, !!m.streaming);
+  const display = React.useMemo(() => stripThink(m.content, !!m.streaming), [m.content, m.streaming]);
   const showCursor = m.streaming && !display;
   const tools = m.toolCalls || [];
 
@@ -184,9 +184,9 @@ function BotTurn({
       </div>
     </div>
   );
-}
+});
 
-function UserTurn({ m }: { m: ChatMessage }) {
+const UserTurn = React.memo(function UserTurn({ m }: { m: ChatMessage }) {
   return (
     <div className="turn fade-up">
       <div className="msg-user">
@@ -211,7 +211,7 @@ function UserTurn({ m }: { m: ChatMessage }) {
       </div>
     </div>
   );
-}
+});
 
 export function Transcript({
   messages,

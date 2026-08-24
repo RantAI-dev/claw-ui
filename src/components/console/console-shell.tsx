@@ -688,6 +688,36 @@ export function ConsoleShell({
     return sessions;
   }, [sessions, sessQuery, searchResults]);
 
+  // A fresh object literal each render would defeat RightPanel's React.memo,
+  // re-rendering the whole panel on every streamed chunk. Memoize on the fields
+  // it actually reads.
+  const rightPanelData = React.useMemo(
+    () => ({
+      model: effectiveModel,
+      provider: effectiveProvider,
+      temperature,
+      autonomy,
+      version: status?.version || "",
+      paired: !!status?.paired,
+      channels,
+      skills,
+      sessionId: chat.sessionId,
+      totals: chat.totals,
+    }),
+    [
+      effectiveModel,
+      effectiveProvider,
+      temperature,
+      autonomy,
+      status?.version,
+      status?.paired,
+      channels,
+      skills,
+      chat.sessionId,
+      chat.totals,
+    ],
+  );
+
   const activeSession = sessions.find((s) => s.id === activeId);
   const cur = autonomyPreset(autonomy);
 
@@ -1071,18 +1101,7 @@ export function ConsoleShell({
       {/* ===== Right context panel ===== */}
       {showRight && (
         <RightPanel
-          data={{
-            model: effectiveModel,
-            provider: effectiveProvider,
-            temperature,
-            autonomy,
-            version: status?.version || "",
-            paired: !!status?.paired,
-            channels,
-            skills,
-            sessionId: chat.sessionId,
-            totals: chat.totals,
-          }}
+          data={rightPanelData}
           onCollapse={() => setTweak("rightPanel", false)}
         />
       )}

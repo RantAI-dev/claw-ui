@@ -19,7 +19,7 @@ export interface RightPanelData {
   totals: { turns: number; tokens: number; cost: number; toolCalls: number };
 }
 
-export function RightPanel({ data, onCollapse }: { data: RightPanelData; onCollapse?: () => void }) {
+export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: { data: RightPanelData; onCollapse?: () => void }) {
   const auto = autonomyPreset(data.autonomy);
   const t = data.totals;
 
@@ -140,4 +140,4 @@ export function RightPanel({ data, onCollapse }: { data: RightPanelData; onColla
       </div>
     </aside>
   );
-}
+});
