@@ -27,7 +27,16 @@ export function createAuthInfoCache(fetcher: Fetcher, ttlMs: number) {
   let cached: { value: AuthInfo; at: number } | null = null;
   return {
     async get(now: number): Promise<AuthInfo> {
-      if (cached && now - cached.at < ttlMs) return cached.value;
+      if (cached) {
+        // A cached `login_required: true` is safe to hold for the full TTL. A
+        // cached `false` is the risky-to-be-stale direction: if the operator
+        // enables login while the console is running, an ungated window opens
+        // until the cache refreshes — so re-check a `false` much sooner.
+        const effectiveTtl = cached.value.login_required
+          ? ttlMs
+          : Math.min(ttlMs, 3_000);
+        if (now - cached.at < effectiveTtl) return cached.value;
+      }
       try {
         const info = await fetcher();
         cached = {

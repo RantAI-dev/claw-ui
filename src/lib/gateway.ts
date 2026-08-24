@@ -67,10 +67,22 @@ export async function verifyLoginViaGateway(
     return { ok: false, status: 502 };
   }
   if (res.ok) return { ok: true, status: res.status };
-  const ra = Number(res.headers.get("retry-after"));
-  return {
-    ok: false,
-    status: res.status,
-    retryAfter: Number.isFinite(ra) && ra > 0 ? ra : undefined,
-  };
+  // The gateway sends the lockout duration in the JSON body (`retry_after`), not
+  // a `Retry-After` header, so reading only the header always missed it and the
+  // caller fell back to a hard-coded 5 minutes. Prefer the header when present,
+  // then the body.
+  let retryAfter: number | undefined;
+  const header = Number(res.headers.get("retry-after"));
+  if (Number.isFinite(header) && header > 0) {
+    retryAfter = header;
+  } else {
+    try {
+      const body = await res.json();
+      const fromBody = Number(body?.retry_after);
+      if (Number.isFinite(fromBody) && fromBody > 0) retryAfter = fromBody;
+    } catch {
+      /* non-JSON body — leave retryAfter undefined */
+    }
+  }
+  return { ok: false, status: res.status, retryAfter };
 }

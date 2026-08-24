@@ -59,9 +59,11 @@ export default async function proxy(req: NextRequest) {
   // Expected-Host allowlist. The cross-site check above compares Origin against
   // the request's own Host, so a rebound DNS name satisfies it — both headers
   // agree, and the page's script gets to issue privileged writes signed with the
-  // gateway token. Applies to every `/api/rc/*` request, reads included: the
-  // config dump is as much of a prize as a write.
-  if (req.nextUrl.pathname.startsWith("/api/rc/")) {
+  // gateway token. Applies to EVERY `/api/*` path, not just `/api/rc/*`: the SSE
+  // chat relay (`/api/chat`) signs with the gateway token too, so a rebound name
+  // that reached only it could drive the agent. Reads are as much of a prize as
+  // writes, so the config dump is covered along with the rest.
+  if (req.nextUrl.pathname.startsWith("/api/")) {
     const allowed = expectedHosts({
       devOrigins: process.env.RANTAICLAW_UI_DEV_ORIGINS,
       allowedHosts: process.env.RANTAICLAW_UI_ALLOWED_HOSTS,
