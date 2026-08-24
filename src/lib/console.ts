@@ -67,6 +67,13 @@ export const NAV: NavDef[] = [
  */
 export const SKILLS_CHANGED = "rantaiclaw:skills-changed";
 
+/**
+ * Broadcast by the Persona panel after a successful save. The chat rail's agent
+ * name/role/initials are a snapshot the console shell takes once at load, so
+ * without this the rail shows the old identity until a full reload.
+ */
+export const PERSONA_CHANGED = "rantaiclaw:persona-changed";
+
 /** Legacy hash ids that resolve to a current route — the Knowledge Graph is now
  *  a lens inside Knowledge Bases, not a top-level route. */
 const ROUTE_ALIASES: Record<string, Route> = { kbgraph: "kb" };

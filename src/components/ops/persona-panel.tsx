@@ -4,64 +4,99 @@ import * as React from "react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { cn } from "@/lib/utils";
+import { PERSONA_CHANGED } from "@/lib/console";
+import { describeApiError } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { KeyVal, PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
-const PERSONA_PRESETS = [
-  { value: "default", label: "Default" },
-  { value: "concise_pro", label: "Concise Pro" },
-  { value: "friendly_companion", label: "Friendly Companion" },
-  { value: "research_analyst", label: "Research Analyst" },
-  { value: "executive_assistant", label: "Executive Assistant" },
+// Fallback list when the gateway predates `GET /personality/presets`.
+const FALLBACK_PRESETS = [
+  { id: "default", label: "Default", description: "" },
+  { id: "concise_pro", label: "Concise Pro", description: "" },
+  { id: "friendly_companion", label: "Friendly Companion", description: "" },
+  { id: "research_analyst", label: "Research Analyst", description: "" },
+  { id: "executive_assistant", label: "Executive Assistant", description: "" },
 ];
 
 export function PersonaPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.personality(), []);
   const groups = useAsync(() => api.kbGroups(), []);
+  const presets = useAsync(() => api.personalityPresets(), []);
+  const presetOptions = presets.data?.presets ?? FALLBACK_PRESETS;
+
   const [preset, setPreset] = React.useState("");
+  const [name, setName] = React.useState("");
+  const [role, setRole] = React.useState("");
+  const [tone, setTone] = React.useState("");
+  const [avoid, setAvoid] = React.useState("");
+  const [timezone, setTimezone] = React.useState("");
   const [saving, setSaving] = React.useState(false);
-  // Always-on KB ids, seeded from the saved personality.
   const [alwaysOn, setAlwaysOn] = React.useState<string[]>([]);
   const [savingKbs, setSavingKbs] = React.useState(false);
 
+  // Seed the form from the saved persona.
   React.useEffect(() => {
-    if (data?.preset) setPreset(data.preset);
-  }, [data?.preset]);
-  React.useEffect(() => {
-    if (data) setAlwaysOn(Array.isArray(data.always_on_kbs) ? data.always_on_kbs : []);
+    if (!data) return;
+    setPreset(data.preset ?? "");
+    setName(data.name ?? "");
+    setRole(data.role ?? "");
+    setTone(data.tone ?? "");
+    setAvoid(data.avoid ?? "");
+    setTimezone(data.timezone ?? "");
+    setAlwaysOn(Array.isArray(data.always_on_kbs) ? data.always_on_kbs : []);
   }, [data]);
 
-  const apply = async () => {
-    if (!preset) return;
+  const dirty =
+    !!data &&
+    (preset !== (data.preset ?? "") ||
+      name !== (data.name ?? "") ||
+      role !== (data.role ?? "") ||
+      tone !== (data.tone ?? "") ||
+      avoid !== (data.avoid ?? "") ||
+      timezone !== (data.timezone ?? ""));
+
+  const save = async () => {
     setSaving(true);
     try {
-      // Preserve the always-on KB binding when changing the preset.
-      await api.setPersonality({ preset, always_on_kbs: alwaysOn });
-      toast.success(`Preset set to “${preset}”`);
+      await api.setPersonality({
+        preset: preset || undefined,
+        name,
+        role,
+        tone,
+        avoid, // "" clears the avoid block (three-state on the gateway)
+        timezone,
+        always_on_kbs: alwaysOn,
+      });
+      toast.success("Persona saved");
+      window.dispatchEvent(new CustomEvent(PERSONA_CHANGED));
       refresh();
     } catch (e) {
-      toast.error(`Failed to set preset: ${e instanceof Error ? e.message : e}`);
+      // Leave the form as-is so the operator's edits are not lost.
+      toast.error(`Failed to save persona: ${describeApiError(e)}`);
     } finally {
       setSaving(false);
     }
   };
 
-  // Toggle a KB in the always-on set and persist immediately (preserving the preset).
+  // Toggle a KB in the always-on set and persist immediately.
   const toggleKb = async (id: string) => {
     const next = alwaysOn.includes(id) ? alwaysOn.filter((x) => x !== id) : [...alwaysOn, id];
+    const prev = alwaysOn;
     setAlwaysOn(next);
     setSavingKbs(true);
     try {
       await api.setPersonality({ preset: data?.preset || preset || undefined, always_on_kbs: next });
       toast.success("Always-on knowledge bases updated", { id: "persona-always-on" });
+      window.dispatchEvent(new CustomEvent(PERSONA_CHANGED));
       refresh();
     } catch (e) {
-      // Roll back the optimistic toggle on failure.
-      setAlwaysOn(alwaysOn);
-      toast.error(`Failed to update: ${e instanceof Error ? e.message : e}`);
+      setAlwaysOn(prev);
+      toast.error(`Failed to update: ${describeApiError(e)}`);
     } finally {
       setSavingKbs(false);
     }
@@ -69,45 +104,64 @@ export function PersonaPanel() {
 
   return (
     <div>
-      <SectionTitle action={<RefreshButton onClick={() => { refresh(); groups.refresh(); }} />}>
+      <SectionTitle
+        action={
+          <RefreshButton
+            onClick={() => {
+              refresh();
+              groups.refresh();
+              presets.refresh();
+            }}
+          />
+        }
+      >
         Personality
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} empty={!loading && !error && !data} onRefresh={refresh}>
+      <PanelFrame loading={loading} error={error} loaded={!!data} empty={!loading && !error && !data} onRefresh={refresh}>
         {data && (
-          <Card className="p-4">
-            <KeyVal k="Profile" v={data.profile} />
-            <KeyVal k="Preset" v={data.preset || "— not configured —"} />
-            {data.name && <KeyVal k="Name" v={data.name} />}
-            {data.role && <KeyVal k="Role" v={data.role} />}
-            {data.tone && <KeyVal k="Tone" v={data.tone} />}
-            {data.timezone && <KeyVal k="Timezone" v={data.timezone} />}
-            {data.avoid && <KeyVal k="Avoid" v={data.avoid} />}
-            <div className="mt-4 flex items-center gap-2 border-t border-border/60 pt-4">
-              <Select
-                value={preset}
-                onChange={(e) => setPreset(e.target.value)}
-                className="min-w-0 flex-1"
-              >
+          <Card className="space-y-3 p-4">
+            <div className="text-[11px] text-muted-foreground">Profile: {data.profile}</div>
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Preset</span>
+              <Select value={preset} onChange={(e) => setPreset(e.target.value)} className="mt-1 w-full">
                 <option value="" disabled>
                   Choose a preset…
                 </option>
-                {PERSONA_PRESETS.map((p) => (
-                  <option key={p.value} value={p.value}>
+                {presetOptions.map((p) => (
+                  <option key={p.id} value={p.id} title={p.description}>
                     {p.label}
                   </option>
                 ))}
               </Select>
-              <Button
-                onClick={apply}
-                disabled={saving || !preset || preset === data.preset}
-                size="sm"
-              >
-                {saving ? "Applying…" : "Apply preset"}
+            </label>
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Name</span>
+              <Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} className="mt-1" />
+            </label>
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Timezone</span>
+              <Input value={timezone} maxLength={64} placeholder="Asia/Jakarta" onChange={(e) => setTimezone(e.target.value)} className="mt-1" />
+            </label>
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Tone</span>
+              <Input value={tone} maxLength={80} onChange={(e) => setTone(e.target.value)} className="mt-1" />
+            </label>
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Role</span>
+              <Textarea value={role} maxLength={400} rows={2} onChange={(e) => setRole(e.target.value)} className="mt-1" />
+            </label>
+            <label className="block">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Avoid</span>
+              <Textarea value={avoid} maxLength={400} rows={2} placeholder="Leave empty to clear" onChange={(e) => setAvoid(e.target.value)} className="mt-1" />
+            </label>
+            <div className="flex justify-end border-t border-border/60 pt-3">
+              <Button onClick={save} disabled={saving || !dirty} size="sm">
+                {saving ? "Saving…" : "Save persona"}
               </Button>
             </div>
 
             {/* Always-on knowledge bases — retrieved on every chat regardless of per-chat selection. */}
-            <div className="mt-4 border-t border-border/60 pt-4">
+            <div className="border-t border-border/60 pt-3">
               <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
                 Always-on knowledge bases
               </div>

@@ -152,6 +152,12 @@ export interface MemoryStats {
   healthy: boolean;
 }
 
+export interface PersonaPreset {
+  id: string;
+  label: string;
+  description: string;
+}
+
 export interface Personality {
   profile: string;
   preset: string | null;
