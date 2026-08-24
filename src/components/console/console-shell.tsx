@@ -4,6 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import {
+  GitFork,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -594,6 +595,19 @@ export function ConsoleShell({
     setPendingDelete(session);
   };
 
+  const handleFork = async (session: SessionSummary, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const child = await api.forkSession(session.id);
+      await refreshSessions();
+      handleSelect(child.id);
+      toast.success("Forked into a new session");
+    } catch (err) {
+      // A gateway that predates the fork route 404s here — surface it, don't crash.
+      toast.error(`Fork failed: ${describeApiError(err)}`);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!pendingDelete) return;
     const { id } = pendingDelete;
@@ -897,6 +911,15 @@ export function ConsoleShell({
                                 title="Rename"
                               >
                                 <Pencil className="size-[13px]" />
+                              </button>
+                              <button
+                                type="button"
+                                className="sess-x"
+                                onClick={(e) => handleFork(s, e)}
+                                aria-label={`Fork session: ${s.title || "Untitled session"}`}
+                                title="Fork"
+                              >
+                                <GitFork className="size-[13px]" />
                               </button>
                               <button
                                 type="button"
