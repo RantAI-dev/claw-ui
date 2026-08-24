@@ -1100,10 +1100,11 @@ export function ConsoleShell({
           pauses on a tool that needs approval; Approve/Deny resumes the turn. */}
       <Modal
         open={!!chat.pendingApproval}
-        onClose={() =>
-          chat.pendingApproval &&
-          chat.resolveApproval(chat.pendingApproval.id, false)
-        }
+        // Backdrop click / Escape must NOT deny — a deny cancels the whole turn,
+        // so an accidental Escape used to kill a long agent run. Dismissing is a
+        // no-op; the explicit Deny button below is the only deny path. The modal
+        // reopens if it is still pending (a resolved/expired request clears it).
+        onClose={() => {}}
         title="🔧 Approve tool?"
         description={
           chat.pendingApproval

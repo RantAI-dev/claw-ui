@@ -174,7 +174,7 @@ function BotTurn({
             </div>
           )}
 
-          {m.usage && !m.streaming && (
+          {m.usage && !m.streaming && m.usage.total > 0 && (
             <div className="msg-meta" style={{ marginTop: 8 }}>
               {formatNumber(m.usage.total)} tokens
               {m.usage.cost_usd > 0 ? ` · ${formatUsd(m.usage.cost_usd)}` : ""}

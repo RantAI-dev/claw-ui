@@ -9,6 +9,10 @@ export interface ChatRequest {
   temperature?: number;
   /** When set, the backend continues this session (multi-turn) instead of forking a new one. */
   session_id?: string;
+  /** Retrieved reference material for this turn only. The gateway frames it as
+   *  non-authoritative context and does not persist it with the user message,
+   *  so it never compounds across turns. */
+  context?: string;
 }
 
 /**
@@ -95,14 +99,19 @@ export async function streamChat(
           .map((l) => l.slice(5).trim())
           .join("\n");
         if (!dataLine) continue;
+        let ev: ChatEvent;
         try {
-          const ev = JSON.parse(dataLine) as ChatEvent;
-          if (ev.type === "error") sawError = true;
-          onEvent(ev);
-          if (ev.type === "done") return;
+          ev = JSON.parse(dataLine) as ChatEvent;
         } catch {
-          // Non-JSON keep-alive or comment — ignore.
+          // Non-JSON keep-alive or comment — ignore this frame only.
+          continue;
         }
+        // Dispatch OUTSIDE the JSON try: an exception thrown by the React event
+        // handler must propagate, not be swallowed and misread as a bad frame
+        // (which left the stream running with corrupt state).
+        if (ev.type === "error") sawError = true;
+        onEvent(ev);
+        if (ev.type === "done") return;
       }
     }
     // Reached only when the stream closed without a `done` event — the server

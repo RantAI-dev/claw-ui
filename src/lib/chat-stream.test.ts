@@ -33,6 +33,18 @@ async function collect(signal?: AbortSignal, inactivityMs?: number): Promise<Cha
 afterEach(() => vi.unstubAllGlobals());
 
 describe("streamChat", () => {
+  it("does not swallow an exception thrown by the event handler as a bad frame", async () => {
+    // A handler bug must surface, not be misread as malformed JSON (which left
+    // the stream running with corrupt state).
+    stubFetch([frame({ type: "chunk", text: "hi" })]);
+    const boom = new Error("handler blew up");
+    await expect(
+      streamChat({ message: "x" }, () => {
+        throw boom;
+      }),
+    ).rejects.toBe(boom);
+  });
+
   it("emits the parsed done event when the stream terminates cleanly", async () => {
     stubFetch([frame({ type: "chunk", text: "hello" }), frame({ type: "done", text: "hello", cancelled: false })]);
     const events = await collect();
