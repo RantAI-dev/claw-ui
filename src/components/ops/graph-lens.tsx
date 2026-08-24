@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Network, RefreshCw, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { useAsyncGuarded } from "@/hooks/use-async-guarded";
+import { useAsync } from "@/hooks/use-async";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
 import { formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +51,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
   const documentId = activeScope.kind === "document" ? activeScope.documentId : undefined;
   const groupId = activeScope.kind === "group" ? activeScope.groupId : undefined;
 
-  const { data, error, loading, refresh } = useAsyncGuarded(() => {
+  const { data, error, loading, refresh } = useAsync(() => {
     if (activeScope.kind === "document") {
       return api.kbDocumentIntelligence(activeScope.documentId).then(fromIntelligence);
     }
