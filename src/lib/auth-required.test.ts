@@ -17,11 +17,12 @@ describe("auth-info cache", () => {
     expect((await c.get(1000)).idle_timeout_secs).toBe(900);
   });
 
-  it("caches within the TTL (one fetch)", async () => {
-    const fetcher = vi.fn(info(false));
+  it("caches a `true` within the TTL (one fetch)", async () => {
+    // `true` holds for the full TTL; `false` is re-checked sooner (see below).
+    const fetcher = vi.fn(info(true));
     const c = createAuthInfoCache(fetcher, 30_000);
-    expect((await c.get(1000)).login_required).toBe(false);
-    expect((await c.get(1000 + 29_000)).login_required).toBe(false);
+    expect((await c.get(1000)).login_required).toBe(true);
+    expect((await c.get(1000 + 29_000)).login_required).toBe(true);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
@@ -31,6 +32,24 @@ describe("auth-info cache", () => {
     await c.get(1000);
     await c.get(1000 + 31_000);
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-checks a cached `false` much sooner than the full TTL", async () => {
+    // If login is enabled mid-run, an ungated window opens until the cache
+    // refreshes; a cached `false` is re-checked within ~3s, not 30s.
+    const fetcher = vi.fn(info(false));
+    const c = createAuthInfoCache(fetcher, 30_000);
+    await c.get(1000);
+    await c.get(1000 + 4_000); // past the 3s false-TTL
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("holds a cached `true` for the full TTL", async () => {
+    const fetcher = vi.fn(info(true));
+    const c = createAuthInfoCache(fetcher, 30_000);
+    await c.get(1000);
+    await c.get(1000 + 4_000); // well past 3s, but true holds for the full TTL
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("fails CLOSED on login_required when the gateway errors", async () => {

@@ -32,6 +32,17 @@ describe("verifyLoginViaGateway", () => {
     expect(r.retryAfter).toBe(42);
   });
 
+  it("reads retry_after from the JSON body when there is no header", async () => {
+    // The gateway sends the lockout duration in the body, not a header.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ retry_after: 73 }), { status: 429 })),
+    );
+    const r = await verifyLoginViaGateway("op", "bad");
+    expect(r.status).toBe(429);
+    expect(r.retryAfter).toBe(73);
+  });
+
   it("maps a network error to 502", async () => {
     vi.stubGlobal(
       "fetch",
