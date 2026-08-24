@@ -51,7 +51,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ChatPane } from "./chat-pane";
 import { OpsView } from "./ops-view";
 import { RightPanel } from "./right-panel";
-import { TweaksPanel, TWEAK_DEFAULTS, type Tweaks } from "./tweaks";
+import { TweaksPanel, TWEAK_DEFAULTS, sanitizeTweaks, type Tweaks } from "./tweaks";
 
 const TWEAKS_KEY = "rc_console_tweaks";
 const RAIL_KEY = "rc_console_rail";
@@ -173,7 +173,7 @@ export function ConsoleShell({
   React.useEffect(() => {
     try {
       const t = localStorage.getItem(TWEAKS_KEY);
-      if (t) setTweaks({ ...TWEAK_DEFAULTS, ...JSON.parse(t) });
+      if (t) setTweaks(sanitizeTweaks(JSON.parse(t)));
     } catch {
       /* ignore */
     }
@@ -190,18 +190,20 @@ export function ConsoleShell({
 
   const setTweak = React.useCallback(
     <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => {
-      setTweaks((prev) => {
-        const next = { ...prev, [key]: value };
-        try {
-          localStorage.setItem(TWEAKS_KEY, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
-        return next;
-      });
+      setTweaks((prev) => ({ ...prev, [key]: value }));
     },
     [],
   );
+
+  // Persist the prefs as a side effect, not inside the state updater (which
+  // StrictMode double-invokes). Runs on every tweak change.
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(TWEAKS_KEY, JSON.stringify(tweaks));
+    } catch {
+      /* ignore */
+    }
+  }, [tweaks]);
 
   const toggleRail = () =>
     setRailCollapsed((c) => {
