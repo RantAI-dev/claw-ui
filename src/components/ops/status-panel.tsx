@@ -28,7 +28,7 @@ export function StatusPanel() {
         <SectionTitle action={<RefreshButton onClick={() => { status.refresh(); doctor.refresh(); }} />}>
           Runtime
         </SectionTitle>
-        <PanelFrame loading={status.loading} error={status.error} onRefresh={status.refresh}>
+        <PanelFrame loading={status.loading} error={status.error} loaded={status.loaded} onRefresh={status.refresh}>
           {s && (
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -52,6 +52,7 @@ export function StatusPanel() {
         <PanelFrame
           loading={doctor.loading}
           error={doctor.error}
+          loaded={doctor.loaded}
           empty={doctor.data?.results.length === 0}
           onRefresh={doctor.refresh}
         >

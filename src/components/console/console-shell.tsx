@@ -14,7 +14,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { brand } from "@/lib/branding";
 import { relativeTime } from "@/lib/utils";
 import {
@@ -75,6 +75,13 @@ export function ConsoleShell({
   const [route, setRoute] = React.useState<Route>(initialRoute);
   const [sessions, setSessions] = React.useState<SessionSummary[]>([]);
   const [loadingSessions, setLoadingSessions] = React.useState(true);
+  const [sessionsError, setSessionsError] = React.useState<string | null>(null);
+  // Whether the last page returned a full limit (so an older page may exist).
+  const [hasMoreSessions, setHasMoreSessions] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const SESSIONS_PAGE = 100;
+  // Server-side search results, or null when the search box is empty.
+  const [searchResults, setSearchResults] = React.useState<SessionSummary[] | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(
     initialSessionId ?? null,
   );
@@ -214,14 +221,76 @@ export function ConsoleShell({
   // ---- data ----
   const refreshSessions = React.useCallback(async () => {
     try {
-      const { sessions } = await api.sessions(100);
+      const { sessions } = await api.sessions(SESSIONS_PAGE, 0);
       setSessions(sessions);
-    } catch {
-      /* surfaced by banner */
+      setHasMoreSessions(sessions.length >= SESSIONS_PAGE);
+      setSessionsError(null);
+    } catch (e) {
+      // Surface it in the rail: the connection banner is driven by a separate
+      // `/status` poll, so a failed session load on a healthy gateway would
+      // otherwise render an empty, healthy-looking "No sessions yet." rail and
+      // the operator would conclude their history is gone.
+      setSessionsError(describeApiError(e));
     } finally {
       setLoadingSessions(false);
     }
   }, []);
+
+  const loadMoreSessions = React.useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const { sessions: next } = await api.sessions(SESSIONS_PAGE, sessions.length);
+      setSessions((prev) => {
+        const seen = new Set(prev.map((s) => s.id));
+        return [...prev, ...next.filter((s) => !seen.has(s.id))];
+      });
+      setHasMoreSessions(next.length >= SESSIONS_PAGE);
+      setSessionsError(null);
+    } catch (e) {
+      setSessionsError(describeApiError(e));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [sessions.length]);
+
+  // Server-side search when the box is non-empty (debounced): the client-side
+  // filter only sees the loaded page, so a session past the first page could
+  // never be found. `searchSessions` matches across the whole store.
+  React.useEffect(() => {
+    const q = sessQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const { results } = await api.searchSessions(q);
+        if (cancelled) return;
+        // One row per session; keep the first (highest-ranked) hit's title.
+        const seen = new Set<string>();
+        const rows: SessionSummary[] = [];
+        for (const r of results) {
+          if (seen.has(r.session_id)) continue;
+          seen.add(r.session_id);
+          rows.push({
+            id: r.session_id,
+            title: r.session_title,
+            model: null,
+            started_at: r.timestamp,
+            message_count: 0,
+          });
+        }
+        setSearchResults(rows);
+      } catch {
+        if (!cancelled) setSearchResults([]);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [sessQuery]);
 
   // Project the gateway's autonomy config onto the 4-rung ladder. The rung is
   // `level` + `always_ask` (see `levelToRung`); both the console and the
@@ -600,10 +669,11 @@ export function ConsoleShell({
   };
 
   const filteredSessions = React.useMemo(() => {
-    const q = sessQuery.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((s) => (s.title || "").toLowerCase().includes(q));
-  }, [sessions, sessQuery]);
+    // A non-empty query is served by the server-side search (whole store); an
+    // empty query shows the loaded pages.
+    if (sessQuery.trim()) return searchResults ?? [];
+    return sessions;
+  }, [sessions, sessQuery, searchResults]);
 
   const activeSession = sessions.find((s) => s.id === activeId);
   const cur = autonomyPreset(autonomy);
@@ -710,11 +780,23 @@ export function ConsoleShell({
                     <div className="auto-blurb px-2.5 py-1">
                       Loading sessions…
                     </div>
+                  ) : sessionsError && sessions.length === 0 ? (
+                    <div className="auto-blurb px-2.5 py-1">
+                      Couldn&apos;t load sessions — {sessionsError}{" "}
+                      <button
+                        type="button"
+                        className="underline"
+                        onClick={() => {
+                          setLoadingSessions(true);
+                          refreshSessions();
+                        }}
+                      >
+                        Retry
+                      </button>
+                    </div>
                   ) : filteredSessions.length === 0 ? (
                     <div className="auto-blurb px-2.5 py-1">
-                      {sessions.length === 0
-                        ? "No sessions yet."
-                        : "No matches."}
+                      {sessQuery.trim() ? "No matches." : "No sessions yet."}
                     </div>
                   ) : (
                     filteredSessions.map((s) => (
@@ -790,6 +872,16 @@ export function ConsoleShell({
                         </div>
                       </div>
                     ))
+                  )}
+                  {!sessQuery.trim() && hasMoreSessions && (
+                    <button
+                      type="button"
+                      className="auto-blurb px-2.5 py-1 w-full text-left underline disabled:opacity-50"
+                      onClick={loadMoreSessions}
+                      disabled={loadingMore}
+                    >
+                      {loadingMore ? "Loading…" : "Load more"}
+                    </button>
                   )}
                 </div>
               </div>

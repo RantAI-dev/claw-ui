@@ -80,25 +80,36 @@ async function rc<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "content-type": "application/json", ...(init?.headers || {}) },
   });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
   if (!res.ok) {
-    const detail = data?.detail || data?.error || res.statusText;
+    // Check status BEFORE parsing: a non-JSON error body (a proxy 502/504 HTML
+    // page, a plain-text gateway error) would otherwise throw a SyntaxError with
+    // no `status`, so `describeApiError`'s 401/403 and 502/503/504 branches —
+    // written for exactly these failures — became unreachable.
+    let parsed: unknown = null;
+    let detail: unknown = res.statusText;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+      const obj = parsed as { detail?: unknown; error?: unknown } | null;
+      detail = obj?.detail || obj?.error || res.statusText;
+    } catch {
+      detail = text.slice(0, 200) || res.statusText;
+    }
     throw new ApiError(
       typeof detail === "string" ? detail : JSON.stringify(detail),
       res.status,
-      data,
+      parsed,
     );
   }
-  return data as T;
+  return (text ? JSON.parse(text) : null) as T;
 }
 
 export const api = {
   status: () => rc<StatusInfo>("status"),
   doctor: () => rc<{ results: DoctorResult[] }>("doctor"),
   insights: () => rc<Insights>("insights"),
-  sessions: (limit = 100) =>
+  sessions: (limit = 100, offset = 0) =>
     rc<{ sessions: SessionSummary[]; count: number }>(
-      `sessions?limit=${limit}`,
+      `sessions?limit=${limit}&offset=${offset}`,
     ),
   session: (id: string) =>
     rc<SessionDetail>(`sessions/${encodeURIComponent(id)}`),

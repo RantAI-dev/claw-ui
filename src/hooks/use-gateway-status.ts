@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { SESSION_EXPIRED } from "@/lib/activity";
 import type { StatusInfo } from "@/lib/types";
 
@@ -12,6 +12,10 @@ export function useGatewayStatus(pollMs = 15000) {
   const [connection, setConnection] = React.useState<Connection>("connecting");
   const [error, setError] = React.useState<string | null>(null);
   const [needsAuth, setNeedsAuth] = React.useState(false);
+  // Require two consecutive failures before declaring the gateway offline, so a
+  // single 502 or a config hot-reload does not flap the whole console to
+  // "offline" while a turn is streaming fine.
+  const failuresRef = React.useRef(0);
 
   const refresh = React.useCallback(async () => {
     try {
@@ -20,18 +24,43 @@ export function useGatewayStatus(pollMs = 15000) {
       setConnection("online");
       setError(null);
       setNeedsAuth(false);
+      failuresRef.current = 0;
     } catch (e) {
+      // Classify by status/reason, not by a regex over the message.
+      if (e instanceof ApiError) {
+        const reason = (e.body as { reason?: string } | null)?.reason;
+        // Idle timeout → login page with an explanation.
+        if (reason === "idle") {
+          window.location.replace("/login?reason=idle");
+          return;
+        }
+        if (e.status === 401 || e.status === 403) {
+          if (reason) {
+            // The console session expired/absent (proxy-issued 401) — send the
+            // operator to sign in, not to restart the daemon.
+            window.location.replace("/login");
+            return;
+          }
+          // A 401 straight from the gateway (no proxy `reason`) means the
+          // gateway itself is unpaired — that IS the "register a token" case.
+          setConnection("offline");
+          setError(e.message);
+          setNeedsAuth(true);
+          return;
+        }
+      }
       const msg = e instanceof Error ? e.message : String(e);
-      // The idle window lapsed while this tab sat open. Send the operator to
-      // the login page with an explanation instead of leaving them staring at
-      // an "offline" badge on a console that is actually just signed out.
       if (msg === SESSION_EXPIRED) {
         window.location.replace("/login?reason=idle");
         return;
       }
-      setConnection("offline");
+      // A genuine connectivity error: only go "offline" after two in a row.
+      failuresRef.current += 1;
       setError(msg);
-      setNeedsAuth(/401|unauthor|pair/i.test(msg));
+      setNeedsAuth(false);
+      if (failuresRef.current >= 2) {
+        setConnection("offline");
+      }
     }
   }, []);
 
