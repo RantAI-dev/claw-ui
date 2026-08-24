@@ -51,7 +51,7 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { ChatPane } from "./chat-pane";
 import { OpsView } from "./ops-view";
 import { RightPanel } from "./right-panel";
-import { TweaksPanel, TWEAK_DEFAULTS, type Tweaks } from "./tweaks";
+import { TweaksPanel, TWEAK_DEFAULTS, sanitizeTweaks, type Tweaks } from "./tweaks";
 
 const TWEAKS_KEY = "rc_console_tweaks";
 const RAIL_KEY = "rc_console_rail";
@@ -173,7 +173,7 @@ export function ConsoleShell({
   React.useEffect(() => {
     try {
       const t = localStorage.getItem(TWEAKS_KEY);
-      if (t) setTweaks({ ...TWEAK_DEFAULTS, ...JSON.parse(t) });
+      if (t) setTweaks(sanitizeTweaks(JSON.parse(t)));
     } catch {
       /* ignore */
     }
@@ -190,18 +190,20 @@ export function ConsoleShell({
 
   const setTweak = React.useCallback(
     <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => {
-      setTweaks((prev) => {
-        const next = { ...prev, [key]: value };
-        try {
-          localStorage.setItem(TWEAKS_KEY, JSON.stringify(next));
-        } catch {
-          /* ignore */
-        }
-        return next;
-      });
+      setTweaks((prev) => ({ ...prev, [key]: value }));
     },
     [],
   );
+
+  // Persist the prefs as a side effect, not inside the state updater (which
+  // StrictMode double-invokes). Runs on every tweak change.
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(TWEAKS_KEY, JSON.stringify(tweaks));
+    } catch {
+      /* ignore */
+    }
+  }, [tweaks]);
 
   const toggleRail = () =>
     setRailCollapsed((c) => {
@@ -688,6 +690,36 @@ export function ConsoleShell({
     return sessions;
   }, [sessions, sessQuery, searchResults]);
 
+  // A fresh object literal each render would defeat RightPanel's React.memo,
+  // re-rendering the whole panel on every streamed chunk. Memoize on the fields
+  // it actually reads.
+  const rightPanelData = React.useMemo(
+    () => ({
+      model: effectiveModel,
+      provider: effectiveProvider,
+      temperature,
+      autonomy,
+      version: status?.version || "",
+      paired: !!status?.paired,
+      channels,
+      skills,
+      sessionId: chat.sessionId,
+      totals: chat.totals,
+    }),
+    [
+      effectiveModel,
+      effectiveProvider,
+      temperature,
+      autonomy,
+      status?.version,
+      status?.paired,
+      channels,
+      skills,
+      chat.sessionId,
+      chat.totals,
+    ],
+  );
+
   const activeSession = sessions.find((s) => s.id === activeId);
   const cur = autonomyPreset(autonomy);
 
@@ -1071,18 +1103,7 @@ export function ConsoleShell({
       {/* ===== Right context panel ===== */}
       {showRight && (
         <RightPanel
-          data={{
-            model: effectiveModel,
-            provider: effectiveProvider,
-            temperature,
-            autonomy,
-            version: status?.version || "",
-            paired: !!status?.paired,
-            channels,
-            skills,
-            sessionId: chat.sessionId,
-            totals: chat.totals,
-          }}
+          data={rightPanelData}
           onCollapse={() => setTweak("rightPanel", false)}
         />
       )}

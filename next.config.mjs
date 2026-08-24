@@ -2,9 +2,16 @@
 
 // Security headers — the browser only ever talks to this app's own origin
 // (the proxy forwards to the gateway server-side), so connect-src can stay 'self'.
+// `'unsafe-eval'` is only needed by the dev server (Turbopack HMR / React Fast
+// Refresh eval source maps); production runtime code does not use eval, so drop
+// it from the production policy — this is the page that renders untrusted model
+// output, and CSP is its last XSS mitigation.
+// TODO: nonce the script-src to drop 'unsafe-inline' too (needs a per-request
+// nonce threaded through the proxy and Next's script tags).
+const isDev = process.env.NODE_ENV !== "production";
 const csp = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",

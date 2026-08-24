@@ -18,8 +18,16 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
       <div>
         <h2 className="text-lg font-semibold">Something went wrong</h2>
         <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          {error.message || "An unexpected error occurred while rendering this view."}
+          An unexpected error occurred while rendering this view.
         </p>
+        {/* The raw message can carry upstream gateway text (filesystem paths and
+            the like), so keep it out of the headline and behind a disclosure. */}
+        {error.message && (
+          <details className="mt-2 text-left">
+            <summary className="cursor-pointer text-xs text-muted-foreground">Details</summary>
+            <pre className="mt-1 max-w-md overflow-auto text-[11px]">{error.message}</pre>
+          </details>
+        )}
       </div>
       <Button onClick={reset} variant="outline">
         <RotateCcw className="size-4" /> Try again

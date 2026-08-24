@@ -22,6 +22,28 @@ export const TWEAK_DEFAULTS: Tweaks = {
   render: "Markdown",
 };
 
+/**
+ * Coerce an untrusted persisted blob into a valid Tweaks. A hand-edited or
+ * stale localStorage value must not seed the console with an out-of-range
+ * field (e.g. a bogus `render` mode driving the generative-UI path); every
+ * field falls back to its default unless it exactly matches an allowed value.
+ */
+export function sanitizeTweaks(raw: unknown): Tweaks {
+  const out: Tweaks = { ...TWEAK_DEFAULTS };
+  if (!raw || typeof raw !== "object") return out;
+  const r = raw as Record<string, unknown>;
+  const pick = <K extends keyof Tweaks>(key: K, allowed: readonly Tweaks[K][]) => {
+    if (allowed.includes(r[key] as Tweaks[K])) out[key] = r[key] as Tweaks[K];
+  };
+  if (typeof r.accent === "string" && r.accent in ACCENTS) out.accent = r.accent;
+  pick("voice", ["Sans", "Serif"]);
+  pick("traces", ["Collapsed", "Expanded"]);
+  pick("density", ["Comfortable", "Compact"]);
+  if (typeof r.rightPanel === "boolean") out.rightPanel = r.rightPanel;
+  pick("render", ["Markdown", "Generative UI"]);
+  return out;
+}
+
 function Section({ label }: { label: string }) {
   return (
     <div className="eyebrow" style={{ marginTop: 18, marginBottom: 10 }}>
