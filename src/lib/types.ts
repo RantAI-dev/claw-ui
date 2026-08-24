@@ -368,6 +368,7 @@ export type ChatEvent =
   | { type: "tool_call_start"; id: string; name: string; args: unknown }
   | { type: "tool_call_end"; id: string; ok: boolean; output_preview: string }
   | { type: "approval_request"; id: string; tool: string; args: unknown }
+  | { type: "approval_resolved"; id: string; approved: boolean; timed_out: boolean }
   | { type: "memory_recalled"; keys: string[] }
   | { type: "error"; message: string }
   | { type: "done"; text: string; cancelled: boolean; session_id?: string | null }

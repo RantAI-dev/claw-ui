@@ -7,6 +7,35 @@ import { Card } from "@/components/ui/card";
 import { Markdown } from "@/components/chat/markdown";
 import { coerceText as asText } from "@/lib/render-text";
 
+/** Coerce any model-supplied value to an array. The model output is untrusted:
+ *  a field that should be an array can arrive as a string/number/object, and a
+ *  bare `.map` on it throws in render — taking down the whole console route. */
+function asArray<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+/** Cap on nested-component recursion, so a deeply-nested `card` from the model
+ *  cannot overflow the stack. */
+const MAX_DEPTH = 10;
+
+/** Error boundary: one malformed `ui` block must not crash the transcript. */
+class UiErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(err: unknown) {
+    // Self-hosted tool — log locally, never to an external service.
+    console.error("[generative-ui] render error:", err);
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
 /* A lightweight OpenUI-style generative-UI renderer: the agent emits a fenced
  * ```ui block holding a JSON array of components, and we render them as real
  * interactive UI using the console's design system. Prose outside the block is
@@ -101,10 +130,15 @@ function UiComposing() {
 function Component({
   c,
   onAction,
+  depth = 0,
 }: {
   c: Comp;
   onAction?: (value: string) => void;
+  depth?: number;
 }) {
+  if (depth > MAX_DEPTH) {
+    return <div className="gu-heading text-muted-foreground">(nested too deep)</div>;
+  }
   switch (c.type) {
     case "heading":
       return <div className="gu-heading">{asText(c.text)}</div>;
@@ -124,8 +158,8 @@ function Component({
               {c.title}
             </div>
           )}
-          {(c.children || []).map((child, i) => (
-            <Component key={i} c={child} onAction={onAction} />
+          {asArray<Comp>(c.children).map((child, i) => (
+            <Component key={i} c={child} onAction={onAction} depth={depth + 1} />
           ))}
         </div>
       );
@@ -133,9 +167,9 @@ function Component({
       return (
         <div
           className="grid gap-2"
-          style={{ gridTemplateColumns: `repeat(${Math.max(1, (c.items || []).length)}, 1fr)` }}
+          style={{ gridTemplateColumns: `repeat(${Math.max(1, asArray(c.items).length)}, 1fr)` }}
         >
-          {(c.items || []).map((it, i) => {
+          {asArray(c.items).map((it, i) => {
             const item = it as { label?: string; value?: string; tone?: string };
             return (
               <Card key={i} className="px-3 py-2.5">
@@ -156,7 +190,7 @@ function Component({
     case "keyvalue":
       return (
         <div className="kv">
-          {(c.items || []).map((it, i) => {
+          {asArray(c.items).map((it, i) => {
             const item = it as { k?: string; v?: string };
             return (
               <div className="kv-row" key={i}>
@@ -170,19 +204,19 @@ function Component({
     case "table":
       return (
         <table className="gu-table">
-          {c.columns && c.columns.length > 0 && (
+          {asArray(c.columns).length > 0 && (
             <thead>
               <tr>
-                {c.columns.map((col, i) => (
+                {asArray(c.columns).map((col, i) => (
                   <th key={i}>{asText(col)}</th>
                 ))}
               </tr>
             </thead>
           )}
           <tbody>
-            {(c.rows || []).map((row, i) => (
+            {asArray<unknown>(c.rows).map((row, i) => (
               <tr key={i}>
-                {(row || []).map((cell, j) => (
+                {asArray(row).map((cell, j) => (
                   <td key={j}>{asText(cell)}</td>
                 ))}
               </tr>
@@ -194,7 +228,7 @@ function Component({
       return (
         <div className="markdown-body">
           <ul>
-            {(c.items || []).map((it, i) => (
+            {asArray(c.items).map((it, i) => (
               <li key={i}>{asText(it)}</li>
             ))}
           </ul>
@@ -203,7 +237,7 @@ function Component({
     case "badges":
       return (
         <div className="flex flex-wrap gap-1.5">
-          {(c.items || []).map((it, i) => {
+          {asArray(c.items).map((it, i) => {
             const item = it as { label?: string; tone?: string };
             return (
               <Badge key={i} variant={toneBadge(item.tone)}>
@@ -227,7 +261,7 @@ function Component({
         <div>
           {c.prompt && <div className="gu-choice-prompt">{c.prompt}</div>}
           <div className="gu-choices">
-            {(c.options || []).map((o, i) => (
+            {asArray<{ label: string; value?: string }>(c.options).map((o, i) => (
               <Button
                 key={i}
                 variant="outline"
@@ -290,11 +324,20 @@ export function GenerativeMessage({
           );
         }
         return (
-          <div className="gu-wrap" key={i}>
-            {seg.comps.map((c, j) => (
-              <Component key={j} c={c} onAction={onAction} />
-            ))}
-          </div>
+          <UiErrorBoundary
+            key={i}
+            fallback={
+              <pre className="toml rounded-md border border-border">
+                {JSON.stringify(seg.comps, null, 2)}
+              </pre>
+            }
+          >
+            <div className="gu-wrap">
+              {asArray<Comp>(seg.comps).map((c, j) => (
+                <Component key={j} c={c} onAction={onAction} />
+              ))}
+            </div>
+          </UiErrorBoundary>
         );
       })}
       {showCursor && <span className="cursor" />}
