@@ -23,6 +23,7 @@ import type {
   SearchResult,
   SecretsInfo,
   SessionDetail,
+  SessionFork,
   SessionSummary,
   Skill,
   StatusInfo,
@@ -130,6 +131,13 @@ export const api = {
   deleteSession: (id: string) =>
     rc<{ deleted: boolean; id: string }>(`sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
+    }),
+  /** Branch a new session from an existing one. The parent is left open; the
+   *  child carries `parent_session_id` and a system message naming the origin. */
+  forkSession: (id: string, note?: string) =>
+    rc<SessionFork>(`sessions/${encodeURIComponent(id)}/fork`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
     }),
   skills: () => rc<{ skills: Skill[]; count: number }>("skills"),
   memory: (

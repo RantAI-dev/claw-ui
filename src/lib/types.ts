@@ -22,6 +22,13 @@ export interface SessionDetail {
   messages: SessionMessage[];
 }
 
+/** Result of POST /api/v1/sessions/{id}/fork — the newly created child. */
+export interface SessionFork {
+  id: string;
+  title: string | null;
+  parent_session_id: string;
+}
+
 export interface SearchResult {
   session_id: string;
   session_title: string | null;
