@@ -34,6 +34,7 @@ import {
   resolveHashRoute,
   rungToAutonomyPayload,
   SKILLS_CHANGED,
+  PERSONA_CHANGED,
 } from "@/lib/console";
 import type {
   KbGroup,
@@ -328,6 +329,26 @@ export function ConsoleShell({
     return () => window.removeEventListener(SKILLS_CHANGED, refreshSkills);
   }, [refreshSkills]);
 
+  // Persona is a load-time snapshot fed to the transcript header and system
+  // prompt hint. The Persona panel writes it out-of-band, so re-fetch when it
+  // announces a change rather than showing the stale name until reload.
+  const refreshPersonality = React.useCallback(() => {
+    api
+      .personality()
+      .then((p) => {
+        setPersonality(p);
+        alwaysOnKbRef.current = Array.isArray(p.always_on_kbs)
+          ? p.always_on_kbs
+          : [];
+      })
+      .catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    window.addEventListener(PERSONA_CHANGED, refreshPersonality);
+    return () => window.removeEventListener(PERSONA_CHANGED, refreshPersonality);
+  }, [refreshPersonality]);
+
   React.useEffect(() => {
     const configReadStartedAt = Date.now();
     refreshSessions();
@@ -340,15 +361,7 @@ export function ConsoleShell({
       .then((r) => setChannels(r.configured || []))
       .catch(() => {});
     refreshSkills();
-    api
-      .personality()
-      .then((p) => {
-        setPersonality(p);
-        alwaysOnKbRef.current = Array.isArray(p.always_on_kbs)
-          ? p.always_on_kbs
-          : [];
-      })
-      .catch(() => {});
+    refreshPersonality();
     api
       .kbGroups()
       .then(setKbGroups)
@@ -364,7 +377,7 @@ export function ConsoleShell({
         applyAutonomyFromConfig(c, configReadStartedAt);
       })
       .catch(() => {});
-  }, [refreshSessions, applyAutonomyFromConfig, refreshSkills]);
+  }, [refreshSessions, applyAutonomyFromConfig, refreshSkills, refreshPersonality]);
 
   // Autonomy is shared state, not a console-local preference: `rantaiclaw
   // autonomy <preset>`, the TUI's Shift+Tab, and a second console tab all write
@@ -651,7 +664,7 @@ export function ConsoleShell({
     (railCollapsed ? " no-rail" : "") +
     (dense ? " dense" : "");
 
-  const agentName = personality?.name?.trim() || "Atlas";
+  const agentName = personality?.name?.trim() || "RantaiClaw";
   const agentRole = personality?.role?.trim() || "AI employee";
   const agentInitials = initials(agentName);
 

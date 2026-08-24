@@ -18,6 +18,7 @@ import type {
   MemoryStats,
   ModelCatalog,
   Personality,
+  PersonaPreset,
   ProviderInfo,
   SearchResult,
   SecretsInfo,
@@ -150,12 +151,15 @@ export const api = {
   },
   memoryStats: () => rc<MemoryStats>("memory/stats"),
   personality: () => rc<Personality>("personality"),
+  personalityPresets: () =>
+    rc<{ presets: PersonaPreset[] }>("personality/presets"),
   setPersonality: (body: {
     preset?: string;
     name?: string;
     role?: string;
     tone?: string;
     avoid?: string;
+    timezone?: string;
     always_on_kbs?: string[];
   }) =>
     rc<Personality>("personality", {
