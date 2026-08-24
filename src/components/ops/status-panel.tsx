@@ -5,11 +5,13 @@ import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
 import { autonomyPreset, levelToRung } from "@/lib/console";
+import { formatNumber, relativeTime } from "@/lib/utils";
 import { KeyVal, PanelFrame, RefreshButton, SectionTitle, SeverityBadge, StatTile } from "./shared";
 
 export function StatusPanel() {
   const status = useAsync(() => api.status(), []);
   const doctor = useAsync(() => api.doctor(), []);
+  const insights = useAsync(() => api.insights(), []);
   const s = status.data;
   // Show the preset the rest of the console speaks in, not the raw enforcement
   // level. `autonomy_preset` is what distinguishes Manual from Smart — both are
@@ -43,6 +45,28 @@ export function StatusPanel() {
                 <KeyVal k="Workspace" v={s.workspace_dir || "—"} mono />
               </Card>
             </>
+          )}
+        </PanelFrame>
+      </div>
+
+      <div>
+        <SectionTitle action={<RefreshButton onClick={() => insights.refresh()} />}>Usage</SectionTitle>
+        <PanelFrame
+          loading={insights.loading}
+          error={insights.error}
+          loaded={insights.loaded}
+          onRefresh={insights.refresh}
+        >
+          {insights.data && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatTile label="Sessions" value={formatNumber(insights.data.total_sessions)} />
+              <StatTile label="Messages" value={formatNumber(insights.data.total_messages)} />
+              <StatTile label="Avg / session" value={insights.data.avg_messages_per_session.toFixed(1)} />
+              <StatTile
+                label="Latest"
+                value={insights.data.latest_session_started_at ? relativeTime(insights.data.latest_session_started_at) : "—"}
+              />
+            </div>
           )}
         </PanelFrame>
       </div>
