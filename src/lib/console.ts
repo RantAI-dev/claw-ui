@@ -74,6 +74,15 @@ export const SKILLS_CHANGED = "rantaiclaw:skills-changed";
  */
 export const PERSONA_CHANGED = "rantaiclaw:persona-changed";
 
+/**
+ * Broadcast by the Config panel after a temperature save and by the MCP panel
+ * after it adds or removes a server. The right-rail temperature readout and the
+ * MCP nav badge are snapshots the console shell takes once at load, so without
+ * this they keep showing the value from before the user's own edit until a full
+ * reload. Listeners must only re-read (never re-dispatch) or they loop.
+ */
+export const CONFIG_CHANGED = "rantaiclaw:config-changed";
+
 /** Legacy hash ids that resolve to a current route — the Knowledge Graph is now
  *  a lens inside Knowledge Bases, not a top-level route. */
 const ROUTE_ALIASES: Record<string, Route> = { kbgraph: "kb" };

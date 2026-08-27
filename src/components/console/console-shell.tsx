@@ -38,6 +38,7 @@ import {
   rungToAutonomyPayload,
   SKILLS_CHANGED,
   PERSONA_CHANGED,
+  CONFIG_CHANGED,
 } from "@/lib/console";
 import type {
   KbGroup,
@@ -353,6 +354,28 @@ export function ConsoleShell({
     window.addEventListener(PERSONA_CHANGED, refreshPersonality);
     return () => window.removeEventListener(PERSONA_CHANGED, refreshPersonality);
   }, [refreshPersonality]);
+
+  // Temperature (right rail) and the MCP nav badge are load-time snapshots. The
+  // Config and MCP panels write them out-of-band, so re-read on their broadcast
+  // instead of showing the pre-edit value until reload. Autonomy is intentionally
+  // left to its own interval poll below; this only re-seeds temp + MCP count and
+  // never re-dispatches, so it cannot loop.
+  const refreshConfig = React.useCallback(() => {
+    api
+      .config()
+      .then((c) => {
+        const t = c?.default_temperature;
+        if (t != null) setTemperature(String(t));
+        const mcp = c?.mcp_servers;
+        setMcpCount(mcp && typeof mcp === "object" ? Object.keys(mcp).length : 0);
+      })
+      .catch(() => {});
+  }, []);
+
+  React.useEffect(() => {
+    window.addEventListener(CONFIG_CHANGED, refreshConfig);
+    return () => window.removeEventListener(CONFIG_CHANGED, refreshConfig);
+  }, [refreshConfig]);
 
   React.useEffect(() => {
     const configReadStartedAt = Date.now();
