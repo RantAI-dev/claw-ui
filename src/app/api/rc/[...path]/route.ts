@@ -35,8 +35,13 @@ async function proxy(req: NextRequest, path: string[]) {
       headers: { "content-type": res.headers.get("content-type") || "application/json" },
     });
   } catch (err) {
+    // Log the transport error server-side (it carries the gateway URL/host:port),
+    // but do NOT relay it to the browser — the 502 + `gateway_unreachable` code
+    // let describeApiError render "the gateway is unreachable" without leaking
+    // the internal address to any console session.
+    console.error("rc proxy transport error:", err);
     return Response.json(
-      { error: "gateway_unreachable", detail: String(err instanceof Error ? err.message : err) },
+      { error: "gateway_unreachable", detail: "the gateway is unreachable" },
       { status: 502 },
     );
   }

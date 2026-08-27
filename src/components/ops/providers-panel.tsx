@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { KeyRound, Trash2, RotateCcw } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { ModelPicker } from "@/components/ui/model-picker";
 import { Combobox } from "@/components/ui/combobox";
@@ -60,7 +60,7 @@ export function ProvidersPanel() {
       else setUrl("");
       setPendingClear(null);
     } catch (e) {
-      toast.error(`Clear failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Clear failed: ${describeApiError(e)}`);
     } finally {
       // Re-read server truth so the badge/field reflect what actually persisted.
       secrets.refresh();
@@ -98,7 +98,7 @@ export function ProvidersPanel() {
       }
       setKey("");
     } catch (e) {
-      const detail = e instanceof Error ? e.message : String(e);
+      const detail = describeApiError(e);
       toast.error(
         modelSwitched
           ? `Provider/model switched, but saving the key/URL failed: ${detail}`

@@ -428,3 +428,34 @@ export interface Attachment {
   status: "uploading" | "ready" | "error";
   error?: string;
 }
+
+/**
+ * The read subset of `GET /config` the console consumes. The gateway sends the
+ * whole config; the console only reads these fields, so the interface stays a
+ * subset with an index signature for the rest (and for the autonomy panel's
+ * dynamic key access). Typing this turns a Rust-side rename that drops a field
+ * into a `next build` failure instead of a silent runtime degrade (temperature
+ * blank, autonomy falling back to "smart", MCP badge 0).
+ */
+export interface GatewayAutonomy {
+  level?: string;
+  always_ask?: string[];
+  max_actions_per_hour?: number;
+  max_cost_per_day_cents?: number;
+  [key: string]: unknown;
+}
+
+export interface GatewayMcpServer {
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  [key: string]: unknown;
+}
+
+export interface GatewayConfig {
+  default_provider?: string;
+  default_temperature?: number | null;
+  mcp_servers?: Record<string, GatewayMcpServer>;
+  autonomy?: GatewayAutonomy;
+  [key: string]: unknown;
+}

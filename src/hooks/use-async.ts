@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { describeApiError } from "@/lib/api";
 
 export function useAsync<T>(fn: () => Promise<T>, deps: React.DependencyList = []) {
   const [data, setData] = React.useState<T | null>(null);
@@ -28,7 +29,10 @@ export function useAsync<T>(fn: () => Promise<T>, deps: React.DependencyList = [
       loaded.current = true;
     } catch (e) {
       if (id !== reqId.current) return;
-      setError(e instanceof Error ? e.message : String(e));
+      // Map through describeApiError so a load/refresh failure inherits the
+      // 401 "sign in again" / 502 "gateway restarting" wording instead of a
+      // bare message. PanelFrame renders this string.
+      setError(describeApiError(e));
     } finally {
       if (id === reqId.current) {
         setLoading(false);

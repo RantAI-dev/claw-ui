@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Eye, EyeOff, Save } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { maskConfigForDisplay, CONFIG_CHANGED } from "@/lib/console";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
@@ -37,7 +37,7 @@ export function ConfigPanel() {
       // Invalidate the shell's load-time snapshots (right-rail temperature).
       window.dispatchEvent(new Event(CONFIG_CHANGED));
     } catch (e) {
-      toast.error(`Save failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Save failed: ${describeApiError(e)}`);
     } finally {
       setBusy(false);
     }

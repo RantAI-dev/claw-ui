@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { Loader2, Plus, Server, Trash2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import type { GatewayMcpServer } from "@/lib/types";
 import { CONFIG_CHANGED } from "@/lib/console";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
@@ -29,7 +30,7 @@ function parseArgs(input: string): string[] {
 export function McpPanel() {
   const cfg = useAsync(() => api.config(), []);
   const servers = React.useMemo(() => {
-    const m = (cfg.data?.mcp_servers ?? {}) as Record<string, Record<string, unknown>>;
+    const m: Record<string, GatewayMcpServer> = cfg.data?.mcp_servers ?? {};
     return Object.entries(m);
   }, [cfg.data]);
 
@@ -56,7 +57,7 @@ export function McpPanel() {
       // Update the shell's MCP nav badge (a load-time snapshot).
       window.dispatchEvent(new Event(CONFIG_CHANGED));
     } catch (e) {
-      toast.error(`Add failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Add failed: ${describeApiError(e)}`);
     } finally {
       setBusy(false);
     }
@@ -74,7 +75,7 @@ export function McpPanel() {
       // Update the shell's MCP nav badge (a load-time snapshot).
       window.dispatchEvent(new Event(CONFIG_CHANGED));
     } catch (e) {
-      toast.error(`Remove failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Remove failed: ${describeApiError(e)}`);
     } finally {
       setWorking(null);
     }

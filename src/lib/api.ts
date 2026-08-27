@@ -6,6 +6,7 @@ import type {
   CronRun,
   CronSchedule,
   DoctorResult,
+  GatewayConfig,
   Insights,
   KbDocument,
   KbDocumentDetail,
@@ -324,7 +325,7 @@ export const api = {
         method: "DELETE",
       },
     ),
-  config: () => rc<Record<string, unknown>>("config"),
+  config: () => rc<GatewayConfig>("config"),
   setConfigModel: (body: {
     provider?: string;
     model?: string;
