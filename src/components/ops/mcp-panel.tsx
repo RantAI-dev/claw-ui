@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { CONFIG_CHANGED } from "@/lib/console";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
@@ -52,6 +53,8 @@ export function McpPanel() {
       setCommand("");
       setArgs("");
       cfg.refresh();
+      // Update the shell's MCP nav badge (a load-time snapshot).
+      window.dispatchEvent(new Event(CONFIG_CHANGED));
     } catch (e) {
       toast.error(`Add failed: ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -68,6 +71,8 @@ export function McpPanel() {
       toast.success(`Removed “${n}” · applies on daemon restart`);
       setPendingRemove(null);
       cfg.refresh();
+      // Update the shell's MCP nav badge (a load-time snapshot).
+      window.dispatchEvent(new Event(CONFIG_CHANGED));
     } catch (e) {
       toast.error(`Remove failed: ${e instanceof Error ? e.message : e}`);
     } finally {

@@ -148,7 +148,7 @@ export function ProvidersPanel() {
         </div>
       </Card>
 
-      <PanelFrame loading={catalog.loading} error={catalog.error} onRefresh={catalog.refresh}>
+      <PanelFrame loading={catalog.loading} error={catalog.error} loaded={catalog.loaded} onRefresh={catalog.refresh}>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {catalog.data?.providers.map((p) => (
             <Card
