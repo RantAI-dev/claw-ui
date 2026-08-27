@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { KeyRound } from "lucide-react";
+import { KeyRound, Trash2, RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { ModelPicker } from "@/components/ui/model-picker";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
 export function ProvidersPanel() {
@@ -23,6 +24,10 @@ export function ProvidersPanel() {
   const [key, setKey] = React.useState("");
   const [url, setUrl] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // Explicit clear flow (distinct from blank-Save, which means "keep"): these
+  // send an empty string, the gateway's clear-on-empty signal.
+  const [pendingClear, setPendingClear] = React.useState<null | "key" | "url">(null);
+  const [clearing, setClearing] = React.useState(false);
 
   React.useEffect(() => {
     if (secrets.data?.provider) setProvider(secrets.data.provider);
@@ -41,8 +46,35 @@ export function ProvidersPanel() {
 
   const changeProvider = (next: string) => setProvider(next);
 
+  // Deliberately send "" to CLEAR one secret field, leaving the other untouched
+  // (the gateway sets a provided field, leaves an omitted one). This is the only
+  // way to revoke a key/URL from the console; a blank normal Save keeps it.
+  const clearSecret = async () => {
+    const which = pendingClear;
+    if (!which) return;
+    setClearing(true);
+    try {
+      await api.setSecrets(which === "key" ? { api_key: "" } : { api_url: "" });
+      toast.success(which === "key" ? "API key removed" : "Base URL reset");
+      if (which === "key") setKey("");
+      else setUrl("");
+      setPendingClear(null);
+    } catch (e) {
+      toast.error(`Clear failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      // Re-read server truth so the badge/field reflect what actually persisted.
+      secrets.refresh();
+      info.refresh();
+      setClearing(false);
+    }
+  };
+
   const save = async () => {
     setBusy(true);
+    // Provider save is two non-atomic writes (model then secrets). Track whether
+    // the first landed so a failure on the second can say the state is split
+    // rather than unchanged.
+    let modelSwitched = false;
     try {
       const providerChanged = provider && provider !== active;
       const modelChanged = model && model !== info.data?.model;
@@ -53,6 +85,7 @@ export function ProvidersPanel() {
               model: model || undefined,
             })
           : null;
+      modelSwitched = Boolean(providerChanged || modelChanged);
       if (key.trim() || url.trim()) {
         await api.setSecrets({ api_key: key.trim() || undefined, api_url: url.trim() || undefined });
       }
@@ -64,11 +97,18 @@ export function ProvidersPanel() {
         toast.success(`Saved — ${provider || active} · ${model || "model unchanged"}`);
       }
       setKey("");
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      toast.error(
+        modelSwitched
+          ? `Provider/model switched, but saving the key/URL failed: ${detail}`
+          : `Save failed: ${detail}`,
+      );
+    } finally {
+      // Always re-read server truth — even on a partial failure — so the panel
+      // reflects what actually persisted, not the stale pre-save view.
       secrets.refresh();
       info.refresh();
-    } catch (e) {
-      toast.error(`Save failed: ${e instanceof Error ? e.message : e}`);
-    } finally {
       setBusy(false);
     }
   };
@@ -142,11 +182,46 @@ export function ProvidersPanel() {
           <Button size="sm" onClick={save} disabled={busy || !provider}>
             <KeyRound className="size-4" /> Save provider &amp; key
           </Button>
+          {keyPresent && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPendingClear("key")}
+              disabled={busy || clearing}
+            >
+              <Trash2 className="size-4" /> Remove key
+            </Button>
+          )}
+          {secrets.data?.api_url && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPendingClear("url")}
+              disabled={busy || clearing}
+            >
+              <RotateCcw className="size-4" /> Reset base URL
+            </Button>
+          )}
           <span className="text-[10px] text-muted-foreground">
             Sets the active provider; key stored encrypted, never shown back.
+            Leave the key blank to keep it — use Remove key to clear it.
           </span>
         </div>
       </Card>
+
+      <ConfirmModal
+        open={pendingClear !== null}
+        onClose={() => setPendingClear(null)}
+        title={pendingClear === "url" ? "Reset base URL?" : "Remove API key?"}
+        description={
+          pendingClear === "url"
+            ? "The stored base URL for this provider will be cleared and the provider default used. This does not touch the API key."
+            : "The stored API key for this provider will be cleared. The provider will have no credential until you save a new one. This does not touch the base URL."
+        }
+        confirmLabel={pendingClear === "url" ? "Reset URL" : "Remove key"}
+        busy={clearing}
+        onConfirm={clearSecret}
+      />
 
       <PanelFrame loading={catalog.loading} error={catalog.error} loaded={catalog.loaded} onRefresh={catalog.refresh}>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
