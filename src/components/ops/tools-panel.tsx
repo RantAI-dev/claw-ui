@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import { Plus, X } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
+import type { GatewayAutonomy } from "@/lib/types";
 import { AUTONOMY, BUILTIN_TOOLS, autonomyPreset, levelToRung, rungToAutonomyPayload } from "@/lib/console";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import { PanelFrame, RefreshButton, SectionTitle, StatTile } from "./shared";
 
 export function ToolsPanel() {
   const cfg = useAsync(() => api.config(), []);
-  const a = (cfg.data?.autonomy ?? {}) as Record<string, unknown>;
+  const a: GatewayAutonomy = cfg.data?.autonomy ?? {};
 
   const arr = (k: string): string[] => (Array.isArray(a[k]) ? (a[k] as string[]) : []);
   const bool = (k: string): boolean => a[k] === true;
@@ -54,7 +55,7 @@ export function ToolsPanel() {
       if (msg) toast.success(msg);
       cfg.refresh();
     } catch (e) {
-      toast.error(`Update failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Update failed: ${describeApiError(e)}`);
     } finally {
       setBusy(false);
     }

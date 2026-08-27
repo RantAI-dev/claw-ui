@@ -41,6 +41,7 @@ import {
   CONFIG_CHANGED,
 } from "@/lib/console";
 import type {
+  GatewayConfig,
   KbGroup,
   Personality,
   ProviderInfo,
@@ -304,11 +305,9 @@ export function ConsoleShell({
   // TUI/CLI write that pair, so this reflects a preset switched on either
   // surface.
   const applyAutonomyFromConfig = React.useCallback(
-    (c: Record<string, unknown> | null | undefined, readStartedAt: number) => {
+    (c: GatewayConfig | null | undefined, readStartedAt: number) => {
       if (autonomyReadIsStale(readStartedAt, autonomyWrittenAt.current)) return;
-      const auto = c?.autonomy as
-        | { level?: string; always_ask?: string[] }
-        | undefined;
+      const auto = c?.autonomy;
       if (!auto) return;
       setAutonomyState(levelToRung(auto.level, auto.always_ask?.length || 0));
     },
