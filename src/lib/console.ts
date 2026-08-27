@@ -331,10 +331,14 @@ export function rungToAutonomyPayload(rung: string): {
   switch (rung) {
     case "manual":
       return { level: "supervised", always_ask: BUILTIN_TOOLS };
+    // Always send an explicit `always_ask` (even empty) so each rung writes a
+    // complete, self-consistent state. Omitting it left `always_ask` residue
+    // from a prior Manual/Smart rung under Readonly/Full, which the Tools panel
+    // then mislabeled as "always prompts".
     case "strict":
-      return { level: "readonly" };
+      return { level: "readonly", always_ask: [] };
     case "off":
-      return { level: "full" };
+      return { level: "full", always_ask: [] };
     case "smart":
     default:
       return { level: "supervised", always_ask: [] };
