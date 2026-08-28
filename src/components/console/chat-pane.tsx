@@ -555,7 +555,7 @@ export function ChatPane(props: ChatPaneProps) {
               <span className="kbd">⏎</span> send
             </span>
             <span className="ml-auto">
-              {providerLabel} · {modelTag || defaultModel || "default"}
+              {providerLabel} · {modelTag || defaultModel || "no model set"}
             </span>
           </div>
         </div>
