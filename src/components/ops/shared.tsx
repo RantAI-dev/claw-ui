@@ -226,13 +226,16 @@ export function CountBadge({ n }: { n: number }) {
 export function RefreshButton({
   onClick,
   spinning = false,
+  label = "Refresh",
 }: {
   onClick: () => void;
   spinning?: boolean;
+  /** What the button re-runs when "Refresh" would be vague ("Re-run checks"). */
+  label?: string;
 }) {
   return (
     <Button variant="outline" size="sm" onClick={onClick} disabled={spinning}>
-      <RefreshCw className={cn(spinning && "animate-spin")} /> Refresh
+      <RefreshCw className={cn(spinning && "animate-spin")} /> {label}
     </Button>
   );
 }

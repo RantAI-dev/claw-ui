@@ -108,7 +108,9 @@ async function rc<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   status: () => rc<StatusInfo>("status"),
-  doctor: () => rc<{ results: DoctorResult[] }>("doctor"),
+  // `skipped` names the live probes a brief-mode run leaves out
+  // (provider.ping, channels.auth, mcp.startup), so the panel can say so.
+  doctor: () => rc<{ results: DoctorResult[]; skipped?: string[] }>("doctor"),
   insights: () => rc<Insights>("insights"),
   sessions: (limit = 100, offset = 0) =>
     rc<{ sessions: SessionSummary[]; count: number }>(

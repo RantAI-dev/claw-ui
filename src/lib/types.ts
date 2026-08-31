@@ -50,7 +50,9 @@ export interface StatusInfo {
   autonomy_preset?: string;
   workspace_dir: string;
   paired: boolean;
-  runtime: unknown;
+  /** The gateway's health snapshot; `parseRuntimeHealth` in `lib/status.ts`
+   *  is the one place that knows its shape. Absent on an older gateway. */
+  runtime?: unknown;
 }
 
 export interface DoctorResult {
