@@ -1244,6 +1244,7 @@ export function ConsoleShell({
         // no-op; the explicit Deny button below is the only deny path. The modal
         // reopens if it is still pending (a resolved/expired request clears it).
         onClose={() => {}}
+        closable={false}
         title="Approve tool?"
         description={
           chat.pendingApproval
@@ -1285,7 +1286,14 @@ export function ConsoleShell({
         }
       >
         {chat.pendingApproval ? (
-          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 font-mono text-xs">
+          // Focus starts on the arguments, not on Deny or Approve: an accidental
+          // Enter must neither kill the turn nor run the tool.
+          <pre
+            tabIndex={-1}
+            data-autofocus
+            aria-label="Tool arguments"
+            className="m-0 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 font-mono text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
             {JSON.stringify(chat.pendingApproval.args, null, 2)}
           </pre>
         ) : null}

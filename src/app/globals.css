@@ -987,6 +987,10 @@
   color: var(--destructive);
   background: color-mix(in oklab, var(--destructive) 16%, transparent);
 }
+.act-status.stopped {
+  color: var(--muted-foreground);
+  background: oklch(var(--af) /6%);
+}
 
 /* approval widget */
 .approval {

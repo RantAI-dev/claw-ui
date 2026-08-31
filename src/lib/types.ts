@@ -422,6 +422,8 @@ export interface ToolCall {
   ok?: boolean;
   outputPreview?: string;
   done?: boolean;
+  /** The turn was stopped or the call denied before the tool finished. */
+  cancelled?: boolean;
 }
 
 // A document attached to a chat and ingested into the KB (scoped by conversation id).

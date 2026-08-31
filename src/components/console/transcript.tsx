@@ -51,8 +51,12 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
         <div className="act-list">
           {tools.map((t) => {
             const Ico = toolIcon(t.name);
-            const failed = t.done && t.ok === false;
-            const status = !t.done ? "run" : failed ? "err" : "ok";
+            // The gateway reports a user denial as a failed call with this
+            // marker; to the person who clicked Deny it is a stop, not an error.
+            const denied = /\[denied by user\]/.test(t.outputPreview || "");
+            const stopped = t.cancelled || denied;
+            const failed = t.done && t.ok === false && !stopped;
+            const status = !t.done ? "run" : stopped ? "stopped" : failed ? "err" : "ok";
             return (
               <div className="act-row" key={t.id}>
                 <div className="act-ico">
