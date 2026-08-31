@@ -218,12 +218,11 @@ export function ConsoleShell({
     });
 
   // On mobile the rail is an overlay drawer — collapse it after a navigation so
-  // the selected view isn't left hidden behind it. No-op on desktop.
+  // the selected view isn't left hidden behind it. No-op on desktop. Not
+  // persisted: this is drawer housekeeping, not a preference, and writing it
+  // used to leave the desktop rail collapsed after one phone visit.
   const closeRailOnMobile = React.useCallback(() => {
-    if (window.matchMedia("(max-width: 820px)").matches) {
-      setRailCollapsed(true);
-      localStorage.setItem(RAIL_KEY, "1");
-    }
+    if (window.matchMedia("(max-width: 820px)").matches) setRailCollapsed(true);
   }, []);
 
   // ---- data ----
@@ -471,7 +470,7 @@ export function ConsoleShell({
         // staleness guard and discarded the very read that would have corrected
         // the screen.
         autonomyWrittenAt.current = Date.now();
-        toast.success(`Autonomy → ${autonomyPreset(rung).label}`);
+        toast.success(`Autonomy set to ${autonomyPreset(rung).label}`);
       })
       .catch((e) => {
         setAutonomyState(previous);
@@ -888,7 +887,7 @@ export function ConsoleShell({
                     </div>
                   ) : sessionsError && sessions.length === 0 ? (
                     <div className="auto-blurb px-2.5 py-1">
-                      Couldn&apos;t load sessions — {sessionsError}{" "}
+                      Couldn&apos;t load sessions: {sessionsError}{" "}
                       <button
                         type="button"
                         className="underline"
@@ -902,30 +901,24 @@ export function ConsoleShell({
                     </div>
                   ) : filteredSessions.length === 0 ? (
                     <div className="auto-blurb px-2.5 py-1">
-                      {sessQuery.trim() ? "No matches." : "No sessions yet."}
+                      {sessQuery.trim()
+                        ? `No sessions match "${sessQuery.trim()}".`
+                        : "No sessions yet. Send a message to start one."}
                     </div>
                   ) : (
-                    filteredSessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className={
-                          "sess-item" + (s.id === activeId ? " active" : "")
-                        }
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleSelect(s.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleSelect(s.id);
+                    filteredSessions.map((s) => {
+                      const label = s.title || "Untitled session";
+                      // Search hits come back without a message count (the
+                      // search route returns matches, not summaries), so the
+                      // row would read "0 msgs" for a session that has many.
+                      const searching = !!sessQuery.trim();
+                      return (
+                        <div
+                          key={s.id}
+                          className={
+                            "sess-item" + (s.id === activeId ? " active" : "")
                           }
-                        }}
-                      >
-                        <div className="sess-row">
-                          <span
-                            className="chan-dot"
-                            style={{ background: channelDot(s.model || "") }}
-                          />
+                        >
                           {renamingId === s.id ? (
                             <input
                               className="sess-title-input"
@@ -934,68 +927,84 @@ export function ConsoleShell({
                               value={draftTitle}
                               aria-label="Session title"
                               onChange={(e) => setDraftTitle(e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
                               onBlur={() => commitRename(s.id)}
                               onKeyDown={(e) => {
-                                // The row treats Enter/Space as "open this
-                                // session" — keep those from firing while the
-                                // title is being edited.
-                                e.stopPropagation();
                                 if (e.key === "Enter") commitRename(s.id);
                                 if (e.key === "Escape") cancelRename();
                               }}
                             />
                           ) : (
                             <>
-                              <span className="sess-title">
-                                {s.title || "Untitled session"}
+                              {/* The row used to be one role=button wrapping four
+                                  more buttons, so its accessible name was the
+                                  title plus every action label. Now the title is
+                                  the open button and the actions are siblings. */}
+                              <button
+                                type="button"
+                                className="sess-open"
+                                onClick={() => handleSelect(s.id)}
+                                aria-current={s.id === activeId ? "true" : undefined}
+                              >
+                                <span className="sess-row">
+                                  <span
+                                    className="chan-dot"
+                                    style={{ background: channelDot(s.model || "") }}
+                                  />
+                                  <span className="sess-title">{label}</span>
+                                </span>
+                                <span className="sess-meta">
+                                  {!searching && (
+                                    <>
+                                      <span>{s.message_count} msgs</span>
+                                      <span>·</span>
+                                    </>
+                                  )}
+                                  <span>{relativeTime(s.started_at) || "new"}</span>
+                                </span>
+                              </button>
+                              <span className="sess-actions">
+                                <button
+                                  type="button"
+                                  className="sess-x edit"
+                                  onClick={(e) => startRename(s.id, s.title, e)}
+                                  aria-label={`Rename session: ${label}`}
+                                  title="Rename"
+                                >
+                                  <Pencil className="size-[13px]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sess-x"
+                                  onClick={(e) => handleExport(s, e)}
+                                  aria-label={`Export session: ${label}`}
+                                  title="Export transcript"
+                                >
+                                  <Download className="size-[13px]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sess-x"
+                                  onClick={(e) => handleFork(s, e)}
+                                  aria-label={`Fork session: ${label}`}
+                                  title="Fork"
+                                >
+                                  <GitFork className="size-[13px]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="sess-x"
+                                  onClick={(e) => requestDelete(s, e)}
+                                  aria-label={`Delete session: ${label}`}
+                                  title="Delete"
+                                >
+                                  <X className="size-[13px]" />
+                                </button>
                               </span>
-                              <button
-                                type="button"
-                                className="sess-x edit"
-                                onClick={(e) => startRename(s.id, s.title, e)}
-                                aria-label={`Rename session: ${s.title || "Untitled session"}`}
-                                title="Rename"
-                              >
-                                <Pencil className="size-[13px]" />
-                              </button>
-                              <button
-                                type="button"
-                                className="sess-x"
-                                onClick={(e) => handleExport(s, e)}
-                                aria-label={`Export session: ${s.title || "Untitled session"}`}
-                                title="Export transcript"
-                              >
-                                <Download className="size-[13px]" />
-                              </button>
-                              <button
-                                type="button"
-                                className="sess-x"
-                                onClick={(e) => handleFork(s, e)}
-                                aria-label={`Fork session: ${s.title || "Untitled session"}`}
-                                title="Fork"
-                              >
-                                <GitFork className="size-[13px]" />
-                              </button>
-                              <button
-                                type="button"
-                                className="sess-x"
-                                onClick={(e) => requestDelete(s, e)}
-                                aria-label={`Delete session: ${s.title || "Untitled session"}`}
-                                title="Delete"
-                              >
-                                <X className="size-[13px]" />
-                              </button>
                             </>
                           )}
                         </div>
-                        <div className="sess-meta">
-                          <span>{s.message_count} msgs</span>
-                          <span>·</span>
-                          <span>{relativeTime(s.started_at) || "new"}</span>
-                        </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                   {!sessQuery.trim() && hasMoreSessions && (
                     <button
@@ -1037,7 +1046,9 @@ export function ConsoleShell({
                     key={p.id}
                     className={p.id === autonomy ? "on" : ""}
                     style={
-                      p.id === autonomy ? { background: p.dot } : undefined
+                      p.id === autonomy
+                        ? ({ ["--seg-on" as string]: p.dot } as React.CSSProperties)
+                        : undefined
                     }
                     onClick={() => changeAutonomy(p.id)}
                   >
@@ -1068,7 +1079,7 @@ export function ConsoleShell({
             <>
               <h1>
                 {activeId
-                  ? activeSession?.title || "Session"
+                  ? activeSession?.title || "Untitled session"
                   : "New conversation"}
               </h1>
               {chat.sessionId && (
@@ -1087,9 +1098,9 @@ export function ConsoleShell({
 
           <div className="topbar-spacer" />
 
-          <span className="pill">
+          <span className="pill" role="status" aria-label={connPill.label} title={connPill.label}>
             <span className="chan-dot" style={{ background: connPill.color }} />
-            {connPill.label}
+            <span className="pill-label">{connPill.label}</span>
           </span>
 
           {route === "chat" && (
@@ -1104,7 +1115,7 @@ export function ConsoleShell({
           )}
           {route === "chat" && (
             <button
-              className="icon-btn"
+              className="icon-btn ctx-toggle"
               onClick={() => setTweak("rightPanel", !tweaks.rightPanel)}
               aria-label="Toggle context panel"
               aria-pressed={tweaks.rightPanel}
@@ -1218,7 +1229,8 @@ export function ConsoleShell({
         // no-op; the explicit Deny button below is the only deny path. The modal
         // reopens if it is still pending (a resolved/expired request clears it).
         onClose={() => {}}
-        title="🔧 Approve tool?"
+        closable={false}
+        title="Approve tool?"
         description={
           chat.pendingApproval
             ? `The agent wants to run the “${chat.pendingApproval.tool}” tool.`
@@ -1259,7 +1271,14 @@ export function ConsoleShell({
         }
       >
         {chat.pendingApproval ? (
-          <pre className="m-0 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 font-mono text-xs">
+          // Focus starts on the arguments, not on Deny or Approve: an accidental
+          // Enter must neither kill the turn nor run the tool.
+          <pre
+            tabIndex={-1}
+            data-autofocus
+            aria-label="Tool arguments"
+            className="m-0 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted p-3 font-mono text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
             {JSON.stringify(chat.pendingApproval.args, null, 2)}
           </pre>
         ) : null}

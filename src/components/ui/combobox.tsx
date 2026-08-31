@@ -48,7 +48,18 @@ export function Combobox({
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  // Row the arrow keys are on; -1 = none (Enter then takes the first match).
+  const [active, setActive] = React.useState(-1);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const listId = React.useId();
+
+  // A closed popover forgets its search and highlight.
+  React.useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setActive(-1);
+    }
+  }, [open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -74,12 +85,42 @@ export function Combobox({
     setQuery("");
   };
 
+  // Rows in the order they render: matches, then the "Use …" row.
+  const rows: { value: string; custom?: boolean }[] = [
+    ...filtered.map((it) => ({ value: it.value })),
+    ...(showCustom ? [{ value: query.trim(), custom: true }] : []),
+  ];
+  const optionId = (i: number) => `${listId}-opt-${i}`;
+
+  const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      setOpen(false);
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (rows.length === 0) return;
+      const step = e.key === "ArrowDown" ? 1 : -1;
+      const next = active < 0 ? (step > 0 ? 0 : rows.length - 1) : (active + step + rows.length) % rows.length;
+      setActive(next);
+      document.getElementById(optionId(next))?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const row = active >= 0 ? rows[active] : rows[0];
+      if (row) pick(row.value);
+    }
+  };
+
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         title={value ? selectedLabel : placeholder}
         className={cn(
           "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-default disabled:opacity-50",
@@ -104,34 +145,42 @@ export function Combobox({
             <input
               autoFocus
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setOpen(false);
-                if (e.key === "Enter") {
-                  if (filtered[0]) pick(filtered[0].value);
-                  else if (showCustom) pick(query.trim());
-                }
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(-1);
               }}
+              onKeyDown={onInputKey}
+              role="combobox"
+              aria-expanded
+              aria-controls={listId}
+              aria-autocomplete="list"
+              aria-activedescendant={active >= 0 ? optionId(active) : undefined}
               placeholder={searchPlaceholder}
-              className={cn("h-8 flex-1 bg-transparent text-xs outline-none", mono && "font-mono")}
+              className={cn("h-8 flex-1 rounded-sm bg-transparent text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring", mono && "font-mono")}
             />
           </div>
 
-          <div className="max-h-64 overflow-y-auto py-1">
+          <div id={listId} role="listbox" className="max-h-64 overflow-y-auto py-1">
             {loading ? (
               <div className="px-2 py-2 text-[11px] text-muted-foreground">Loading…</div>
             ) : filtered.length === 0 && !showCustom ? (
               <div className="px-2 py-2 text-[11px] text-muted-foreground">{emptyText}</div>
             ) : (
-              filtered.map((it) => (
+              filtered.map((it, i) => (
                 <button
                   key={it.value}
+                  id={optionId(i)}
                   type="button"
+                  role="option"
+                  aria-selected={it.value === value}
+                  tabIndex={-1}
+                  onMouseEnter={() => setActive(i)}
                   onClick={() => pick(it.value)}
                   className={cn(
                     "flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted",
                     mono && "font-mono",
                     it.value === value && "bg-muted/60",
+                    active === i && "bg-muted",
                   )}
                 >
                   <span className="truncate">{it.label}</span>
@@ -144,9 +193,17 @@ export function Combobox({
             )}
             {showCustom && (
               <button
+                id={optionId(filtered.length)}
                 type="button"
+                role="option"
+                aria-selected={false}
+                tabIndex={-1}
+                onMouseEnter={() => setActive(filtered.length)}
                 onClick={() => pick(query.trim())}
-                className="flex w-full items-center gap-1 px-2 py-1.5 text-left text-xs hover:bg-muted"
+                className={cn(
+                  "flex w-full items-center gap-1 px-2 py-1.5 text-left text-xs hover:bg-muted",
+                  active === filtered.length && "bg-muted",
+                )}
               >
                 Use <span className={cn(mono && "font-mono")}>&ldquo;{query.trim()}&rdquo;</span>
               </button>
