@@ -22,11 +22,14 @@ export function describeCron(expr: string): string | null {
   const m = num(min);
 
   let time: string;
+  const everyN = /^\*\/(\d+)$/.exec(min);
   if (min === "*" && hour === "*") return "every minute";
+  else if (everyN && hour === "*" && dom === "*" && mon === "*" && dow === "*")
+    return `every ${Number(everyN[1])} minutes`;
   else if (h != null && m != null && h < 24 && m < 60)
     time = `at ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  else if (hour === "*" && m != null && m < 60)
-    time = `at :${String(m).padStart(2, "0")} every hour`;
+  else if (hour === "*" && m != null && m < 60 && dom === "*" && mon === "*" && dow === "*")
+    return `every hour at :${String(m).padStart(2, "0")}`;
   else return null;
 
   let day: string;

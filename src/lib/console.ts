@@ -83,6 +83,14 @@ export const PERSONA_CHANGED = "rantaiclaw:persona-changed";
  */
 export const CONFIG_CHANGED = "rantaiclaw:config-changed";
 
+/**
+ * Broadcast after any surface in this console writes the autonomy rung (the
+ * rail's segment, Shift+Tab, or the Tools panel). The other surface re-reads
+ * config on it, so the two ladders agree at once instead of on the next 30s
+ * poll (rail) or never (panel). Listeners only re-read; they never re-dispatch.
+ */
+export const AUTONOMY_CHANGED = "rantaiclaw:autonomy-changed";
+
 /** Legacy hash ids that resolve to a current route — the Knowledge Graph is now
  *  a lens inside Knowledge Bases, not a top-level route. */
 const ROUTE_ALIASES: Record<string, Route> = { kbgraph: "kb" };

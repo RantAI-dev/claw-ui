@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
+import { ChevronRight, History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import type { CronJob, CronRun, CronSchedule } from "@/lib/types";
 import { CRON_PRESETS, describeCron, validateCron } from "@/lib/cron";
@@ -72,6 +72,10 @@ export function CronPanel() {
 
   const schedulePreview = describeCron(expr);
   const cronError = kind === "cron" ? validateCron(expr) : null;
+  const everyError =
+    kind === "every" && everyMin.trim() !== "" && !(Number.isInteger(Number(everyMin)) && Number(everyMin) >= 1)
+      ? "Interval must be a whole number of minutes, at least 1"
+      : null;
 
   // Live refresh: a job firing in the background surfaces without a manual click.
   // `useAsync` keeps stale content mounted during a refresh, so this doesn't flash.
@@ -93,6 +97,10 @@ export function CronPanel() {
       const ms = at ? Date.parse(at) : NaN;
       if (!Number.isFinite(ms)) {
         toast.error("Pick a valid date and time");
+        return null;
+      }
+      if (ms <= Date.now()) {
+        toast.error("Pick a time in the future");
         return null;
       }
       return { kind: "at", at: new Date(ms).toISOString() };
@@ -137,7 +145,7 @@ export function CronPanel() {
       if (created.warning) {
         toast.warning(created.warning);
       } else {
-        toast.success("Cron job created");
+        toast.success("Job scheduled");
       }
       setPrompt("");
       setCommand("");
@@ -204,7 +212,8 @@ export function CronPanel() {
   const createDisabled =
     busy ||
     (jobKind === "shell" ? !command.trim() : !prompt.trim()) ||
-    (kind === "cron" && (!expr.trim() || cronError != null));
+    (kind === "cron" && (!expr.trim() || cronError != null)) ||
+    (kind === "every" && (!everyMin.trim() || everyError != null));
 
   return (
     <div className="space-y-4">
@@ -252,7 +261,11 @@ export function CronPanel() {
                 key={p.expr}
                 type="button"
                 onClick={() => setExpr(p.expr)}
-                className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+                aria-pressed={expr.trim() === p.expr}
+                className={cn(
+                  "rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted",
+                  expr.trim() === p.expr && "border-ring bg-muted text-foreground",
+                )}
               >
                 {p.label}
               </button>
@@ -302,6 +315,9 @@ export function CronPanel() {
               />
               <span className="text-xs text-muted-foreground">min</span>
             </div>
+          )}
+          {kind === "every" && everyError && (
+            <p className="w-full text-[11px] text-destructive">{everyError}</p>
           )}
           {kind === "at" && (
             <Input
@@ -370,7 +386,8 @@ export function CronPanel() {
                   {!j.enabled && <Badge variant="warning" className="text-[10px]">paused</Badge>}
                 </div>
                 <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  {formatSchedule(j.schedule)} · {j.next_run == null ? "no next run" : `next ${fmtWhen(j.next_run)}`}
+                  {formatSchedule(j.schedule)} ·{" "}
+                  {!j.enabled ? "paused" : j.next_run == null ? "no next run" : `next ${fmtWhen(j.next_run)}`}
                   {j.last_status ? ` · last: ${j.last_status} (${fmtWhen(j.last_run)})` : ""}
                 </div>
                 {(j.prompt || j.command) && (
@@ -381,8 +398,8 @@ export function CronPanel() {
               </div>
               <IconButton
                 onClick={() => toggle(j.id, !j.enabled)}
-                title={j.enabled ? "Disable" : "Enable"}
-                aria-label={j.enabled ? "Disable job" : "Enable job"}
+                title={j.enabled ? "Pause" : "Resume"}
+                aria-label={j.enabled ? "Pause job" : "Resume job"}
                 className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
               >
                 <Power className="size-3.5" />
@@ -630,11 +647,14 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
         {error && <p className="text-[11px] text-destructive">{error}</p>}
         {!error && runs == null && <p className="text-[11px] text-muted-foreground">Loading…</p>}
         {runs != null && runs.length === 0 && (
-          <p className="text-[11px] text-muted-foreground">No runs yet. Use Run now on the job to trigger one.</p>
+          <p className="text-[11px] text-muted-foreground">
+            No finished runs yet. Use Run now on the job; a run shows up here once it completes.
+          </p>
         )}
         {runs?.map((r) => (
-          <details key={r.id} className="rounded border border-border px-2 py-1.5">
+          <details key={r.id} className="group rounded border border-border px-2 py-1.5">
             <summary className="flex cursor-pointer items-center gap-2 text-[11px]">
+              <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
               <Badge variant={r.status === "ok" ? "secondary" : "warning"} className="text-[10px]">
                 {r.status}
               </Badge>

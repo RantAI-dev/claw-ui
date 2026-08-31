@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { formatTemperature } from "@/lib/utils";
 import { Eye, EyeOff, Save } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { maskConfigForDisplay, CONFIG_CHANGED } from "@/lib/console";
@@ -24,14 +25,27 @@ export function ConfigPanel() {
 
   React.useEffect(() => {
     if (cfg.data) {
-      setTemp(cfg.data.default_temperature != null ? String(cfg.data.default_temperature) : "");
+      setTemp(
+        cfg.data.default_temperature != null ? formatTemperature(cfg.data.default_temperature) : "",
+      );
     }
   }, [cfg.data]);
 
+  // Sampling temperature is 0–2 on every provider this console knows; the
+  // gateway accepted -1 and 10 and the model call failed later.
+  const tempNumber = Number(temp);
+  const tempError =
+    temp.trim() === ""
+      ? "Enter a temperature between 0 and 2."
+      : !Number.isFinite(tempNumber) || tempNumber < 0 || tempNumber > 2
+        ? "Temperature must be between 0 and 2."
+        : null;
+
   const save = async () => {
+    if (tempError) return;
     setBusy(true);
     try {
-      await api.setConfigModel({ temperature: temp ? Number(temp) : undefined });
+      await api.setConfigModel({ temperature: tempNumber });
       toast.success("Default temperature updated");
       cfg.refresh();
       // Invalidate the shell's load-time snapshots (right-rail temperature).
@@ -67,15 +81,27 @@ export function ConfigPanel() {
               placeholder="temperature"
               type="number"
               step="0.1"
+              min="0"
+              max="2"
+              aria-label="Default temperature"
+              aria-invalid={tempError ? true : undefined}
               className="w-32"
             />
-            <Button size="sm" onClick={save} disabled={busy || notReady}>
+            <Button size="sm" onClick={save} disabled={busy || notReady || tempError != null}>
               <Save className="size-4" /> Save
             </Button>
           </div>
+          {tempError && (
+            <p className="mt-2 text-[11px] text-destructive" role="alert">
+              {tempError}
+            </p>
+          )}
           <p className="mt-3 text-[11px] text-muted-foreground">
             Choose the active provider and model in{" "}
-            <span className="text-foreground">Providers</span>.
+            <a href="#providers" className="text-foreground underline underline-offset-2">
+              Providers
+            </a>
+            .
           </p>
         </PanelFrame>
       </Card>

@@ -43,9 +43,14 @@ export function Modal({
     const focusFirst = () => {
       const panel = panelRef.current;
       if (!panel) return;
-      const focusable = panel.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
+      // A child marked data-autofocus wins (a confirm dialog puts it on
+      // Cancel); otherwise the first focusable, which is the X in the header.
+      // React's autoFocus prop never reaches the DOM, hence the data attribute.
+      const focusable =
+        panel.querySelector<HTMLElement>("[data-autofocus]") ??
+        panel.querySelector<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
       (focusable ?? panel).focus();
     };
     focusFirst();

@@ -31,6 +31,12 @@ export function formatNumber(n: number | null | undefined): string {
   return n.toLocaleString();
 }
 
+/** Config temperatures arrive as f32 widened to f64 (0.699999988…); show them
+ *  the way they were typed. */
+export function formatTemperature(n: number): string {
+  return String(Number(n.toPrecision(3)));
+}
+
 export function formatUsd(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "$0.00";
   return `$${n.toFixed(n < 1 ? 4 : 2)}`;

@@ -160,7 +160,6 @@ export function McpPanel() {
                     onClick={() => setPendingRemove(n)}
                     disabled={w}
                     title="Remove"
-                    aria-label={`Remove ${n}`}
                     aria-label={`Remove MCP server ${n}`}
                     className="shrink-0 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                   >

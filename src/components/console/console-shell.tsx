@@ -19,7 +19,7 @@ import {
 import { api, describeApiError } from "@/lib/api";
 import { toMarkdown } from "@/lib/transcript-export";
 import { brand } from "@/lib/branding";
-import { relativeTime } from "@/lib/utils";
+import { formatTemperature, relativeTime } from "@/lib/utils";
 import {
   ACCENTS,
   AUTONOMY,
@@ -39,6 +39,7 @@ import {
   SKILLS_CHANGED,
   PERSONA_CHANGED,
   CONFIG_CHANGED,
+  AUTONOMY_CHANGED,
 } from "@/lib/console";
 import type {
   GatewayConfig,
@@ -363,7 +364,7 @@ export function ConsoleShell({
       .config()
       .then((c) => {
         const t = c?.default_temperature;
-        if (t != null) setTemperature(String(t));
+        if (t != null) setTemperature(formatTemperature(t));
         const mcp = c?.mcp_servers;
         setMcpCount(mcp && typeof mcp === "object" ? Object.keys(mcp).length : 0);
       })
@@ -396,7 +397,7 @@ export function ConsoleShell({
       .config()
       .then((c) => {
         const t = c?.default_temperature;
-        if (t != null) setTemperature(String(t));
+        if (t != null) setTemperature(formatTemperature(t));
         const mcp = c?.mcp_servers;
         if (mcp && typeof mcp === "object")
           setMcpCount(Object.keys(mcp).length);
@@ -453,6 +454,19 @@ export function ConsoleShell({
     };
   }, [applyAutonomyFromConfig]);
 
+  // The Tools panel writes the same setting; follow it at once, not on the poll.
+  React.useEffect(() => {
+    const onChanged = () => {
+      const startedAt = Date.now();
+      api
+        .config()
+        .then((c) => applyAutonomyFromConfig(c, startedAt))
+        .catch(() => {});
+    };
+    window.addEventListener(AUTONOMY_CHANGED, onChanged);
+    return () => window.removeEventListener(AUTONOMY_CHANGED, onChanged);
+  }, [applyAutonomyFromConfig]);
+
   // Persist an autonomy rung change to the gateway (maps 4 rungs → real level + always_ask).
   const autonomyRef = React.useRef(autonomy);
   autonomyRef.current = autonomy;
@@ -471,6 +485,7 @@ export function ConsoleShell({
         // the screen.
         autonomyWrittenAt.current = Date.now();
         toast.success(`Autonomy set to ${autonomyPreset(rung).label}`);
+        window.dispatchEvent(new Event(AUTONOMY_CHANGED));
       })
       .catch((e) => {
         setAutonomyState(previous);

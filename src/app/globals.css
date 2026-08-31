@@ -576,7 +576,9 @@
   line-height: 1.5;
   color: var(--muted-foreground);
   margin-top: 7px;
-  min-height: 28px;
+  /* Two lines: Smart and Strict wrap, and a one-line reservation shifted the
+     agent card up on every rung change. */
+  min-height: 34px;
 }
 
 /* ============================ Topbar ============================ */

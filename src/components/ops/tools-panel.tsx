@@ -5,7 +5,14 @@ import { Plus, X } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { GatewayAutonomy } from "@/lib/types";
-import { AUTONOMY, BUILTIN_TOOLS, autonomyPreset, levelToRung, rungToAutonomyPayload } from "@/lib/console";
+import {
+  AUTONOMY,
+  AUTONOMY_CHANGED,
+  BUILTIN_TOOLS,
+  autonomyPreset,
+  levelToRung,
+  rungToAutonomyPayload,
+} from "@/lib/console";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,12 +55,21 @@ export function ToolsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.data]);
 
+  // The rail writes the same setting; re-read when it does so the two ladders
+  // never disagree until a manual Refresh.
+  React.useEffect(() => {
+    const onChanged = () => cfg.refresh();
+    window.addEventListener(AUTONOMY_CHANGED, onChanged);
+    return () => window.removeEventListener(AUTONOMY_CHANGED, onChanged);
+  }, [cfg.refresh]);
+
   const patch = async (body: Parameters<typeof api.setAutonomy>[0], msg?: string) => {
     setBusy(true);
     try {
       await api.setAutonomy(body);
       if (msg) toast.success(msg);
       cfg.refresh();
+      if ("level" in body) window.dispatchEvent(new Event(AUTONOMY_CHANGED));
     } catch (e) {
       toast.error(`Update failed: ${describeApiError(e)}`);
     } finally {
@@ -65,7 +81,10 @@ export function ToolsPanel() {
     const next = autoApprove.includes(tool)
       ? autoApprove.filter((t) => t !== tool)
       : [...autoApprove, tool];
-    patch({ auto_approve: next });
+    patch(
+      { auto_approve: next },
+      next.includes(tool) ? `${tool} runs without asking` : `${tool} asks before running`,
+    );
   };
   const addCmd = () => {
     const c = cmd.trim();
@@ -74,7 +93,8 @@ export function ToolsPanel() {
     else patch({ allowed_commands: [...allowed, c] }, `Allowed “${c}”`);
     setCmd("");
   };
-  const removeCmd = (c: string) => patch({ allowed_commands: allowed.filter((x) => x !== c) });
+  const removeCmd = (c: string) =>
+    patch({ allowed_commands: allowed.filter((x) => x !== c) }, `Removed “${c}” from the allowlist`);
 
   const saveLimits = () => {
     if (actionsInput.trim() === "" || costInput.trim() === "") {
@@ -115,6 +135,7 @@ export function ToolsPanel() {
                     variant="outline"
                     size="sm"
                     disabled={busy}
+                    aria-pressed={on}
                     onClick={() => patch(rungToAutonomyPayload(p.id), `Autonomy set to ${p.label}`)}
                     style={on ? { borderColor: p.dot } : undefined}
                   >
@@ -188,7 +209,9 @@ export function ToolsPanel() {
             <Card className="divide-y divide-border">
               {BUILTIN_TOOLS.map((tool) => {
                 const auto = autoApprove.includes(tool);
-                const ask = alwaysAsk.includes(tool);
+                // Manual prompts for everything, whether or not the gateway has
+                // materialised the always_ask list yet.
+                const ask = rung === "manual" || alwaysAsk.includes(tool);
                 return (
                   <div key={tool} className="flex items-center gap-3 px-3 py-2.5">
                     <span className="font-mono text-[13px]">{tool}</span>
@@ -199,11 +222,17 @@ export function ToolsPanel() {
                       type="button"
                       className={"switch" + (auto ? " on" : "")}
                       onClick={() => toggleTool(tool)}
-                      disabled={busy}
+                      disabled={busy || ask}
                       role="switch"
                       aria-checked={auto}
                       aria-label={`Auto-approve ${tool}`}
-                      title={auto ? "Auto-approved" : "Requires approval"}
+                      title={
+                        ask
+                          ? "Manual prompts for every tool; switch to Smart to auto-approve"
+                          : auto
+                            ? "Auto-approved"
+                            : "Requires approval"
+                      }
                     >
                       <i />
                     </button>

@@ -34,7 +34,8 @@ export function ConfirmModal({
       description={description}
       footer={
         <>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+          {/* Focus starts on the safe choice, not the X in the header. */}
+          <Button data-autofocus variant="outline" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button variant="destructive" size="sm" onClick={onConfirm} disabled={busy}>
