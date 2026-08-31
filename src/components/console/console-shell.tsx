@@ -39,6 +39,7 @@ import {
   SKILLS_CHANGED,
   PERSONA_CHANGED,
   CONFIG_CHANGED,
+  AUTONOMY_CHANGED,
 } from "@/lib/console";
 import type {
   GatewayConfig,
@@ -470,6 +471,7 @@ export function ConsoleShell({
         // staleness guard and discarded the very read that would have corrected
         // the screen.
         autonomyWrittenAt.current = Date.now();
+        window.dispatchEvent(new Event(AUTONOMY_CHANGED));
         toast.success(`Autonomy set to ${autonomyPreset(rung).label}`);
       })
       .catch((e) => {

@@ -1,12 +1,16 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react";
+import { AUTONOMY_CHANGED } from "@/lib/console";
 
 const status = vi.fn();
 const doctor = vi.fn();
 const insights = vi.fn();
 
-vi.mock("@/lib/api", () => ({
+// Keep the real `describeApiError` (useAsync maps every failure through it);
+// only the three requests are stubbed.
+vi.mock("@/lib/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api")>()),
   api: {
     status: () => status(),
     doctor: () => doctor(),
@@ -112,6 +116,58 @@ describe("StatusPanel health", () => {
     expect(await screen.findByText("not required")).toBeTruthy();
     expect(container.textContent).not.toContain("—");
     expect(container.querySelector("[class*='warning']")).toBeNull();
+  });
+});
+
+describe("StatusPanel behaviour", () => {
+  it("re-reads status when the rail broadcasts a rung change", async () => {
+    render(<StatusPanel />);
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(1));
+    act(() => {
+      window.dispatchEvent(new Event(AUTONOMY_CHANGED));
+    });
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    // Only /status is re-read; the doctor and usage requests stay on their buttons.
+    expect(doctor).toHaveBeenCalledTimes(1);
+    expect(insights).toHaveBeenCalledTimes(1);
+  });
+
+  it("collapses a gateway outage into one block with one Retry", async () => {
+    status.mockRejectedValue(new Error("gateway down"));
+    doctor.mockRejectedValue(new Error("gateway down"));
+    insights.mockRejectedValue(new Error("gateway down"));
+    render(<StatusPanel />);
+    expect(await screen.findByText("Couldn't reach the gateway.")).toBeTruthy();
+    expect(screen.getAllByText(/gateway down/)).toHaveLength(1);
+    expect(screen.queryByText("Usage")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /retry/i })).toHaveLength(1);
+  });
+
+  it("keeps the other sections when only the doctor request fails", async () => {
+    doctor.mockRejectedValue(new Error("doctor down"));
+    render(<StatusPanel />);
+    expect(await screen.findByText(/doctor down/)).toBeTruthy();
+    expect(await screen.findByText("Runtime")).toBeTruthy();
+    expect(screen.queryByText("Couldn't reach the gateway.")).toBeNull();
+  });
+
+  it("names what each section is loading and disables Refresh while its request is in flight", async () => {
+    render(<StatusPanel />);
+    await screen.findByText("Runtime");
+    status.mockReturnValue(new Promise(() => {}));
+    const refresh = screen.getAllByRole("button", { name: "Refresh" })[0];
+    fireEvent.click(refresh);
+    await waitFor(() => expect((refresh as HTMLButtonElement).disabled).toBe(true));
+    // The usage button is untouched by a health refresh.
+    expect((screen.getAllByRole("button", { name: "Refresh" })[1] as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("says what it is loading", async () => {
+    status.mockReturnValue(new Promise(() => {}));
+    doctor.mockReturnValue(new Promise(() => {}));
+    render(<StatusPanel />);
+    expect(await screen.findByText("Loading health…")).toBeTruthy();
+    expect(await screen.findByText("Running checks…")).toBeTruthy();
   });
 });
 

@@ -65,6 +65,7 @@ export function PanelFrame({
   empty,
   onRefresh,
   loaded,
+  loadingLabel,
   children,
 }: {
   loading?: boolean;
@@ -81,12 +82,14 @@ export function PanelFrame({
    * operator from the save having failed.
    */
   loaded?: boolean;
+  /** What is being loaded ("Loading usage…"); the bare default names nothing. */
+  loadingLabel?: string;
   children: React.ReactNode;
 }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Loading…
+        <Loader2 className="size-4 animate-spin" /> {loadingLabel ?? "Loading…"}
       </div>
     );
   }

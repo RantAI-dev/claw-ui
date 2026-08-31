@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { autonomyPreset, levelToRung } from "@/lib/console";
+import { AUTONOMY_CHANGED, autonomyPreset, levelToRung } from "@/lib/console";
 import {
   doctorSummary,
   emptyValue,
@@ -92,6 +94,9 @@ function autonomyLabel(s: StatusInfo): string {
   return autonomyPreset(s.autonomy_preset ?? levelToRung(s.autonomy)).label;
 }
 
+/** Same cadence as the topbar pill (`useGatewayStatus`). */
+const STATUS_POLL_MS = 15000;
+
 export function StatusPanel() {
   const status = useAsync(() => api.status(), []);
   const doctor = useAsync(() => api.doctor(), []);
@@ -99,11 +104,87 @@ export function StatusPanel() {
   const s = status.data;
   const skipped = skippedSentence(doctor.data?.skipped);
 
+  // The health snapshot is the one thing on this page that changes on its
+  // own, and the rail can change the rung while the page is open. Re-read
+  // `/status` on the rail's broadcast and on the pill's cadence while the tab
+  // is visible; doctor and usage stay on their buttons. `refresh` keeps the
+  // content mounted, so nothing flashes.
+  const refreshStatus = status.refresh;
+  React.useEffect(() => {
+    window.addEventListener(AUTONOMY_CHANGED, refreshStatus);
+    return () => window.removeEventListener(AUTONOMY_CHANGED, refreshStatus);
+  }, [refreshStatus]);
+  React.useEffect(() => {
+    let id: ReturnType<typeof setInterval> | null = null;
+    const stop = () => {
+      if (id !== null) {
+        clearInterval(id);
+        id = null;
+      }
+    };
+    const start = () => {
+      if (id === null && document.visibilityState !== "hidden") {
+        id = setInterval(refreshStatus, STATUS_POLL_MS);
+      }
+    };
+    // On becoming visible again, read once now rather than waiting out an
+    // interval: the snapshot may be a whole hidden period stale.
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        stop();
+        return;
+      }
+      refreshStatus();
+      start();
+    };
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refreshStatus]);
+
+  // The three requests fail for one cause when the gateway is down; one block
+  // with one Retry, not three identical alarms under a pill that already
+  // says "Gateway offline". A failure of the doctor or usage request alone
+  // still shows inside its own section.
+  if (status.error && !status.loaded) {
+    return (
+      <EmptyState
+        tone="destructive"
+        icon={<AlertTriangle className="size-6" />}
+        title="Couldn't reach the gateway."
+        hint={status.error}
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              status.refresh();
+              doctor.refresh();
+              insights.refresh();
+            }}
+          >
+            <RefreshCw /> Retry
+          </Button>
+        }
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
-        <SectionTitle action={<RefreshButton onClick={status.refresh} />}>Health</SectionTitle>
-        <PanelFrame loading={status.loading} error={status.error} loaded={status.loaded} onRefresh={status.refresh}>
+        <SectionTitle action={<RefreshButton onClick={status.refresh} spinning={status.refreshing} />}>
+          Health
+        </SectionTitle>
+        <PanelFrame
+          loading={status.loading}
+          error={status.error}
+          loaded={status.loaded}
+          loadingLabel="Loading health…"
+        >
           {s && (
             <>
               <HealthCard runtime={s.runtime} />
@@ -125,12 +206,14 @@ export function StatusPanel() {
       </div>
 
       <div>
-        <SectionTitle action={<RefreshButton onClick={insights.refresh} />}>Usage</SectionTitle>
+        <SectionTitle action={<RefreshButton onClick={insights.refresh} spinning={insights.refreshing} />}>
+          Usage
+        </SectionTitle>
         <PanelFrame
           loading={insights.loading}
           error={insights.error}
           loaded={insights.loaded}
-          onRefresh={insights.refresh}
+          loadingLabel="Loading usage…"
         >
           {insights.data &&
             (insights.data.total_sessions > 0 ? (
@@ -158,10 +241,17 @@ export function StatusPanel() {
       </div>
 
       <div>
-        <SectionTitle action={<RefreshButton label="Re-run checks" onClick={doctor.refresh} />}>
+        <SectionTitle
+          action={<RefreshButton label="Re-run checks" onClick={doctor.refresh} spinning={doctor.refreshing} />}
+        >
           Doctor checks
         </SectionTitle>
-        <PanelFrame loading={doctor.loading} error={doctor.error} loaded={doctor.loaded} onRefresh={doctor.refresh}>
+        <PanelFrame
+          loading={doctor.loading}
+          error={doctor.error}
+          loaded={doctor.loaded}
+          loadingLabel="Running checks…"
+        >
           {doctor.data && (
             <>
               <p className="mb-2 text-xs text-muted-foreground">
