@@ -70,8 +70,14 @@ export function describeApiError(e: unknown): string {
       return `Not authorised; sign in again. (${e.message})`;
     case 502:
     case 503:
-    case 504:
-      return `The gateway is unreachable; it may be restarting. (${e.message})`;
+    case 504: {
+      // The proxy's own 502 body says "the gateway is unreachable", which
+      // rendered as "…unreachable; it may be restarting. (the gateway is
+      // unreachable)". Keep the parenthetical only when it adds something.
+      const base = "The gateway is unreachable; it may be restarting.";
+      const m = e.message.trim();
+      return !m || /gateway is unreachable/i.test(m) ? base : `${base} (${m})`;
+    }
     default:
       return e.message;
   }

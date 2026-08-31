@@ -14,6 +14,7 @@ export function ConfirmModal({
   confirmLabel = "Delete",
   busy,
   onConfirm,
+  icon = <Trash2 className="size-4" />,
 }: {
   open: boolean;
   onClose: () => void;
@@ -22,6 +23,9 @@ export function ConfirmModal({
   confirmLabel?: React.ReactNode;
   busy?: boolean;
   onConfirm: () => void;
+  /** Icon on the confirm button. Defaults to the bin (most callers delete);
+   *  pass `null` for a confirm that does not delete anything. */
+  icon?: React.ReactNode;
 }) {
   return (
     <Modal
@@ -31,11 +35,12 @@ export function ConfirmModal({
       description={description}
       footer={
         <>
-          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+          {/* First focus lands on the safe choice, not on the dialog's X. */}
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy} data-autofocus>
             Cancel
           </Button>
           <Button variant="destructive" size="sm" onClick={onConfirm} disabled={busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            {busy ? <Loader2 className="size-4 animate-spin" /> : icon}
             {confirmLabel}
           </Button>
         </>
