@@ -50,6 +50,8 @@ export function SkillEditor({
   const [md, setMd] = React.useState(() =>
     mode === "create" ? emptyTemplate() : "",
   );
+  // What was loaded (edit) so Save stays off until something actually changed.
+  const [originalMd, setOriginalMd] = React.useState<string | null>(null);
   const [view, setView] = React.useState<"form" | "markdown">("form");
   const [loading, setLoading] = React.useState(mode === "edit");
   const [saving, setSaving] = React.useState(false);
@@ -66,7 +68,10 @@ export function SkillEditor({
     api
       .skillContent(slug)
       .then((r) => {
-        if (!cancelled) setMd(r.content);
+        if (!cancelled) {
+          setMd(r.content);
+          setOriginalMd(r.content);
+        }
       })
       .catch((e) => {
         if (!cancelled) setLoadError(describeApiError(e));
@@ -135,8 +140,9 @@ export function SkillEditor({
       ? "That name has no characters usable in a folder name."
       : null;
 
+  const dirty = mode === "create" || originalMd === null || md !== originalMd;
   const canSave =
-    !saving && !loading && !loadError && !collision && !tooLarge && !nameProblem;
+    !saving && !loading && !loadError && !collision && !tooLarge && !nameProblem && dirty;
 
   const save = async () => {
     setSaving(true);
@@ -297,7 +303,7 @@ export function SkillEditor({
           <Button
             onClick={save}
             disabled={!canSave}
-            title={!canSave && nameProblem ? nameProblem : undefined}
+            title={!canSave ? (nameProblem ?? (!dirty ? "No changes yet" : undefined)) : undefined}
           >
             {saving && <Loader2 className="size-3.5 animate-spin" />}
             {mode === "create" ? "Save skill" : "Save changes"}
