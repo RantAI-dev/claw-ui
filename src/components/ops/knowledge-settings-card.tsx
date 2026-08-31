@@ -87,7 +87,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
   const setEnabled = async (next: boolean) => {
     const ok = await put(
       { enabled: next },
-      next ? "Knowledge Base activated" : "Knowledge Base deactivated — key kept",
+      next ? "Knowledge Base activated" : "Knowledge Base deactivated; key kept",
     );
     if (ok) refreshAll();
   };
@@ -101,7 +101,9 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
     if (ok) refreshAll();
   };
 
-  if (status.loading) return null;
+  if (status.loading) {
+    return <Card className="p-3 text-xs text-muted-foreground">Loading Knowledge Base status…</Card>;
+  }
 
   // Never silently vanish on error — that hides the only place to enter an
   // embedding key. Surface it with a retry instead.
@@ -132,7 +134,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           </div>
           <div className="flex gap-2">
             <Button size="sm" onClick={() => setEnabled(true)} disabled={busy}>
-              {busy ? "…" : "Activate"}
+              {busy ? "Activating…" : "Activate"}
             </Button>
             {!envManaged && (
               <Button
@@ -150,7 +152,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           open={confirmClear}
           onClose={() => setConfirmClear(false)}
           title="Remove Knowledge Base keys?"
-          description="Permanently removes the stored keys — you will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
+          description="Permanently removes the stored keys. You will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
           confirmLabel="Remove keys"
           busy={busy}
           onConfirm={clear}
@@ -173,7 +175,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           {envManaged ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">
-                Key managed by <code>KB_EMBEDDING_API_KEY</code> — unset it to manage the key here.
+                Key managed by <code>KB_EMBEDDING_API_KEY</code>. Unset it to manage the key here.
               </span>
               <Button size="sm" variant="outline" onClick={() => setEnabled(false)} disabled={busy}>
                 Deactivate
@@ -202,7 +204,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           open={confirmClear}
           onClose={() => setConfirmClear(false)}
           title="Remove Knowledge Base keys?"
-          description="Permanently removes the stored keys — you will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
+          description="Permanently removes the stored keys. You will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
           confirmLabel="Remove keys"
           busy={busy}
           onConfirm={clear}
@@ -239,7 +241,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
       {formError && <p className="text-xs text-destructive">{formError}</p>}
       <Input
         type="password"
-        placeholder="OCR / vision key (optional — leave blank to reuse embedding key)"
+        placeholder="OCR / vision key (optional; leave blank to reuse the embedding key)"
         autoComplete="off"
         value={vision}
         onChange={(e) => setVision(e.target.value)}

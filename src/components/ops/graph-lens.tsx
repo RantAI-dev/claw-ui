@@ -151,7 +151,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
             hint={
               <>
                 Set <code>KB_INTELLIGENCE_ENABLED</code> to extract entities and relations across
-                your knowledge bases — a document&apos;s <em>Re-extract</em> also works while
+                your knowledge bases. A document&apos;s <em>Re-extract</em> also works while
                 disabled.
                 {data?.capability?.extraction_model && (
                   <ModelNote model={data.capability.extraction_model} />
@@ -180,7 +180,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
             title="No graph yet"
             hint={
               <>
-                No entities have been extracted for this scope yet — try a document&apos;s{" "}
+                No entities have been extracted for this scope yet. Try a document&apos;s{" "}
                 <em>Re-extract</em>.
                 {data?.capability?.extraction_model && (
                   <ModelNote model={data.capability.extraction_model} />
@@ -201,7 +201,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
               />
               {typeCounts.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border bg-card/60 px-3 py-2">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                     Legend
                   </span>
                   {typeCounts.map(([type, count]) => (
@@ -252,7 +252,7 @@ function ModelNote({ model }: { model: string }) {
   return (
     <span className="mt-2 block text-[11px] text-muted-foreground">
       Extraction model: <code>{model}</code>
-      {isSmallModel(model) && " — small; the extracted graph may be sparse or noisy."}
+      {isSmallModel(model) && " (small: the extracted graph may be sparse or noisy)."}
     </span>
   );
 }
@@ -302,12 +302,12 @@ function EntityDetail({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col border-t border-border/60">
-        <div className="px-3 pt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="px-3 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Relationships · {relations.length}
         </div>
         <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-3 scrollbar-thin">
           {relations.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No relationships recorded.</p>
+            <p className="text-xs text-muted-foreground">No relationships were extracted for this entity.</p>
           ) : (
             relations.map((r, i) => {
               const outgoing = r.source === node.id;
@@ -325,6 +325,7 @@ function EntityDetail({
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                     <span className="font-mono text-accent">{r.relation_type}</span>
+                    <span className="sr-only">to</span>
                     <span aria-hidden>→</span>
                     <span className="truncate">{outgoing ? otherName : node.name}</span>
                   </div>

@@ -94,7 +94,7 @@ export function ProvidersPanel() {
       if (res?.warning && !key.trim()) {
         toast.warning(res.warning);
       } else {
-        toast.success(`Saved — ${provider || active} · ${model || "model unchanged"}`);
+        toast.success(`Saved: ${provider || active} · ${model || "model unchanged"}`);
       }
       setKey("");
     } catch (e) {
@@ -122,14 +122,14 @@ export function ProvidersPanel() {
       </SectionTitle>
 
       <Card className="space-y-3 p-4">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Active provider & key
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>Currently:</span>
           <Badge variant="accent">{active || "none"}</Badge>
           <Badge variant={keyPresent ? "success" : "warning"}>{keyPresent ? "key set" : "no key"}</Badge>
-          {secrets.data?.encrypt_at_rest && <span className="text-[10px]">· encrypted at rest</span>}
+          {secrets.data?.encrypt_at_rest && <span className="text-[11px]">· encrypted at rest</span>}
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Combobox
@@ -142,7 +142,7 @@ export function ProvidersPanel() {
             onChange={changeProvider}
             placeholder="Choose provider…"
             searchPlaceholder="Search provider…"
-            emptyText="No providers"
+            emptyText="No provider matches that search."
           />
           <ModelPicker
             provider={provider}
@@ -157,7 +157,7 @@ export function ProvidersPanel() {
             URL field put it in config.toml in plaintext. */}
         <div className="space-y-1">
           <label htmlFor="provider-api-url" className="text-xs text-muted-foreground">
-            API base URL — optional, not your API key
+            API base URL (optional; not your API key)
           </label>
           <Input
             id="provider-api-url"
@@ -202,9 +202,9 @@ export function ProvidersPanel() {
               <RotateCcw className="size-4" /> Reset base URL
             </Button>
           )}
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[11px] text-muted-foreground">
             Sets the active provider; key stored encrypted, never shown back.
-            Leave the key blank to keep it — use Remove key to clear it.
+            Leave the key blank to keep it; use Remove key to clear it.
           </span>
         </div>
       </Card>
@@ -219,11 +219,20 @@ export function ProvidersPanel() {
             : "The stored API key for this provider will be cleared. The provider will have no credential until you save a new one. This does not touch the base URL."
         }
         confirmLabel={pendingClear === "url" ? "Reset URL" : "Remove key"}
+        icon={pendingClear === "url" ? <RotateCcw className="size-4" /> : undefined}
         busy={clearing}
         onConfirm={clearSecret}
       />
 
-      <PanelFrame loading={catalog.loading} error={catalog.error} loaded={catalog.loaded} onRefresh={catalog.refresh}>
+      <PanelFrame
+        loading={catalog.loading}
+        error={catalog.error}
+        loaded={catalog.loaded}
+        empty={catalog.loaded && (catalog.data?.providers.length ?? 0) === 0}
+        emptyTitle="The provider catalog is empty."
+        emptyHint="Refresh to reload it from the gateway."
+        onRefresh={catalog.refresh}
+      >
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {catalog.data?.providers.map((p) => (
             <Card

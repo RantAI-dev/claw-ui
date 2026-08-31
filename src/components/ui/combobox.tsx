@@ -80,6 +80,8 @@ export function Combobox({
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
         title={value ? selectedLabel : placeholder}
         className={cn(
           "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-default disabled:opacity-50",
@@ -113,7 +115,7 @@ export function Combobox({
                 }
               }}
               placeholder={searchPlaceholder}
-              className={cn("h-8 flex-1 bg-transparent text-xs outline-none", mono && "font-mono")}
+              className={cn("h-8 flex-1 rounded-sm bg-transparent text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring", mono && "font-mono")}
             />
           </div>
 
@@ -136,7 +138,7 @@ export function Combobox({
                 >
                   <span className="truncate">{it.label}</span>
                   <span className="flex shrink-0 items-center gap-1">
-                    {it.hint && <span className="text-[9px] text-muted-foreground">{it.hint}</span>}
+                    {it.hint && <span className="text-[10px] text-muted-foreground">{it.hint}</span>}
                     {it.value === value && <Check className="size-3.5 text-accent" />}
                   </span>
                 </button>
@@ -154,7 +156,7 @@ export function Combobox({
           </div>
 
           {footer && (
-            <div className="flex items-center justify-between border-t border-border/60 px-2 py-1 text-[10px] text-muted-foreground">
+            <div className="flex items-center justify-between border-t border-border/60 px-2 py-1 text-[11px] text-muted-foreground">
               {footer}
             </div>
           )}

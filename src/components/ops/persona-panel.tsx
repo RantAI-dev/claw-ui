@@ -117,12 +117,20 @@ export function PersonaPanel() {
       >
         Personality
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} loaded={!!data} empty={!loading && !error && !data} onRefresh={refresh}>
+      <PanelFrame
+        loading={loading}
+        error={error}
+        loaded={!!data}
+        empty={!loading && !error && !data}
+        emptyTitle="Persona not loaded."
+        emptyHint="The gateway returned no persona. Refresh to try again."
+        onRefresh={refresh}
+      >
         {data && (
           <Card className="space-y-3 p-4">
             <div className="text-[11px] text-muted-foreground">Profile: {data.profile}</div>
             <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Preset</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Preset</span>
               <Select value={preset} onChange={(e) => setPreset(e.target.value)} className="mt-1 w-full">
                 <option value="" disabled>
                   Choose a preset…
@@ -135,23 +143,23 @@ export function PersonaPanel() {
               </Select>
             </label>
             <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Name</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Name</span>
               <Input value={name} maxLength={80} onChange={(e) => setName(e.target.value)} className="mt-1" />
             </label>
             <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Timezone</span>
-              <Input value={timezone} maxLength={64} placeholder="Asia/Jakarta" onChange={(e) => setTimezone(e.target.value)} className="mt-1" />
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Timezone</span>
+              <Input value={timezone} maxLength={64} placeholder="IANA zone, e.g. Asia/Jakarta" onChange={(e) => setTimezone(e.target.value)} className="mt-1" />
             </label>
             <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Tone</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Tone</span>
               <Input value={tone} maxLength={80} onChange={(e) => setTone(e.target.value)} className="mt-1" />
             </label>
             <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Role</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Role</span>
               <Textarea value={role} maxLength={400} rows={2} onChange={(e) => setRole(e.target.value)} className="mt-1" />
             </label>
             <label className="block">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Avoid</span>
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Avoid</span>
               <Textarea value={avoid} maxLength={400} rows={2} placeholder="Leave empty to clear" onChange={(e) => setAvoid(e.target.value)} className="mt-1" />
             </label>
             <div className="flex justify-end border-t border-border/60 pt-3">
@@ -162,7 +170,7 @@ export function PersonaPanel() {
 
             {/* Always-on knowledge bases — retrieved on every chat regardless of per-chat selection. */}
             <div className="border-t border-border/60 pt-3">
-              <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 Always-on knowledge bases
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -172,7 +180,11 @@ export function PersonaPanel() {
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(groups.data || []).length === 0 ? (
                   <span className="text-[11px] text-muted-foreground">
-                    {groups.loading ? "Loading…" : "No knowledge bases yet."}
+                    {groups.loading
+                      ? "Loading…"
+                      : groups.error
+                        ? `Couldn't load knowledge bases: ${groups.error}`
+                        : "No knowledge bases yet. Create one in the Knowledge Bases tab."}
                   </span>
                 ) : (
                   (groups.data || []).map((g) => {

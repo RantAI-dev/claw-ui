@@ -252,7 +252,8 @@ export function KnowledgeGraph({
       ctx.beginPath();
       ctx.arc(x, y, r, 0, 2 * Math.PI);
       ctx.shadowColor = color;
-      ctx.shadowBlur = selected ? 22 : 8;
+      // Glow is the selection accent only; idle nodes stay matte.
+      ctx.shadowBlur = selected ? 18 : 0;
       ctx.globalAlpha = dimmed ? 0.3 : selected ? 1 : 0.92;
       ctx.fillStyle = color;
       ctx.fill();
@@ -336,8 +337,7 @@ export function KnowledgeGraph({
       className="relative overflow-hidden rounded-xl border border-border"
       style={{
         height,
-        background:
-          "radial-gradient(120% 120% at 50% 0%, color-mix(in oklab, var(--brand-sky) 7%, var(--card)) 0%, var(--card) 60%)",
+        background: "var(--card)",
       }}
     >
       {width > 0 && (

@@ -273,7 +273,7 @@ export function SkillsPanel() {
             />
           ) : (
             <div className="space-y-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 {query.trim()
                   ? `${matching.length} of ${skills.length} shown`
                   : `${enabledCount} enabled${disabledCount ? ` · ${disabledCount} disabled` : ""}`}
@@ -344,7 +344,7 @@ export function SkillsPanel() {
                       className="shrink-0"
                       title={
                         state.kind === "installed-unattributed"
-                          ? "This slug is installed, but the publisher was not recorded — reinstall to attribute it."
+                          ? "This slug is installed, but the publisher was not recorded. Reinstall to attribute it."
                           : undefined
                       }
                     >
@@ -391,7 +391,11 @@ export function SkillsPanel() {
             );
           })}
           {!hubLoading && hub && hub.length === 0 && (
-            <EmptyState className="col-span-full" title="No skills found." />
+            <EmptyState
+              className="col-span-full"
+              title={query.trim() ? `No ClawHub skills match "${query.trim()}".` : "ClawHub returned no skills."}
+              hint="Try another search, or write your own skill."
+            />
           )}
         </div>
       )}
@@ -561,7 +565,7 @@ function InstalledCard({
           <IconButton
             onClick={() => slug && onToggle(slug, skill.name, !enabled)}
             disabled={busy || !slug}
-            title={enabled ? "Disable" : "Enable"}
+            title={!slug ? "Not manageable here (no skill folder)" : enabled ? "Disable" : "Enable"}
             aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
             className={cn(
               "disabled:opacity-50",
@@ -573,7 +577,7 @@ function InstalledCard({
           <IconButton
             onClick={() => slug && onUninstall({ slug, name: skill.name })}
             disabled={busy || !slug}
-            title="Uninstall"
+            title={!slug ? "Not manageable here (no skill folder)" : "Uninstall"}
             aria-label={`Uninstall ${skill.name}`}
             className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
           >

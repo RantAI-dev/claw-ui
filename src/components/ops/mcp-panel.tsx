@@ -89,7 +89,7 @@ export function McpPanel() {
       </SectionTitle>
 
       <Card className="space-y-2 p-3">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Add a stdio MCP server
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -115,7 +115,7 @@ export function McpPanel() {
             <Plus className="size-4" /> Add
           </Button>
         </div>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground">
           Persisted to <code>[mcp_servers]</code>; the runtime connects on the next daemon restart.
         </p>
       </Card>
@@ -125,7 +125,7 @@ export function McpPanel() {
           <EmptyState
             icon={<Server className="size-6" />}
             title="No MCP servers configured yet"
-            hint="Add one above — it connects on the next daemon restart."
+            hint="Add one above; it connects on the next daemon restart."
           />
         ) : (
           <Card className="divide-y divide-border">
@@ -141,7 +141,7 @@ export function McpPanel() {
                       <Badge variant="secondary" className="text-[10px]">stdio</Badge>
                     </div>
                     <div className="truncate font-mono text-[11px] text-muted-foreground" title={cmd}>
-                      {cmd || "—"}
+                      {cmd || "no command set"}
                     </div>
                   </div>
                   <IconButton

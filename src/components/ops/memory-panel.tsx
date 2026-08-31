@@ -85,7 +85,7 @@ export function MemoryPanel() {
       });
       toast.success(
         stored.notes?.length
-          ? `Remembered as ${stored.key} — ${stored.notes.join("; ")}`
+          ? `Remembered as ${stored.key}. ${stored.notes.join("; ")}`
           : `Remembered as ${stored.key}`,
       );
       setContent("");
@@ -146,7 +146,7 @@ export function MemoryPanel() {
       </SectionTitle>
 
       <Card className="space-y-2 p-3">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Remember something
         </div>
         <Textarea
@@ -181,7 +181,7 @@ export function MemoryPanel() {
         </div>
         {/* Naming is what makes an entry addressable from the CLI and the API
             afterwards; unnamed ones get a UUID that means nothing to a reader. */}
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground">
           Without a name the agent generates one.
         </p>
       </Card>
@@ -222,7 +222,18 @@ export function MemoryPanel() {
         </Select>
       </div>
 
-      <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
+      <PanelFrame
+        loading={loading}
+        error={error}
+        empty={data?.count === 0}
+        emptyTitle={narrowed ? "No memories match this search." : "No memories stored yet."}
+        emptyHint={
+          narrowed
+            ? "Clear the search or the category filter to see everything."
+            : "Remember something with the form above."
+        }
+        onRefresh={refresh}
+      >
         <div className="space-y-2">
           {data?.entries.map((e) => {
             const w = working === e.key;

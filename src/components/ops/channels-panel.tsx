@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AlertTriangle } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -202,9 +203,13 @@ export function ChannelsPanel() {
         />
 
         <div className="mt-4">
-          <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             More channels
           </div>
+          <p className="mb-2 mt-1 text-[11px] text-muted-foreground">
+            No console setup for these yet: configure them in config.toml or the TUI. A
+            running one shows as active.
+          </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {OTHER_CHANNELS.map((c) => (
               <UnderDevelopmentChannel
@@ -295,7 +300,7 @@ function TelegramCard({
       const r = await api.updateTelegramAllowlist(parseUsers());
       // What the SERVER stored, not what was requested. A mismatch between the
       // two is exactly what an operator needs to see.
-      toast.success(`Allowlist updated — ${r.allowed_users} sender(s) allowed`);
+      toast.success(`Allowlist updated: ${r.allowed_users} sender(s) allowed`);
       notify(r);
       onReload(r.restarts_runtime === true);
     } catch (e) {
@@ -352,15 +357,15 @@ function TelegramCard({
         <CardTitle className="flex items-center gap-2 text-sm">
           Telegram
           {statusStale ? (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+            <Badge variant="outline" className="text-[11px]">
               status unknown
             </Badge>
           ) : connected ? (
-            <Badge variant="success" className="text-[10px] uppercase tracking-wide">
+            <Badge variant="success" className="text-[11px]">
               connected
             </Badge>
           ) : (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+            <Badge variant="outline" className="text-[11px]">
               not connected
             </Badge>
           )}
@@ -384,13 +389,16 @@ function TelegramCard({
                 them — and `autonomous_tools` silently voided both. */}
             <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px]">
               {boundary.autonomousTools ? (
-                <div className="font-medium text-destructive">
-                  ⚠ autonomous_tools = true — messages on this channel run tools without
-                  approval. The owner list below does not restrain them.
+                <div className="flex items-start gap-1.5 font-medium text-destructive" role="alert">
+                  <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                  <span>
+                    autonomous_tools = true: messages on this channel run tools without
+                    approval. The owner list below does not restrain them.
+                  </span>
                 </div>
               ) : boundary.owners.length === 0 ? (
                 <div className="text-muted-foreground">
-                  No approval owners — anything needing approval is auto-denied. Set
+                  No approval owners: anything needing approval is auto-denied. Set
                   <code className="mx-1">channels_config.approval_owners</code>, or send
                   <code className="mx-1">/claim &lt;code&gt;</code> from the chat.
                 </div>
@@ -407,7 +415,7 @@ function TelegramCard({
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted-foreground">
-                Saved straight into the running channel — no restart, and no need
+                Saved straight into the running channel: no restart, and no need
                 to re-enter the bot token. Changing the token is the one edit that
                 reloads the runtime.
               </span>
@@ -459,7 +467,7 @@ function TelegramCard({
       open={confirmDisconnect}
       onClose={() => setConfirmDisconnect(false)}
       title="Disconnect Telegram?"
-      description="The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect."
+      description="The saved bot token will be cleared. You'll need to re-enter it from @BotFather to reconnect."
       confirmLabel="Disconnect"
       busy={busy}
       onConfirm={disconnect}
@@ -472,7 +480,7 @@ function TelegramCard({
         drift
           ? [
               drift.wouldRevoke.length > 0
-                ? `Saving now removes: ${drift.wouldRevoke.join(", ")} — added on the server since this panel loaded (a /claim or /bind, most likely).`
+                ? `Saving now removes: ${drift.wouldRevoke.join(", ")}, added on the server since this panel loaded (a /claim or /bind, most likely).`
                 : "",
               drift.alsoChanged.length > 0
                 ? `Already removed on the server: ${drift.alsoChanged.join(", ")}.`
@@ -500,14 +508,14 @@ function UnderDevelopmentChannel({ label, active }: { label: string; active: boo
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{label}</span>
         {active && (
-          <Badge variant="success" className="text-[9px] uppercase tracking-wide">
+          <Badge variant="success" className="text-[11px]">
             active
           </Badge>
         )}
       </div>
-      <div className="mt-1 text-[11px] text-muted-foreground">
-        {active ? "Running · manage via TUI" : "Under development"}
-      </div>
+      {active && (
+        <div className="mt-1 text-[11px] text-muted-foreground">Running · manage via TUI</div>
+      )}
     </Card>
   );
 }

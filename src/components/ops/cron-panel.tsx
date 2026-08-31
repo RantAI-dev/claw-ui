@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
 function fmtWhen(ts: string | number | null): string {
-  if (ts == null) return "—";
+  if (ts == null) return "unknown";
   try {
     const ms = typeof ts === "number" ? (ts < 1e12 ? ts * 1000 : ts) : Date.parse(ts);
     if (!Number.isFinite(ms)) return String(ts);
@@ -214,7 +214,7 @@ export function CronPanel() {
 
       <Card className="space-y-2 p-3">
         <div className="flex items-center justify-between">
-          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             New {jobKind} job
           </div>
           <Select
@@ -252,7 +252,7 @@ export function CronPanel() {
                 key={p.expr}
                 type="button"
                 onClick={() => setExpr(p.expr)}
-                className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
+                className="rounded border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
               >
                 {p.label}
               </button>
@@ -328,7 +328,7 @@ export function CronPanel() {
           <Input
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="model override (optional — defaults to the agent's model)"
+            placeholder="model override (optional; defaults to the agent's model)"
             className="h-8 font-mono text-xs"
           />
         )}
@@ -349,7 +349,14 @@ export function CronPanel() {
         )}
       </Card>
 
-      <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
+      <PanelFrame
+        loading={loading}
+        error={error}
+        empty={data?.count === 0}
+        emptyTitle="No scheduled jobs yet."
+        emptyHint="Create one with the form above."
+        onRefresh={refresh}
+      >
         <Card className="divide-y divide-border">
           {data?.jobs.map((j) => (
             <div
@@ -363,7 +370,7 @@ export function CronPanel() {
                   {!j.enabled && <Badge variant="warning" className="text-[10px]">paused</Badge>}
                 </div>
                 <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  {formatSchedule(j.schedule)} · next {fmtWhen(j.next_run)}
+                  {formatSchedule(j.schedule)} · {j.next_run == null ? "no next run" : `next ${fmtWhen(j.next_run)}`}
                   {j.last_status ? ` · last: ${j.last_status} (${fmtWhen(j.last_run)})` : ""}
                 </div>
                 {(j.prompt || j.command) && (
@@ -408,7 +415,7 @@ export function CronPanel() {
             </div>
           ))}
         </Card>
-        <p className="mt-2 px-1 text-[10px] text-muted-foreground">
+        <p className="mt-2 px-1 text-[11px] text-muted-foreground">
           Next-run times are shown in your local time zone; cron expressions run in the server&apos;s
           (or a job&apos;s chosen time zone).
         </p>
@@ -623,7 +630,7 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
         {error && <p className="text-[11px] text-destructive">{error}</p>}
         {!error && runs == null && <p className="text-[11px] text-muted-foreground">Loading…</p>}
         {runs != null && runs.length === 0 && (
-          <p className="text-[11px] text-muted-foreground">No runs yet.</p>
+          <p className="text-[11px] text-muted-foreground">No runs yet. Use Run now on the job to trigger one.</p>
         )}
         {runs?.map((r) => (
           <details key={r.id} className="rounded border border-border px-2 py-1.5">

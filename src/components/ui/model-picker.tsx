@@ -32,6 +32,8 @@ export function ModelPicker({
   const [catalog, setCatalog] = React.useState<ModelCatalog | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
+  // A failed fetch must not read as "this provider has no models".
+  const [failed, setFailed] = React.useState(false);
 
   React.useEffect(() => {
     if (!provider) {
@@ -40,10 +42,15 @@ export function ModelPicker({
     }
     let cancelled = false;
     setLoading(true);
+    setFailed(false);
     api
       .providerModels(provider)
       .then((c) => !cancelled && setCatalog(c))
-      .catch(() => !cancelled && setCatalog(null))
+      .catch(() => {
+        if (cancelled) return;
+        setCatalog(null);
+        setFailed(true);
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
@@ -55,8 +62,10 @@ export function ModelPicker({
     setRefreshing(true);
     try {
       setCatalog(await api.refreshProviderModels(provider));
+      setFailed(false);
     } catch {
-      /* keep current list on failure */
+      // Keep the current list; the footer says the refresh did not land.
+      setFailed(true);
     } finally {
       setRefreshing(false);
     }
@@ -71,7 +80,11 @@ export function ModelPicker({
   const footer = (
     <>
       <span>
-        {catalog ? `${catalog.count} ${catalog.source === "cache" ? "cached" : "suggested"}` : "—"}
+        {failed
+          ? "catalog unavailable"
+          : catalog
+            ? `${catalog.count} ${catalog.source === "cache" ? "cached" : "suggested"}`
+            : "no catalog"}
       </span>
       <button
         type="button"
@@ -91,7 +104,11 @@ export function ModelPicker({
       onChange={onChange}
       placeholder={defaultModel || (provider ? "Choose model…" : "Pick a provider first")}
       searchPlaceholder="Search or type a model id…"
-      emptyText="No models — type an id to use a custom one."
+      emptyText={
+        failed
+          ? "Couldn't load the model catalog. Type a model id to use it anyway."
+          : "No models match. Type an id to use a custom one."
+      }
       disabled={!provider}
       loading={loading}
       compact={compact}

@@ -22,7 +22,7 @@ export function StatusPanel() {
   // payload supports.
   const autonomyLabel = s
     ? autonomyPreset(s.autonomy_preset ?? levelToRung(s.autonomy)).label
-    : "—";
+    : "unknown";
 
   return (
     <div className="space-y-6">
@@ -35,14 +35,14 @@ export function StatusPanel() {
             <>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <StatTile label="Version" value={s.version} />
-                <StatTile label="Provider" value={s.provider || "—"} tone="accent" />
+                <StatTile label="Provider" value={s.provider || "not set"} tone="accent" />
                 <StatTile label="Paired" value={s.paired ? "Yes" : "No"} tone={s.paired ? "success" : "warning"} />
                 <StatTile label="Autonomy" value={autonomyLabel} />
               </div>
               <Card className="mt-3 p-4">
-                <KeyVal k="Model" v={s.model || "—"} mono />
-                <KeyVal k="Memory backend" v={s.memory_backend || "—"} />
-                <KeyVal k="Workspace" v={s.workspace_dir || "—"} mono />
+                <KeyVal k="Model" v={s.model || "not set"} mono />
+                <KeyVal k="Memory backend" v={s.memory_backend || "none"} />
+                <KeyVal k="Workspace" v={s.workspace_dir || "not set"} mono />
               </Card>
             </>
           )}
@@ -64,7 +64,7 @@ export function StatusPanel() {
               <StatTile label="Avg / session" value={insights.data.avg_messages_per_session.toFixed(1)} />
               <StatTile
                 label="Latest"
-                value={insights.data.latest_session_started_at ? relativeTime(insights.data.latest_session_started_at) : "—"}
+                value={insights.data.latest_session_started_at ? relativeTime(insights.data.latest_session_started_at) : "no sessions yet"}
               />
             </div>
           )}
@@ -78,6 +78,8 @@ export function StatusPanel() {
           error={doctor.error}
           loaded={doctor.loaded}
           empty={doctor.data?.results.length === 0}
+          emptyTitle="No doctor checks reported."
+          emptyHint="The gateway returned an empty check list. Refresh to run them again."
           onRefresh={doctor.refresh}
         >
           <div className="space-y-1.5">

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Network, Sparkles } from "lucide-react";
+import { Loader2, Network, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { api, describeApiError } from "@/lib/api";
 import { deriveGraphState } from "./graph-lens-helpers";
@@ -61,7 +61,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
       if ((r.failed_chunks ?? 0) > 0) {
         // Partial failure: some chunks extracted, some did not — say both.
         toast.warning(
-          `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations — ` +
+          `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations; ` +
             `${formatNumber(r.failed_chunks ?? 0)} chunks failed${r.error ? ` (${r.error})` : ""}`,
           { id: t },
         );
@@ -86,7 +86,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           {reextracting ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
-            <Sparkles className="size-3.5" />
+            <RefreshCw className="size-3.5" />
           )}
           Re-extract
         </Button>
@@ -99,7 +99,12 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           ))}
         </div>
       ) : intel.error ? (
-        <div className="py-10 text-center text-sm text-destructive">{intel.error}</div>
+        <div className="py-10 text-center text-sm">
+          <p className="text-destructive">{intel.error}</p>
+          <Button variant="outline" size="sm" className="mt-3" onClick={intel.refresh}>
+            Retry
+          </Button>
+        </div>
       ) : entities.length === 0 ? (
         <EmptyState
           icon={<Network className="size-6" />}
@@ -112,7 +117,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
             if (state === "disabled")
               return (
                 <>
-                  Intelligence extraction is disabled — enable it with{" "}
+                  Intelligence extraction is disabled. Enable it with{" "}
                   <code>KB_INTELLIGENCE_ENABLED</code>, or use <em>Re-extract</em>, which works
                   while disabled.
                 </>
@@ -127,7 +132,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
               );
             return (
               <>
-                No entities are stored for this document — it may genuinely yield none. Try{" "}
+                No entities are stored for this document; it may genuinely yield none. Try{" "}
                 <em>Re-extract</em>.
               </>
             );
@@ -160,7 +165,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           <TabsContent value="relations">
             {relations.length === 0 ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                No relations extracted.
+                No relations were extracted between this document&apos;s entities.
               </p>
             ) : (
               <div className="space-y-1.5">
@@ -172,6 +177,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-medium">{nameById.get(r.source) ?? r.source}</span>
                       <span className="font-mono text-accent">{r.relation_type}</span>
+                      <span className="sr-only">to</span>
                       <span aria-hidden className="text-muted-foreground">→</span>
                       <span className="font-medium">{nameById.get(r.target) ?? r.target}</span>
                     </div>

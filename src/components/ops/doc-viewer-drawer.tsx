@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Network, Sparkles } from "lucide-react";
+import { FileText, Network } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { formatNumber, relativeTime } from "@/lib/utils";
 import { formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -49,7 +50,7 @@ export function DocViewerDrawer({
                 <FileText className="size-3.5" /> Preview
               </TabsTrigger>
               <TabsTrigger value="intelligence">
-                <Sparkles className="size-3.5" /> Intelligence
+                <Network className="size-3.5" /> Intelligence
               </TabsTrigger>
             </TabsList>
           </div>
@@ -86,20 +87,27 @@ function DocPreview({ documentId }: { documentId: string }) {
   }
 
   if (doc.error) {
-    return <div className="py-10 text-center text-sm text-destructive">{doc.error}</div>;
+    return (
+      <div className="py-10 text-center text-sm">
+        <p className="text-destructive">{doc.error}</p>
+        <Button variant="outline" size="sm" className="mt-3" onClick={doc.refresh}>
+          Retry
+        </Button>
+      </div>
+    );
   }
 
   const d = doc.data;
   if (!d) {
     return (
       <div className="py-10 text-center text-sm text-muted-foreground">
-        Document not found.
+        Document not found. It may have been deleted; close this panel and refresh the list.
       </div>
     );
   }
 
   const meta = [formatFileSize(d.file_size), d.file_type]
-    .filter((x) => x && x !== "—")
+    .filter(Boolean)
     .join(" · ");
   const retrievals = d.retrieval_count ?? 0;
   const content = d.content ?? "";
@@ -109,7 +117,7 @@ function DocPreview({ documentId }: { documentId: string }) {
       {/* Metadata row */}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {meta && (
-          <span className="font-mono uppercase tracking-wide">{meta}</span>
+          <span className="font-mono">{meta}</span>
         )}
         {d.created_at != null && (
           <>
@@ -138,7 +146,7 @@ function DocPreview({ documentId }: { documentId: string }) {
       {/* Content */}
       {content.trim().length === 0 ? (
         <EmptyState
-          icon={<Network className="size-6" />}
+          icon={<FileText className="size-6" />}
           title="No text content"
           hint="This document has no extracted text to preview."
         />

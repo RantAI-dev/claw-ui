@@ -20,7 +20,6 @@ import {
   Network,
   UploadCloud,
   Upload,
-  Sparkles,
   Eye,
 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
@@ -83,7 +82,13 @@ export function KbPanel() {
     ? (kbStatus.data.enabled ?? kbStatus.data.embedding_configured)
     : false;
 
-  if (kbStatus.loading) return null;
+  if (kbStatus.loading) {
+    return (
+      <div className="py-14 text-center text-xs text-muted-foreground">
+        Loading Knowledge Base status…
+      </div>
+    );
+  }
   if (!kbEnabled) {
     // Activation screen only — no Documents/Graph chrome, no doomed fetches.
     return <KnowledgeSettingsCard onChanged={kbStatus.refresh} />;
@@ -292,7 +297,7 @@ function KbCard({
       role="button"
       tabIndex={0}
       aria-label={`Open knowledge base ${group.name}`}
-      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {/* Hover / focus actions */}
       <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
@@ -303,7 +308,7 @@ function KbCard({
           }}
           title="Edit"
           aria-label={`Edit knowledge base ${group.name}`}
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md bg-card p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Pencil className="size-3.5" />
         </button>
@@ -314,7 +319,7 @@ function KbCard({
           }}
           title="Delete"
           aria-label={`Delete knowledge base ${group.name}`}
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-md bg-card p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Trash2 className="size-3.5" />
         </button>
@@ -437,7 +442,7 @@ function KbEditorModal({
     >
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Name
           </label>
           <Input
@@ -451,7 +456,7 @@ function KbEditorModal({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Description
           </label>
           <Textarea
@@ -462,7 +467,7 @@ function KbEditorModal({
           />
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Color
           </label>
           <div className="flex flex-wrap gap-2">
@@ -473,7 +478,7 @@ function KbEditorModal({
                 onClick={() => setColor(c)}
                 aria-label={`Color ${c}`}
                 className={cn(
-                  "size-7 rounded-full transition-transform hover:scale-110 cursor-pointer",
+                  "size-7 rounded-full cursor-pointer",
                   color === c
                     ? "ring-2 ring-ring ring-offset-2 ring-offset-card"
                     : "",
@@ -755,6 +760,9 @@ function KbDetail({
       <div
         onClick={() => fileRef.current?.click()}
         onKeyDown={(e) => {
+          // Only the dropzone itself: the two buttons inside bubble up here,
+          // and Enter on "Upload images" opened the documents picker.
+          if (e.target !== e.currentTarget) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             fileRef.current?.click();
@@ -1054,7 +1062,7 @@ function DocActions({
         <Eye className="size-3.5" />
       </button>
       <button onClick={onIntel} title="Document intelligence" aria-label="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
-        <Sparkles className="size-3.5" />
+        <Network className="size-3.5" />
       </button>
       <button
         onClick={onUnlink}
@@ -1096,11 +1104,11 @@ function DocCard({
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
   const retrievals = doc.retrieval_count ?? 0;
   const meta = [formatFileSize(doc.file_size), doc.file_type]
-    .filter((x) => x && x !== "—")
+    .filter(Boolean)
     .join(" · ");
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-colors hover:border-accent/40">
       <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
         <DocActions
           busy={busy}
@@ -1108,7 +1116,7 @@ function DocCard({
           onIntel={onIntel}
           onUnlink={onUnlink}
           onDelete={onDelete}
-          buttonClassName="bg-background/80 shadow-sm backdrop-blur-sm"
+          buttonClassName="bg-card"
         />
       </div>
 
@@ -1123,7 +1131,7 @@ function DocCard({
 
       <div className="mt-1 flex flex-col items-center gap-1.5 border-t border-border/50 pt-2.5">
         {meta && (
-          <p className="truncate font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+          <p className="truncate font-mono text-[11px] text-muted-foreground">
             {meta}
           </p>
         )}
@@ -1162,7 +1170,7 @@ function DocRow({
   const { Icon, iconColor, bgColor } = getFileTypeIcon(doc.file_type);
   const retrievals = doc.retrieval_count ?? 0;
   const meta = [formatFileSize(doc.file_size), doc.file_type, relativeTime(doc.created_at)]
-    .filter((x) => x && x !== "—")
+    .filter(Boolean)
     .join(" · ");
 
   return (
@@ -1173,7 +1181,7 @@ function DocRow({
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-medium">{doc.title || doc.id.slice(0, 8)}</div>
         {meta && (
-          <div className="truncate font-mono text-[10px] text-muted-foreground">{meta}</div>
+          <div className="truncate font-mono text-[11px] text-muted-foreground">{meta}</div>
         )}
       </div>
       {retrievals > 0 && (

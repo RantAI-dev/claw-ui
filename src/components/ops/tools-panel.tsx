@@ -103,7 +103,7 @@ export function ToolsPanel() {
         <div className="space-y-5">
           {/* Autonomy level — editable */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               Autonomy level
             </div>
             <div className="flex flex-wrap gap-2">
@@ -115,8 +115,8 @@ export function ToolsPanel() {
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() => patch(rungToAutonomyPayload(p.id), `Autonomy → ${p.label}`)}
-                    style={on ? { borderColor: p.dot, color: p.dot } : undefined}
+                    onClick={() => patch(rungToAutonomyPayload(p.id), `Autonomy set to ${p.label}`)}
+                    style={on ? { borderColor: p.dot } : undefined}
                   >
                     <span
                       className="inline-block size-[7px] rounded-full"
@@ -146,7 +146,7 @@ export function ToolsPanel() {
 
           {/* Rate & cost caps — editable */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               Rate &amp; cost caps
             </div>
             <div className="flex flex-wrap items-end gap-3">
@@ -179,9 +179,12 @@ export function ToolsPanel() {
 
           {/* Per-tool auto-approve — editable switches */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Tool policy · auto-approve runs without asking
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Tool policy
             </div>
+            <p className="mb-2 text-[11px] text-muted-foreground">
+              Auto-approve runs the tool without asking.
+            </p>
             <Card className="divide-y divide-border">
               {BUILTIN_TOOLS.map((tool) => {
                 const auto = autoApprove.includes(tool);
@@ -212,9 +215,14 @@ export function ToolsPanel() {
 
           {/* Shell allowlist — editable chips */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
               Shell allowlist · {allowed.length}
             </div>
+            {allowed.length === 0 && (
+              <p className="mb-2.5 text-[11px] text-muted-foreground">
+                No commands allowed yet. Add one below.
+              </p>
+            )}
             {allowed.length > 0 && (
               <div className="mb-2.5 flex flex-wrap gap-1.5">
                 {allowed.map((c) => (
@@ -250,7 +258,7 @@ export function ToolsPanel() {
           {/* Forbidden paths — read-only */}
           {forbidden.length > 0 && (
             <div>
-              <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                 Forbidden paths · {forbidden.length} (read-only)
               </div>
               <div className="flex flex-wrap gap-1.5">

@@ -155,7 +155,7 @@ export function SkillEditor({
       const detail = describeApiError(e);
       if (status === 409) toast.error(`Name already taken: ${detail}`);
       else if (status === 413)
-        toast.error("Too large to save — the gateway caps bodies at 64 KB.");
+        toast.error("Too large to save: the gateway caps bodies at 64 KB.");
       else toast.error(`Save failed: ${detail}`);
     } finally {
       setSaving(false);
@@ -193,7 +193,7 @@ export function SkillEditor({
             ) : (
               <p className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
                 This file’s structure was changed by hand, so the form view can’t
-                be used. Keep editing here — nothing is lost.
+                be used. Keep editing here; nothing is lost.
               </p>
             )}
 
@@ -204,8 +204,8 @@ export function SkillEditor({
                   htmlFor="skill-name"
                   hint={
                     mode === "edit"
-                      ? "Renaming isn’t supported here — create a new skill instead."
-                      : `Folder: ${derivedSlug || "—"}`
+                      ? "Renaming isn’t supported here. Create a new skill instead."
+                      : derivedSlug ? `Folder: ${derivedSlug}` : "The folder name follows from the name."
                   }
                   problem={nameTouched ? nameProblem : null}
                 >
@@ -228,7 +228,7 @@ export function SkillEditor({
                         ? "cursor-not-allowed bg-muted/40 text-muted-foreground"
                         : undefined
                     }
-                    placeholder="Kopi Pagi"
+                    placeholder="Skill name"
                   />
                 </Field>
 
@@ -243,7 +243,7 @@ export function SkillEditor({
                     onChange={(e) => patch("description", e.target.value)}
                     rows={3}
                     className="resize-y"
-                    placeholder="Panduan menyeduh kopi V60 — rasio, suhu, dan waktu bloom."
+                    placeholder="What this skill does and when the agent should use it"
                   />
                 </Field>
 
@@ -283,12 +283,12 @@ export function SkillEditor({
             the running size makes the limit something you can steer away from. */}
         <span
           className={cn(
-            "font-mono text-[10px]",
+            "font-mono text-[11px]",
             tooLarge ? "text-destructive" : "text-muted-foreground",
           )}
         >
           {(encodedSize / 1024).toFixed(1)} / 64 KB
-          {tooLarge && " — too large to save"}
+          {tooLarge && ", too large to save"}
         </span>
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={onClose} disabled={saving}>
@@ -340,9 +340,9 @@ function Field({
       )}
       {children}
       {problem ? (
-        <p className="text-[10px] text-destructive">{problem}</p>
+        <p className="text-[11px] text-destructive">{problem}</p>
       ) : (
-        hint && <p className="text-[10px] text-muted-foreground">{hint}</p>
+        hint && <p className="text-[11px] text-muted-foreground">{hint}</p>
       )}
     </div>
   );
@@ -363,7 +363,7 @@ function TagInput({
     setDraft("");
   };
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-background p-1.5">
+    <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-background p-1.5 focus-within:ring-1 focus-within:ring-ring">
       {tags.map((t) => (
         <span
           key={t}

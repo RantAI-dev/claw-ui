@@ -12,6 +12,7 @@ export function ConfirmModal({
   title,
   description,
   confirmLabel = "Delete",
+  icon = <Trash2 className="size-4" />,
   busy,
   onConfirm,
 }: {
@@ -20,6 +21,8 @@ export function ConfirmModal({
   title: React.ReactNode;
   description?: React.ReactNode;
   confirmLabel?: React.ReactNode;
+  /** Confirm-button glyph. Defaults to the trash can; pass a fitting icon (or null) for non-delete confirms. */
+  icon?: React.ReactNode;
   busy?: boolean;
   onConfirm: () => void;
 }) {
@@ -35,7 +38,7 @@ export function ConfirmModal({
             Cancel
           </Button>
           <Button variant="destructive" size="sm" onClick={onConfirm} disabled={busy}>
-            {busy ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            {busy ? <Loader2 className="size-4 animate-spin" /> : icon}
             {confirmLabel}
           </Button>
         </>

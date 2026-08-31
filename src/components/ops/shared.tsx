@@ -63,6 +63,8 @@ export function PanelFrame({
   loading,
   error,
   empty,
+  emptyTitle = "Nothing here yet.",
+  emptyHint,
   onRefresh,
   loaded,
   children,
@@ -70,6 +72,9 @@ export function PanelFrame({
   loading?: boolean;
   error?: string | null;
   empty?: boolean;
+  /** Empty-state copy: say why it is empty and what fills it. */
+  emptyTitle?: React.ReactNode;
+  emptyHint?: React.ReactNode;
   onRefresh?: () => void;
   /**
    * Whether this panel has ever successfully loaded.
@@ -85,7 +90,7 @@ export function PanelFrame({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-2 py-14 text-xs text-muted-foreground">
         <Loader2 className="size-4 animate-spin" /> Loading…
       </div>
     );
@@ -94,8 +99,8 @@ export function PanelFrame({
     // Refresh failure: keep what is on screen, say what went wrong.
     return (
       <>
-        <div className="mb-3 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 font-mono text-[11px] text-destructive">
-          <AlertTriangle className="size-3.5 shrink-0" />
+        <div className="mb-3 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-foreground">
+          <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
           <span className="min-w-0 flex-1 truncate">{error}</span>
           {onRefresh && (
             <Button variant="ghost" size="sm" onClick={onRefresh}>
@@ -125,7 +130,7 @@ export function PanelFrame({
     );
   }
   if (empty) {
-    return <EmptyState icon={<Inbox className="size-6" />} title="Nothing here yet." />;
+    return <EmptyState icon={<Inbox className="size-6" />} title={emptyTitle} hint={emptyHint} />;
   }
   return <>{children}</>;
 }
@@ -158,7 +163,7 @@ export function StatTile({
     typeof value === "string" || typeof value === "number" ? String(value) : undefined;
   return (
     <Card className={size === "sm" ? "px-3 py-2.5" : "px-4 py-3.5"}>
-      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
       <div

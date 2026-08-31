@@ -26,6 +26,12 @@ export function Drawer({
   children: React.ReactNode;
 }) {
   const panelRef = React.useRef<HTMLDivElement>(null);
+  // Captured during the first render, before `autoFocus` on Close moves focus,
+  // and handed back on unmount (Modal does the same).
+  const [opener] = React.useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  );
+  React.useEffect(() => () => opener?.focus(), [opener]);
 
   // Esc to close, trap Tab focus within the dialog, lock background scroll, and
   // move focus into the panel on open (WCAG 2.4.3).
@@ -85,7 +91,7 @@ export function Drawer({
             )}
             <div className="min-w-0">
               {eyebrow && (
-                <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {eyebrow}
                 </div>
               )}
