@@ -101,18 +101,21 @@ export function McpPanel() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="name (e.g. github)"
+            aria-label="Server name"
             className="h-8 w-40 font-mono text-xs"
           />
           <Input
             value={command}
             onChange={(e) => setCommand(e.target.value)}
             placeholder="command (e.g. npx)"
+            aria-label="Command"
             className="h-8 w-32 font-mono text-xs"
           />
           <Input
             value={args}
             onChange={(e) => setArgs(e.target.value)}
             placeholder={'args, space-separated; quote values with spaces (e.g. -y @scope/pkg --path "/a b")'}
+            aria-label="Arguments"
             className="h-8 min-w-[200px] flex-1 font-mono text-xs"
           />
           <Button size="sm" onClick={add} disabled={busy || !name.trim() || !command.trim() || !nameOk}>

@@ -92,7 +92,20 @@ export function StatusPanel() {
                     <span className="text-[10px] text-muted-foreground">{r.category}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">{r.message}</p>
-                  {r.hint && <p className="mt-0.5 text-[11px] text-accent">{r.hint}</p>}
+                  {r.hint && (
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {/* Doctor hints are mostly "run: <command>"; the command is
+                          what the operator copies, so it gets the mono treatment
+                          and the accent stops posing as a link. */}
+                      {/^run:\s*/i.test(r.hint) ? (
+                        <>
+                          Run <code className="font-mono text-foreground">{r.hint.replace(/^run:\s*/i, "")}</code>
+                        </>
+                      ) : (
+                        r.hint
+                      )}
+                    </p>
+                  )}
                 </div>
               </Card>
             ))}

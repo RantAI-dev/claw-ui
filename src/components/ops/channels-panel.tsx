@@ -182,7 +182,7 @@ export function ChannelsPanel() {
           GET /config, so rendering it before config loads (or after it fails)
           would let "Save allowlist" persist an empty deny-all list. */}
       {reloading && (
-        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           Reloading the runtime after your change… the panel keeps its content and
           refreshes on its own. If it does not come back, run{" "}
           <code>systemctl --user reset-failed rantaiclaw.service</code> and start it again.
