@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
-import { channelState, configuredRows, type ChannelState } from "@/lib/channels";
+import { allowlistToastTitle, channelState, configuredRows, type ChannelState } from "@/lib/channels";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
 import { cn } from "@/lib/utils";
@@ -88,7 +88,7 @@ export function allowlistDrift(
 }
 
 export function ChannelsPanel() {
-  const { data, loading, error, refresh, loaded } = useAsync(() => api.channels(), []);
+  const { data, loading, error, refresh, loaded, refreshing } = useAsync(() => api.channels(), []);
   const cfg = useAsync(() => api.config(), []);
   // Whether a configured channel actually runs is only in the runtime snapshot;
   // a failure here degrades to "no snapshot", it never blocks the page.
@@ -99,10 +99,24 @@ export function ChannelsPanel() {
   const runtime = st.data ? parseRuntimeHealth(st.data.runtime) : null;
   const tgState = channelState("telegram", data?.configured ?? null, runtime, staleStatus);
   const rows = configuredRows(data?.configured ?? null, runtime, staleStatus);
-  // Set while the gateway is reloading because of a save we just made, so the
-  // panel can say so instead of presenting the outage as a load error.
-  const [reloading, setReloading] = React.useState(false);
+  // Set after a save the gateway said restarts the runtime, so the outage that
+  // follows is presented as the change being applied, not as a load error.
+  // `waiting`: the response is in and the restart is scheduled (the gateway
+  // answers for a moment longer); `restarting`: the gateway has gone away;
+  // back to `idle` when it answers again, or after a bounded window when it
+  // never leaves (no managed service: the operator restarts `rantaiclaw
+  // daemon` by hand). The previous version cleared the flag whenever the
+  // gateway was online, which it always still is on the commit that set it,
+  // so the banner never rendered.
+  const [applying, setApplying] = React.useState<"idle" | "waiting" | "restarting">("idle");
   const settleTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const giveUpTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The runtime's pid when the restarting save was answered, and the latest
+  // one seen: a different pid means the restart is done, even when it was too
+  // quick for the connection hook to see the gateway go away.
+  const pidAtSave = React.useRef<number | null>(null);
+  const latestPid = React.useRef<number | null>(null);
+  latestPid.current = runtime?.pid ?? null;
 
   const refreshNow = React.useCallback(() => {
     refresh();
@@ -112,50 +126,69 @@ export function ChannelsPanel() {
   }, [refresh, cfg.refresh, st.refresh]);
 
   // A save that changes the bot token reloads the runtime (a few seconds), so
-  // refetch after a short settle delay — an instant refetch would race the
-  // restart. The timer is held in a ref and cleared on unmount; it used to be a
-  // bare `setTimeout` that fired into an unmounted tree.
-  //
-  // `restarting` comes from the gateway's `restarts_runtime`, because only the
-  // gateway knows: an allowlist-only edit is picked up live and never restarts
-  // anything. This used to enter the reloading state after *every* save, and the
-  // effect below cleared it on the next run — the gateway had never gone
-  // offline — so the "Reloading the runtime…" banner could not render at all in
-  // the ordinary case, and rendered a promise nothing would keep in the rest.
-  const refreshAfterReload = React.useCallback((restarting: boolean) => {
-    if (restarting) setReloading(true);
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(refreshNow, 3000);
-  }, [refreshNow]);
+  // refetch after a short settle delay: an instant refetch would race the
+  // restart. `restarting` comes from the gateway's `restarts_runtime`, because
+  // only the gateway knows: an allowlist-only edit is picked up live and never
+  // restarts anything.
+  const refreshAfterReload = React.useCallback(
+    (restarting: boolean) => {
+      if (restarting) {
+        pidAtSave.current = latestPid.current;
+        setApplying("waiting");
+        if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
+        giveUpTimer.current = setTimeout(() => setApplying("idle"), 60_000);
+      }
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      settleTimer.current = setTimeout(refreshNow, 3000);
+    },
+    [refreshNow],
+  );
 
   React.useEffect(
     () => () => {
       if (settleTimer.current) clearTimeout(settleTimer.current);
+      if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
     },
     [],
   );
 
-  // Leave the reloading state when the gateway answers again — and give up
-  // after a bounded window rather than spinning forever, naming the recovery.
+  // Walk the banner through the restart: nothing happens while the gateway is
+  // still answering; the outage moves it to `restarting`; the return clears it.
+  // The refetch on that return is the offline-to-online edge below.
   React.useEffect(() => {
-    if (!reloading) return undefined;
-    if (gateway.connection === "online") {
-      setReloading(false);
+    const online = gateway.connection === "online";
+    if (applying === "waiting" && !online) setApplying("restarting");
+    if (applying === "restarting" && online) {
+      setApplying("idle");
+      if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
+    }
+  }, [applying, gateway.connection]);
+
+  // A managed restart can finish between two polls of the connection hook, so
+  // while applying, re-read the runtime every 5 s and end on a new pid.
+  const pid = runtime?.pid ?? null;
+  React.useEffect(() => {
+    if (applying === "idle") return undefined;
+    if (pid != null && pidAtSave.current != null && pid !== pidAtSave.current) {
+      setApplying("idle");
+      if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
+      // The settle refetch may have failed into the outage; re-read everything
+      // now that the runtime is back, since the connection hook may never have
+      // seen it leave and so will not fire its own edge refetch.
       refreshNow();
       return undefined;
     }
-    const giveUp = setTimeout(() => setReloading(false), 60_000);
-    return () => clearTimeout(giveUp);
-  }, [reloading, gateway.connection, refreshNow]);
+    const id = setInterval(st.refresh, 5000);
+    return () => clearInterval(id);
+  }, [applying, pid, st.refresh, refreshNow]);
 
   // Recover from an outage the operator did not cause.
   //
-  // The effect above only fires while `reloading`, which is set exclusively by
-  // `refreshAfterReload` — i.e. only after the operator saved something. A
-  // gateway that went down and came back on its own left the panel showing
+  // A gateway that went down and came back on its own left the panel showing
   // "fetch failed" indefinitely, next to a header that had already recovered to
-  // "Daemon live", until someone clicked Retry. Refetch on the offline→online
-  // edge so the two surfaces cannot disagree.
+  // "Daemon live", until someone clicked Retry. Refetch on the offline-to-online
+  // edge so the two surfaces cannot disagree; the same edge ends a restart the
+  // operator caused.
   const wasOffline = React.useRef(false);
   React.useEffect(() => {
     const online = gateway.connection === "online";
@@ -166,22 +199,30 @@ export function ChannelsPanel() {
   return (
     <div>
       {/* The topbar h1 already says Channels; the sections are Telegram and the rest. */}
-      <SectionTitle action={<RefreshButton onClick={refreshNow} />}>Telegram</SectionTitle>
-      {/* Gate on the config fetch too: the allowlist editor is seeded from
-          GET /config, so rendering it before config loads (or after it fails)
-          would let "Save allowlist" persist an empty deny-all list. */}
-      {reloading && (
-        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
-          Reloading the runtime after your change… the panel keeps its content and
-          refreshes on its own. If it does not come back, run{" "}
-          <code>systemctl --user reset-failed rantaiclaw.service</code> and start it again.
+      <SectionTitle
+        action={
+          <RefreshButton onClick={refreshNow} spinning={refreshing || cfg.refreshing || st.refreshing} />
+        }
+      >
+        Telegram
+      </SectionTitle>
+      {applying !== "idle" && (
+        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Applying your change. The runtime reloads by itself when RantaiClaw runs as a
+          managed service; otherwise restart <code>rantaiclaw daemon</code>. This panel
+          refreshes when the gateway is back.
         </div>
       )}
+      {/* Gate on the config fetch too: the allowlist editor is seeded from
+          GET /config, so rendering it before config loads (or after it fails)
+          would let "Save allowlist" persist an empty deny-all list. The section
+          button is the one retry control, so the refresh-failure strip gets no
+          Retry of its own. */}
       <PanelFrame
         loading={loading || cfg.loading}
         error={error || cfg.error}
         loaded={loaded && cfg.loaded}
-        onRefresh={refreshNow}
+        loadingLabel="Loading channels…"
       >
         <TelegramCard
           connected={tgConnected}
@@ -266,23 +307,18 @@ function TelegramCard({
       .map((s) => s.trim())
       .filter(Boolean);
 
-  // Both, not either. The gateway sets `warning` when the allowlist is empty or
-  // contains `*`, and puts the restart notice in `note` — so the `else if` here
-  // suppressed the restart notice in exactly the two states an operator is most
-  // likely to be in while editing.
-  const notify = (r: { warning?: string | null; note?: string }) => {
-    if (r.warning) toast.warning(r.warning);
-    if (r.note) toast.message(r.note);
-  };
-
+  // One toast per action. The gateway's `warning` (empty allowlist, `*`) is the
+  // toast's second line; its `note` restates either the count or the restart,
+  // which the banner already carries, so it is not shown.
   const connect = async () => {
     const t = token.trim();
     if (!t) return;
     setBusy(true);
     try {
       const r = await api.connectTelegram(t, parseUsers());
-      toast.success(`Connected Telegram @${r.bot_username}`);
-      notify(r);
+      toast.success(`Connected Telegram @${r.bot_username}`, {
+        description: r.warning ?? undefined,
+      });
       setToken("");
       onReload(r.restarts_runtime === true);
     } catch (e) {
@@ -304,8 +340,9 @@ function TelegramCard({
       const r = await api.updateTelegramAllowlist(parseUsers());
       // What the SERVER stored, not what was requested. A mismatch between the
       // two is exactly what an operator needs to see.
-      toast.success(`Allowlist updated — ${r.allowed_users} sender(s) allowed`);
-      notify(r);
+      toast.success(allowlistToastTitle(r.allowed_users), {
+        description: r.warning ?? undefined,
+      });
       onReload(r.restarts_runtime === true);
     } catch (e) {
       toast.error(describeApiError(e));
@@ -343,7 +380,7 @@ function TelegramCard({
     setBusy(true);
     try {
       const r = await api.disconnectTelegram();
-      toast.success("Disconnected Telegram");
+      toast.success("Telegram disconnected");
       setUsers("");
       setConfirmDisconnect(false);
       onReload(r.restarts_runtime === true);
