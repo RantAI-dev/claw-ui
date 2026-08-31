@@ -11,26 +11,10 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
-
-// Channels the backend supports (config schema). Telegram is fully manageable
-// from the console today; the rest are configurable via the TUI/config only and
-// are surfaced here as "under development" until their console flow ships.
-const OTHER_CHANNELS: { key: string; label: string }[] = [
-  { key: "whatsapp", label: "WhatsApp" },
-  { key: "discord", label: "Discord" },
-  { key: "slack", label: "Slack" },
-  { key: "signal", label: "Signal" },
-  { key: "matrix", label: "Matrix" },
-  { key: "mattermost", label: "Mattermost" },
-  { key: "email", label: "Email" },
-  { key: "irc", label: "IRC" },
-  { key: "imessage", label: "iMessage" },
-  { key: "linq", label: "Linq (SMS/RCS)" },
-  { key: "nextcloud_talk", label: "Nextcloud Talk" },
-  { key: "lark", label: "Lark / Feishu" },
-  { key: "dingtalk", label: "DingTalk" },
-  { key: "qq", label: "QQ" },
-];
+import { channelState, configuredRows, type ChannelState } from "@/lib/channels";
+import { parseRuntimeHealth } from "@/lib/status";
+import { channelDot } from "@/lib/console";
+import { cn } from "@/lib/utils";
 
 /** Pull the Telegram allowlist out of GET /config (the bot token itself is redacted). */
 function telegramAllowlist(config: Record<string, unknown> | null): string[] {
@@ -106,9 +90,15 @@ export function allowlistDrift(
 export function ChannelsPanel() {
   const { data, loading, error, refresh, loaded } = useAsync(() => api.channels(), []);
   const cfg = useAsync(() => api.config(), []);
+  // Whether a configured channel actually runs is only in the runtime snapshot;
+  // a failure here degrades to "no snapshot", it never blocks the page.
+  const st = useAsync(() => api.status(), []);
   const tgConnected = !!data?.configured.includes("telegram");
   const gateway = useGatewayStatus();
   const staleStatus = statusIsStale(error, gateway.connection);
+  const runtime = st.data ? parseRuntimeHealth(st.data.runtime) : null;
+  const tgState = channelState("telegram", data?.configured ?? null, runtime, staleStatus);
+  const rows = configuredRows(data?.configured ?? null, runtime, staleStatus);
   // Set while the gateway is reloading because of a save we just made, so the
   // panel can say so instead of presenting the outage as a load error.
   const [reloading, setReloading] = React.useState(false);
@@ -117,8 +107,9 @@ export function ChannelsPanel() {
   const refreshNow = React.useCallback(() => {
     refresh();
     cfg.refresh();
+    st.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, cfg.refresh]);
+  }, [refresh, cfg.refresh, st.refresh]);
 
   // A save that changes the bot token reloads the runtime (a few seconds), so
   // refetch after a short settle delay — an instant refetch would race the
@@ -174,9 +165,8 @@ export function ChannelsPanel() {
 
   return (
     <div>
-      <SectionTitle action={<RefreshButton onClick={refreshNow} />}>
-        Channels {data && <span className="text-muted-foreground">· {data.count} configured</span>}
-      </SectionTitle>
+      {/* The topbar h1 already says Channels; the sections are Telegram and the rest. */}
+      <SectionTitle action={<RefreshButton onClick={refreshNow} />}>Telegram</SectionTitle>
       {/* Gate on the config fetch too: the allowlist editor is seeded from
           GET /config, so rendering it before config loads (or after it fails)
           would let "Save allowlist" persist an empty deny-all list. */}
@@ -195,25 +185,43 @@ export function ChannelsPanel() {
       >
         <TelegramCard
           connected={tgConnected}
-          statusStale={staleStatus}
+          state={tgState}
           allowedUsers={telegramAllowlist(cfg.data)}
           boundary={approvalBoundary(cfg.data)}
           onReload={refreshAfterReload}
         />
 
-        <div className="mt-4">
-          <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            More channels
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {OTHER_CHANNELS.map((c) => (
-              <UnderDevelopmentChannel
-                key={c.key}
-                label={c.label}
-                active={!!data?.configured.includes(c.key)}
-              />
-            ))}
-          </div>
+        <div className="mt-6">
+          <SectionTitle>Other channels</SectionTitle>
+          <p className="text-xs text-muted-foreground">
+            Set up with <code>rantaiclaw setup</code> or in config.toml; this console manages
+            Telegram.
+          </p>
+          {rows.length > 0 && (
+            <ul className="mt-2 divide-y divide-border/60 rounded-lg border border-border">
+              {rows.map((r) => (
+                <li key={r.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                  <span
+                    aria-hidden
+                    className="inline-block size-2 rounded-full"
+                    style={{ background: channelDot(r.key) }}
+                  />
+                  <span className="font-medium">{r.label}</span>
+                  <Badge variant={r.state.tone}>{r.state.label}</Badge>
+                  {r.state.detail && (
+                    <span
+                      className={cn(
+                        "basis-full text-xs",
+                        r.state.word === "error" ? "text-destructive" : "text-muted-foreground",
+                      )}
+                    >
+                      {r.state.detail}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </PanelFrame>
     </div>
@@ -222,14 +230,15 @@ export function ChannelsPanel() {
 
 function TelegramCard({
   connected,
-  statusStale,
+  state,
   allowedUsers,
   boundary,
   onReload,
 }: {
+  /** A Telegram section exists in config (the editor is shown). */
   connected: boolean;
-  /** The last fetch failed or the gateway is offline — say so, do not guess. */
-  statusStale: boolean;
+  /** What the runtime says about it; drives the badge and its detail line. */
+  state: ChannelState;
   allowedUsers: string[];
   boundary: { owners: string[]; autonomousTools: boolean };
   onReload: (restartsRuntime: boolean) => void;
@@ -351,20 +360,18 @@ function TelegramCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           Telegram
-          {statusStale ? (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-              status unknown
-            </Badge>
-          ) : connected ? (
-            <Badge variant="success" className="text-[10px] uppercase tracking-wide">
-              connected
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-              not connected
-            </Badge>
-          )}
+          <Badge variant={state.tone}>{state.label}</Badge>
         </CardTitle>
+        {state.detail && (
+          <p
+            className={cn(
+              "text-xs",
+              state.word === "error" ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {state.detail}
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-2">
         {connected ? (
@@ -491,23 +498,5 @@ function TelegramCard({
       }}
     />
     </>
-  );
-}
-
-function UnderDevelopmentChannel({ label, active }: { label: string; active: boolean }) {
-  return (
-    <Card className="rounded-lg border-dashed bg-muted/30 p-3 shadow-none">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{label}</span>
-        {active && (
-          <Badge variant="success" className="text-[9px] uppercase tracking-wide">
-            active
-          </Badge>
-        )}
-      </div>
-      <div className="mt-1 text-[11px] text-muted-foreground">
-        {active ? "Running · manage via TUI" : "Under development"}
-      </div>
-    </Card>
   );
 }
