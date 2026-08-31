@@ -65,6 +65,7 @@ export function PanelFrame({
   empty,
   onRefresh,
   loaded,
+  loadingLabel,
   children,
 }: {
   loading?: boolean;
@@ -81,12 +82,14 @@ export function PanelFrame({
    * operator from the save having failed.
    */
   loaded?: boolean;
+  /** What is being loaded ("Loading usage…"); the bare default names nothing. */
+  loadingLabel?: string;
   children: React.ReactNode;
 }) {
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Loading…
+        <Loader2 className="size-4 animate-spin" /> {loadingLabel ?? "Loading…"}
       </div>
     );
   }
@@ -158,7 +161,7 @@ export function StatTile({
     typeof value === "string" || typeof value === "number" ? String(value) : undefined;
   return (
     <Card className={size === "sm" ? "px-3 py-2.5" : "px-4 py-3.5"}>
-      <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+      <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
         {label}
       </div>
       <div
@@ -195,7 +198,7 @@ IconButton.displayName = "IconButton";
 
 export function KeyVal({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="kv-row border-b border-border/60 py-2">
+    <div className="kv-row border-b border-border/60 py-2 last:border-b-0">
       <span className="k">{k}</span>
       <span className="v" style={mono ? undefined : { fontFamily: "var(--font-sans)" }}>
         {v}
@@ -226,13 +229,16 @@ export function CountBadge({ n }: { n: number }) {
 export function RefreshButton({
   onClick,
   spinning = false,
+  label = "Refresh",
 }: {
   onClick: () => void;
   spinning?: boolean;
+  /** What the button re-runs when "Refresh" would be vague ("Re-run checks"). */
+  label?: string;
 }) {
   return (
     <Button variant="outline" size="sm" onClick={onClick} disabled={spinning}>
-      <RefreshCw className={cn(spinning && "animate-spin")} /> Refresh
+      <RefreshCw className={cn(spinning && "animate-spin")} /> {label}
     </Button>
   );
 }

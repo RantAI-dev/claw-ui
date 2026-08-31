@@ -83,6 +83,14 @@ export const PERSONA_CHANGED = "rantaiclaw:persona-changed";
  */
 export const CONFIG_CHANGED = "rantaiclaw:config-changed";
 
+/**
+ * Broadcast by the console shell once the gateway has confirmed an autonomy
+ * rung write from the rail. The Status panel's "Autonomy" row is a snapshot it
+ * took at load, so without this it kept the old rung until a manual refresh.
+ * Listeners must only re-read (never re-dispatch) or they loop.
+ */
+export const AUTONOMY_CHANGED = "rantaiclaw:autonomy-changed";
+
 /** Legacy hash ids that resolve to a current route — the Knowledge Graph is now
  *  a lens inside Knowledge Bases, not a top-level route. */
 const ROUTE_ALIASES: Record<string, Route> = { kbgraph: "kb" };

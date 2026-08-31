@@ -33,12 +33,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       data-brand={brand.id}
-      className={dark ? "dark" : undefined}
+      // The font variables must be visible from `:root`: `--font-sans` and
+      // `--font-mono` in globals.css reference them and are declared there. On
+      // <body> they were out of reach, both tokens resolved as invalid, and every
+      // route rendered in the system sans (Geist never loaded).
+      className={[geist.variable, geistMono.variable, dark ? "dark" : ""].filter(Boolean).join(" ")}
       suppressHydrationWarning
     >
-      <body
-        className={`${geist.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className="antialiased">
         <ThemeProvider attribute="class" forcedTheme={brand.theme} disableTransitionOnChange>
           {children}
           <Toaster position="bottom-right" richColors closeButton theme={brand.theme} />

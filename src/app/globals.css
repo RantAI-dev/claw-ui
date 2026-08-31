@@ -1632,8 +1632,7 @@
   gap: 12px;
 }
 .kv-row .k {
-  font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted-foreground);
 }
 .kv-row .v {
@@ -1642,7 +1641,7 @@
   color: var(--foreground);
   text-align: right;
   font-variant-numeric: tabular-nums;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .kv-row .v.sky {
   color: var(--brand-sky);
@@ -1711,25 +1710,34 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0;
 }
 .ops-head .eyebrow .cdot {
   width: 8px;
   height: 8px;
   border-radius: 999px;
 }
-.ops-head h2 {
-  font-size: 26px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  margin: 9px 0 6px;
-}
 .ops-head p {
-  font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted-foreground);
-  margin: 0;
+  margin: 8px 0 0;
   line-height: 1.55;
   max-width: 64ch;
+}
+/* Phones: the desktop gutters ate 60px of a 390px screen, and a right-aligned
+   path broke mid-token; stack each key over its value instead. */
+@media (max-width: 640px) {
+  .ops-inner {
+    padding: 18px 16px 48px;
+  }
+  .ops-inner .kv-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .ops-inner .kv-row .v {
+    text-align: left;
+  }
 }
 .card {
   border: 1px solid var(--border);
