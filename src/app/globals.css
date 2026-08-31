@@ -363,15 +363,38 @@
   gap: 1px;
   padding: 4px 8px 8px;
 }
+/* One row = the open button (title + meta) plus a sibling action strip, so no
+   button nests inside another and the row's accessible name is just its title. */
 .sess-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding-right: 6px;
+  border-radius: var(--radius-md);
+  position: relative;
+  transition: background var(--duration-fast);
+}
+.sess-open {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
   padding: 8px 10px;
+  border: 0;
   border-radius: var(--radius-md);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  position: relative;
-  transition: background var(--duration-fast);
+}
+.sess-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding-top: 9px;
 }
 .sess-item:hover {
   background: oklch(var(--af) /3%);
@@ -420,7 +443,8 @@
   border: none;
   padding: 0;
 }
-.sess-item:hover .sess-x {
+.sess-item:hover .sess-x,
+.sess-item:focus-within .sess-x {
   opacity: 1;
 }
 .sess-x:hover {
@@ -433,6 +457,7 @@
 .sess-title-input {
   flex: 1;
   min-width: 0;
+  margin: 6px 4px 6px 10px;
   font-size: 12.5px;
   font-family: inherit;
   color: var(--foreground);
@@ -557,7 +582,9 @@
 /* ============================ Topbar ============================ */
 .main {
   position: relative;
-  z-index: 1;
+  /* No z-index here: a stacking context on .main trapped the ops panels'
+     modals under the rail (z-index 2), so the sidebar stayed clickable
+     behind an open confirm. */
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1935,7 +1962,7 @@ pre.toml {
    own focus-visible ring; these hand-written ones only had the browser default,
    which the base layer had thinned to a half-transparent ring colour. */
 .nav-item:focus-visible,
-.sess-item:focus-visible,
+.sess-open:focus-visible,
 .sess-x:focus-visible,
 .icon-btn:focus-visible,
 .seg button:focus-visible,

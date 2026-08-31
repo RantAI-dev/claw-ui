@@ -84,18 +84,51 @@ function Radio<T extends string>({
   );
 }
 
-export function TweaksPanel({
-  open,
-  onClose,
-  tweaks,
-  setTweak,
-}: {
+interface TweaksPanelProps {
   open: boolean;
   onClose: () => void;
   tweaks: Tweaks;
   setTweak: <K extends keyof Tweaks>(key: K, value: Tweaks[K]) => void;
-}) {
-  if (!open) return null;
+}
+
+export function TweaksPanel(props: TweaksPanelProps) {
+  if (!props.open) return null;
+  return <TweaksDialog {...props} />;
+}
+
+/** Mounted only while open, so the opener is captured at mount and focus goes
+ *  back to it on close. Escape closes; Tab stays inside (it is aria-modal). */
+function TweaksDialog({ onClose, tweaks, setTweak }: TweaksPanelProps) {
+  const panelRef = React.useRef<HTMLElement>(null);
+  const [opener] = React.useState<HTMLElement | null>(() =>
+    typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  );
+  React.useEffect(() => () => opener?.focus(), [opener]);
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (e.key === "Tab" && panelRef.current) {
+        const f = panelRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (f.length === 0) return;
+        const first = f[0];
+        const last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <>
       <div
@@ -103,6 +136,10 @@ export function TweaksPanel({
         style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 40 }}
       />
       <aside
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Tweaks"
         style={{
           position: "fixed",
           top: 0,
@@ -127,7 +164,14 @@ export function TweaksPanel({
           }}
         >
           <div className="eyebrow">Tweaks</div>
-          <button className="icon-btn" style={{ marginLeft: "auto" }} onClick={onClose} title="Close">
+          <button
+            autoFocus
+            className="icon-btn"
+            style={{ marginLeft: "auto" }}
+            onClick={onClose}
+            title="Close"
+            aria-label="Close tweaks"
+          >
             <X />
           </button>
         </div>

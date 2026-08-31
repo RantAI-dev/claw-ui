@@ -165,14 +165,21 @@ export function ChatPane(props: ChatPaneProps) {
   const atBottom = React.useRef(true);
   const [detached, setDetached] = React.useState(false);
 
-  // Close the KB picker on an outside click.
+  // Close the KB picker on an outside click or Escape.
   React.useEffect(() => {
     if (!kbOpen) return;
     const onDown = (e: MouseEvent) => {
       if (kbRef.current && !kbRef.current.contains(e.target as Node)) setKbOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setKbOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [kbOpen]);
 
   const alwaysOnSet = React.useMemo(() => new Set(alwaysOnKbIds), [alwaysOnKbIds]);
@@ -475,7 +482,7 @@ export function ChatPane(props: ChatPaneProps) {
                   {activeKbCount > 0 && <span>{activeKbCount} KB</span>}
                 </button>
                 {kbOpen && (
-                  <div className="kb-menu">
+                  <div className="kb-menu" role="menu" aria-label="Knowledge bases for this chat">
                     <div className="kb-menu-head">Knowledge bases</div>
                     {kbGroups.length === 0 ? (
                       <div className="kb-menu-empty">No knowledge bases yet.</div>
@@ -487,6 +494,8 @@ export function ChatPane(props: ChatPaneProps) {
                           <button
                             key={g.id}
                             type="button"
+                            role="menuitemcheckbox"
+                            aria-checked={on}
                             className={"kb-opt" + (on ? " on" : "")}
                             onClick={() => !locked && onToggleKb(g.id)}
                             disabled={locked}
