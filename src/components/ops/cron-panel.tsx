@@ -472,6 +472,14 @@ export function CronPanel() {
 
 /** Edit an existing job's name, prompt/command, model, and (for cron jobs) the
  *  expression + timezone. Only changed fields are sent. */
+/** ISO timestamp -> the `datetime-local` value for the same wall-clock moment. */
+function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function EditCronModal({
   job,
   onClose,
@@ -487,6 +495,8 @@ function EditCronModal({
   const [model, setModel] = React.useState("");
   const [expr, setExpr] = React.useState("");
   const [tz, setTz] = React.useState("");
+  const [everyMin, setEveryMin] = React.useState("");
+  const [at, setAt] = React.useState("");
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
@@ -497,12 +507,28 @@ function EditCronModal({
     setModel(job.model ?? "");
     setExpr(job.schedule.kind === "cron" ? job.schedule.expr : "");
     setTz(job.schedule.kind === "cron" ? job.schedule.tz ?? "" : "");
+    setEveryMin(job.schedule.kind === "every" ? String(job.schedule.every_ms / 60000) : "");
+    setAt(job.schedule.kind === "at" ? toLocalInput(job.schedule.at) : "");
   }, [job]);
 
   if (!job) return null;
   const isCron = job.schedule.kind === "cron";
+  const isEvery = job.schedule.kind === "every";
+  const isAt = job.schedule.kind === "at";
   const isShell = job.job_type === "shell";
   const cronError = isCron ? validateCron(expr) : null;
+  const everyError =
+    isEvery && !(Number.isInteger(Number(everyMin)) && Number(everyMin) >= 1)
+      ? "Interval must be a whole number of minutes, at least 1"
+      : null;
+  const atMs = isAt && at ? Date.parse(at) : NaN;
+  const atError = isAt
+    ? !Number.isFinite(atMs)
+      ? "Pick a valid date and time"
+      : atMs <= Date.now()
+        ? "Pick a time in the future"
+        : null
+    : null;
 
   const save = async () => {
     const body: Parameters<typeof api.updateCron>[1] = {};
@@ -524,6 +550,14 @@ function EditCronModal({
         }
         body.schedule = { kind: "cron", expr: expr.trim(), tz: tz.trim() || undefined };
       }
+    }
+    if (isEvery && job.schedule.kind === "every") {
+      const ms = Math.round(Number(everyMin)) * 60000;
+      if (ms !== job.schedule.every_ms) body.schedule = { kind: "every", every_ms: ms };
+    }
+    if (isAt && job.schedule.kind === "at") {
+      const iso = new Date(atMs).toISOString();
+      if (iso !== job.schedule.at) body.schedule = { kind: "at", at: iso };
     }
     setBusy(true);
     try {
@@ -549,7 +583,11 @@ function EditCronModal({
           <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button size="sm" onClick={save} disabled={busy || (isCron && cronError != null)}>
+          <Button
+            size="sm"
+            onClick={save}
+            disabled={busy || cronError != null || everyError != null || atError != null}
+          >
             Save
           </Button>
         </>
@@ -608,6 +646,30 @@ function EditCronModal({
           </div>
         )}
         {isCron && cronError && <p className="text-[11px] text-destructive">{cronError}</p>}
+        {isEvery && (
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="number"
+              min="1"
+              value={everyMin}
+              onChange={(e) => setEveryMin(e.target.value)}
+              aria-label="Interval in minutes"
+              className="h-8 w-20 text-xs"
+            />
+            <span className="text-xs text-muted-foreground">min</span>
+          </div>
+        )}
+        {isEvery && everyError && <p className="text-[11px] text-destructive">{everyError}</p>}
+        {isAt && (
+          <Input
+            type="datetime-local"
+            value={at}
+            onChange={(e) => setAt(e.target.value)}
+            aria-label="Run once at"
+            className="h-8 w-52 text-xs"
+          />
+        )}
+        {isAt && atError && <p className="text-[11px] text-destructive">{atError}</p>}
       </div>
     </Modal>
   );
