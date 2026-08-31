@@ -6,6 +6,7 @@ const channels = vi.fn();
 const config = vi.fn();
 const status = vi.fn();
 const updateTelegramAllowlist = vi.fn();
+const connectTelegram = vi.fn();
 const disconnectTelegram = vi.fn();
 const toastSuccess = vi.fn();
 const gateway: { connection: "connecting" | "online" | "offline" } = { connection: "online" };
@@ -19,6 +20,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     config: () => config(),
     status: () => status(),
     updateTelegramAllowlist: (users: string[]) => updateTelegramAllowlist(users),
+    connectTelegram: (token: string, users: string[]) => connectTelegram(token, users),
     disconnectTelegram: () => disconnectTelegram(),
   },
 }));
@@ -205,6 +207,41 @@ describe("ChannelsPanel actions", () => {
     status.mockResolvedValue({ ...statusWith({ gateway: component() }), runtime: { components: {}, pid: 2, uptime_seconds: 1, updated_at: null } });
     fireEvent.click(screen.getByRole("button", { name: /Refresh/ }));
     await waitFor(() => expect(screen.queryByText(/Applying your change/)).toBeNull());
+  });
+
+  it("names the connect fields with labels and submits on Enter", async () => {
+    channels.mockResolvedValue({ configured: [], count: 0 });
+    config.mockResolvedValue({ channels_config: {} });
+    render(<ChannelsPanel />);
+    const token = (await screen.findByLabelText("Bot token")) as HTMLInputElement;
+    expect(screen.getByLabelText(/Allowed user ids/)).toBeTruthy();
+    const connect = screen.getByRole("button", { name: "Connect" }) as HTMLButtonElement;
+    expect(connect.disabled).toBe(true);
+    fireEvent.change(token, { target: { value: "123:abc" } });
+    expect(connect.disabled).toBe(false);
+    connectTelegram.mockResolvedValue({
+      connected: true,
+      channel: "telegram",
+      bot_username: "bot",
+      allowed_users: 0,
+      warning: null,
+      restarts_runtime: true,
+    });
+    fireEvent.submit(token.closest("form")!);
+    await waitFor(() => expect(connectTelegram).toHaveBeenCalledWith("123:abc", []));
+  });
+
+  it("keeps Save disabled until the box differs from the saved list", async () => {
+    render(<ChannelsPanel />);
+    const box = (await screen.findByLabelText(/Allowed user ids/)) as HTMLInputElement;
+    const save = screen.getByRole("button", { name: "Save allowlist" }) as HTMLButtonElement;
+    expect(box.value).toBe("alice");
+    expect(save.disabled).toBe(true);
+    // Whitespace and a trailing comma are not a change.
+    fireEvent.change(box, { target: { value: " alice , " } });
+    expect(save.disabled).toBe(true);
+    fireEvent.change(box, { target: { value: "alice, bob" } });
+    expect(save.disabled).toBe(false);
   });
 
   it("shows Refresh as busy while a request is in flight", async () => {

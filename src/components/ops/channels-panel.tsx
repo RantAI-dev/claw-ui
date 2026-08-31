@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AlertTriangle } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -306,6 +307,14 @@ function TelegramCard({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+  // Nothing to save while the box holds the saved list (whitespace and a
+  // trailing comma are not a change).
+  const dirty =
+    parseUsers().join(",") !==
+    allowedUsers
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(",");
 
   // One toast per action. The gateway's `warning` (empty allowlist, `*`) is the
   // toast's second line; its `note` restates either the count or the restart,
@@ -412,7 +421,13 @@ function TelegramCard({
       </CardHeader>
       <CardContent className="space-y-2">
         {connected ? (
-          <>
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveAllowlist();
+            }}
+          >
             <label htmlFor="tg-allowlist" className="text-xs text-muted-foreground">
               Allowed user ids / usernames (comma-separated)
             </label>
@@ -426,40 +441,43 @@ function TelegramCard({
                 at all. Neither value appeared anywhere in this console, so a
                 connected channel with no owners looked the same as one with
                 them — and `autonomous_tools` silently voided both. */}
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px]">
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
               {boundary.autonomousTools ? (
-                <div className="font-medium text-destructive">
-                  ⚠ autonomous_tools = true — messages on this channel run tools without
-                  approval. The owner list below does not restrain them.
+                <div className="flex items-start gap-2 font-medium text-destructive">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  <span>
+                    autonomous_tools = true: messages on this channel run tools without
+                    approval. The owner list does not restrain them.
+                  </span>
                 </div>
               ) : boundary.owners.length === 0 ? (
                 <div className="text-muted-foreground">
-                  No approval owners — anything needing approval is auto-denied. Set
-                  <code className="mx-1">channels_config.approval_owners</code>, or send
-                  <code className="mx-1">/claim &lt;code&gt;</code> from the chat.
+                  No approval owners: anything that needs approval is denied. Set{" "}
+                  <code>channels_config.approval_owners</code>, or send{" "}
+                  <code>/claim &lt;code&gt;</code> from the chat.
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
                   <span>May approve tool calls:</span>
                   {boundary.owners.map((o) => (
-                    <Badge key={o} variant="secondary" className="font-mono text-[10px]">
+                    <Badge key={o} variant="secondary" className="font-mono text-xs">
                       {o}
                     </Badge>
                   ))}
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
-                Saved straight into the running channel — no restart, and no need
-                to re-enter the bot token. Changing the token is the one edit that
-                reloads the runtime.
+                Saved into the running channel on its next message; no restart. To change
+                the bot token, disconnect and connect again.
               </span>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={saveAllowlist} disabled={busy}>
+              <div className="flex shrink-0 gap-2">
+                <Button type="submit" size="sm" variant="outline" disabled={busy || !dirty}>
                   {busy ? "Saving…" : "Save allowlist"}
                 </Button>
                 <Button
+                  type="button"
                   size="sm"
                   variant="destructive"
                   onClick={() => setConfirmDisconnect(true)}
@@ -469,33 +487,45 @@ function TelegramCard({
                 </Button>
               </div>
             </div>
-          </>
+          </form>
         ) : (
-          <>
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void connect();
+            }}
+          >
+            <label htmlFor="tg-token" className="text-xs text-muted-foreground">
+              Bot token
+            </label>
             <Input
+              id="tg-token"
               type="password"
-              placeholder="Bot token (from @BotFather)"
-              aria-label="Telegram bot token"
+              placeholder="123456789:AA… from @BotFather"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               autoComplete="off"
             />
+            <label htmlFor="tg-users" className="text-xs text-muted-foreground">
+              Allowed user ids / usernames (comma-separated)
+            </label>
             <Input
-              placeholder="Allowed user ids / usernames (comma-separated)"
-              aria-label="Allowed user ids / usernames (comma-separated)"
+              id="tg-users"
+              placeholder="Empty denies every sender"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
-                The token is validated with Telegram, then saved (encrypted at rest). Leave allowed
-                users empty to deny all senders.
+                The token is checked with Telegram, then saved. An empty allowlist denies
+                every sender.
               </span>
-              <Button size="sm" onClick={connect} disabled={busy || !token.trim()}>
+              <Button type="submit" size="sm" className="shrink-0" disabled={busy || !token.trim()}>
                 {busy ? "Connecting…" : "Connect"}
               </Button>
             </div>
-          </>
+          </form>
         )}
       </CardContent>
     </Card>
@@ -503,8 +533,9 @@ function TelegramCard({
       open={confirmDisconnect}
       onClose={() => setConfirmDisconnect(false)}
       title="Disconnect Telegram?"
-      description="The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect."
+      description="The saved bot token is cleared. To reconnect, enter a new token from @BotFather."
       confirmLabel="Disconnect"
+      icon={null}
       busy={busy}
       onConfirm={disconnect}
     />
@@ -516,18 +547,19 @@ function TelegramCard({
         drift
           ? [
               drift.wouldRevoke.length > 0
-                ? `Saving now removes: ${drift.wouldRevoke.join(", ")} — added on the server since this panel loaded (a /claim or /bind, most likely).`
+                ? `Saving now removes: ${drift.wouldRevoke.join(", ")} (added on the server since this panel loaded, most likely by /claim or /bind).`
                 : "",
               drift.alsoChanged.length > 0
                 ? `Already removed on the server: ${drift.alsoChanged.join(", ")}.`
                 : "",
-              "Save anyway to replace the server's list with what is in the box.",
+              "Save anyway replaces the server's list with what is in the box.",
             ]
               .filter(Boolean)
               .join(" ")
           : ""
       }
       confirmLabel="Save anyway"
+      icon={null}
       busy={busy}
       onConfirm={async () => {
         setDrift(null);
