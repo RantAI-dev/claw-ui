@@ -33,12 +33,12 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
   return (
     <div className="group relative my-3 overflow-hidden rounded-lg border border-border bg-muted">
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+        <span className="font-mono text-[11px] text-muted-foreground">
           {lang}
         </span>
         <button
           onClick={copy}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground cursor-pointer"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-background hover:text-foreground cursor-pointer"
         >
           {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
           {copied ? "Copied" : "Copy"}
