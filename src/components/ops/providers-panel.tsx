@@ -5,6 +5,7 @@ import { KeyRound, Trash2, RotateCcw } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { ModelPicker } from "@/components/ui/model-picker";
+import type { ModelCatalog } from "@/lib/types";
 import { Combobox } from "@/components/ui/combobox";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -21,6 +22,9 @@ export function ProvidersPanel() {
   const info = useAsync(() => api.status(), []);
   const [provider, setProvider] = React.useState("");
   const [model, setModel] = React.useState("");
+  // The picker's catalog for the provider in the box, so a provider switch with
+  // no explicit model can save that provider's default instead of nothing.
+  const [modelCatalog, setModelCatalog] = React.useState<ModelCatalog | null>(null);
   const [key, setKey] = React.useState("");
   const [url, setUrl] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -44,7 +48,14 @@ export function ProvidersPanel() {
   const active = secrets.data?.provider;
   const keyPresent = secrets.data?.api_key_present;
 
-  const changeProvider = (next: string) => setProvider(next);
+  // A model id belongs to its provider: carrying "gpt-5-mini" over to Ollama
+  // wrote a cross-provider pair into config. Clear it on a switch; the picker
+  // shows the new provider's default until one is chosen.
+  const changeProvider = (next: string) => {
+    if (next !== provider) setModel("");
+    setProvider(next);
+  };
+  const isLocal = !!catalog.data?.providers.find((p) => p.id === (provider || active))?.local;
 
   // Deliberately send "" to CLEAR one secret field, leaving the other untouched
   // (the gateway sets a provided field, leaves an omitted one). This is the only
@@ -77,12 +88,15 @@ export function ProvidersPanel() {
     let modelSwitched = false;
     try {
       const providerChanged = provider && provider !== active;
-      const modelChanged = model && model !== info.data?.model;
+      // On a provider switch with no pick, save that provider's default so the
+      // old provider's model id never lands in config.
+      const resolvedModel = model || (providerChanged ? modelCatalog?.default || "" : "");
+      const modelChanged = resolvedModel && resolvedModel !== info.data?.model;
       const res =
         providerChanged || modelChanged
           ? await api.setConfigModel({
               provider: providerChanged ? provider : undefined,
-              model: model || undefined,
+              model: resolvedModel || undefined,
             })
           : null;
       modelSwitched = Boolean(providerChanged || modelChanged);
@@ -91,11 +105,10 @@ export function ProvidersPanel() {
       }
       // Surface the gateway's "no usable credential" heads-up — but not when the
       // user just added a key in this same save (which resolves it).
-      if (res?.warning && !key.trim()) {
-        toast.warning(res.warning);
-      } else {
-        toast.success(`Saved: ${provider || active} · ${model || "model unchanged"}`);
-      }
+      toast.success(`Saved: ${provider || active} · ${resolvedModel || "model unchanged"}`);
+      // The gateway's "no usable credential" heads-up: not when a key was just
+      // added in this save, and not for a local provider that needs none.
+      if (res?.warning && !key.trim() && !isLocal) toast.warning(res.warning);
       setKey("");
     } catch (e) {
       const detail = describeApiError(e);
@@ -116,7 +129,12 @@ export function ProvidersPanel() {
   return (
     <div className="space-y-4">
       <SectionTitle
-        action={<RefreshButton onClick={() => { catalog.refresh(); secrets.refresh(); }} />}
+        action={
+          <RefreshButton
+            onClick={() => { catalog.refresh(); secrets.refresh(); }}
+            spinning={catalog.refreshing || secrets.refreshing}
+          />
+        }
       >
         Providers {catalog.data && <span className="text-muted-foreground">· {catalog.data.count}</span>}
       </SectionTitle>
@@ -129,7 +147,9 @@ export function ProvidersPanel() {
           <span>Currently:</span>
           <Badge variant="accent">{active || "none"}</Badge>
           <Badge variant={keyPresent ? "success" : "warning"}>{keyPresent ? "key set" : "no key"}</Badge>
-          {secrets.data?.encrypt_at_rest && <span className="text-[11px]">· encrypted at rest</span>}
+          {keyPresent && secrets.data?.encrypt_at_rest && (
+            <span className="text-[11px]">· encrypted at rest</span>
+          )}
         </div>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <Combobox
@@ -148,7 +168,11 @@ export function ProvidersPanel() {
             provider={provider}
             value={model}
             onChange={setModel}
-            defaultModel={info.data?.model}
+            // The placeholder is what Save will use: the running model while the
+            // active provider is in the box, that provider's catalog default after
+            // a switch (not the old provider's model id).
+            defaultModel={provider === active ? info.data?.model : modelCatalog?.default}
+            onCatalog={setModelCatalog}
           />
         </div>
         {/* Labelled, not placeholder-only: these two fields sit next to each
@@ -218,7 +242,7 @@ export function ProvidersPanel() {
             ? "The stored base URL for this provider will be cleared and the provider default used. This does not touch the API key."
             : "The stored API key for this provider will be cleared. The provider will have no credential until you save a new one. This does not touch the base URL."
         }
-        confirmLabel={pendingClear === "url" ? "Reset URL" : "Remove key"}
+        confirmLabel={pendingClear === "url" ? "Reset base URL" : "Remove key"}
         icon={pendingClear === "url" ? <RotateCcw className="size-4" /> : undefined}
         busy={clearing}
         onConfirm={clearSecret}
@@ -235,9 +259,18 @@ export function ProvidersPanel() {
       >
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {catalog.data?.providers.map((p) => (
-            <Card
+            // A card that looks selectable now is: it puts the provider in the
+            // form above (the same as picking it in the combobox).
+            <button
               key={p.id}
-              className={cn("flex items-center justify-between p-3", p.id === active && "border-accent/50")}
+              type="button"
+              onClick={() => changeProvider(p.id)}
+              aria-pressed={p.id === provider}
+              className={cn(
+                "flex cursor-pointer items-center justify-between rounded-xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:border-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                p.id === active && "border-accent/50",
+                p.id === provider && p.id !== active && "border-ring",
+              )}
             >
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{p.display_name}</div>
@@ -247,7 +280,7 @@ export function ProvidersPanel() {
                 {p.id === active && <Badge variant="accent">active</Badge>}
                 {p.local && <Badge variant="success">local</Badge>}
               </div>
-            </Card>
+            </button>
           ))}
         </div>
       </PanelFrame>

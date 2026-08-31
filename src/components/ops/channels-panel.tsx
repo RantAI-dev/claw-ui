@@ -175,7 +175,7 @@ export function ChannelsPanel() {
 
   return (
     <div>
-      <SectionTitle action={<RefreshButton onClick={refreshNow} />}>
+      <SectionTitle action={<RefreshButton onClick={refreshNow} spinning={cfg.refreshing} />}>
         Channels {data && <span className="text-muted-foreground">· {data.count} configured</span>}
       </SectionTitle>
       {/* Gate on the config fetch too: the allowlist editor is seeded from
@@ -242,6 +242,9 @@ function TelegramCard({
   const [token, setToken] = React.useState("");
   const [users, setUsers] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // Kept next to the token field: the toast fades in seconds and the operator
+  // is left with a cleared-looking form and no reason.
+  const [connectError, setConnectError] = React.useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
   // Set when the server's allowlist has moved since the editor was seeded, so
   // saving would revoke someone the operator never saw.
@@ -275,6 +278,7 @@ function TelegramCard({
     const t = token.trim();
     if (!t) return;
     setBusy(true);
+    setConnectError(null);
     try {
       const r = await api.connectTelegram(t, parseUsers());
       toast.success(`Connected Telegram @${r.bot_username}`);
@@ -282,7 +286,9 @@ function TelegramCard({
       setToken("");
       onReload(r.restarts_runtime === true);
     } catch (e) {
-      toast.error(describeApiError(e));
+      const detail = describeApiError(e);
+      setConnectError(`Couldn't connect: ${detail}`);
+      toast.error(detail);
     } finally {
       setBusy(false);
     }
@@ -441,9 +447,17 @@ function TelegramCard({
               placeholder="Bot token (from @BotFather)"
               aria-label="Telegram bot token"
               value={token}
-              onChange={(e) => setToken(e.target.value)}
+              onChange={(e) => {
+                setToken(e.target.value);
+                setConnectError(null);
+              }}
               autoComplete="off"
             />
+            {connectError && (
+              <p className="text-[11px] text-destructive" role="alert">
+                {connectError}
+              </p>
+            )}
             <Input
               placeholder="Allowed user ids / usernames (comma-separated)"
               aria-label="Allowed user ids / usernames (comma-separated)"

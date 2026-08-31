@@ -213,7 +213,7 @@ function KbList({
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <RefreshButton onClick={groups.refresh} />
+          <RefreshButton onClick={groups.refresh} spinning={groups.refreshing} />
           <Button size="sm" onClick={openCreate}>
             <Plus className="size-4" /> New knowledge base
           </Button>
@@ -717,7 +717,7 @@ function KbDetail({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          <RefreshButton onClick={docs.refresh} />
+          <RefreshButton onClick={docs.refresh} spinning={docs.refreshing} />
           <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
             <Pencil className="size-3.5" /> Edit
           </Button>

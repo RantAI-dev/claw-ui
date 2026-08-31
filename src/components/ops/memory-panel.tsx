@@ -64,7 +64,7 @@ export function MemoryPanel() {
     setOffset(0);
   }, [query, filter]);
 
-  const { data, loading, error, refresh } = useAsync(
+  const { data, loading, error, refresh, refreshing } = useAsync(
     () => api.memory(PAGE_SIZE, offset, { q: query, category: filter }),
     [offset, query, filter],
   );
@@ -134,7 +134,7 @@ export function MemoryPanel() {
 
   return (
     <div className="space-y-4">
-      <SectionTitle action={<RefreshButton onClick={refresh} />}>
+      <SectionTitle action={<RefreshButton onClick={refresh} spinning={refreshing} />}>
         Memories
         {data && (
           <span className="text-muted-foreground">

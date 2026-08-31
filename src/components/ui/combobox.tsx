@@ -50,6 +50,12 @@ export function Combobox({
   const [query, setQuery] = React.useState("");
   const rootRef = React.useRef<HTMLDivElement>(null);
 
+  // A closed popover forgets its search: reopening on a stale "No matches" read
+  // as an empty catalog.
+  React.useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+
   React.useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {

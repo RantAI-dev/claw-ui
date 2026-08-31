@@ -24,7 +24,7 @@ const FALLBACK_PRESETS = [
 ];
 
 export function PersonaPanel() {
-  const { data, loading, error, refresh } = useAsync(() => api.personality(), []);
+  const { data, loading, error, refresh, refreshing } = useAsync(() => api.personality(), []);
   const groups = useAsync(() => api.kbGroups(), []);
   const presets = useAsync(() => api.personalityPresets(), []);
   const presetOptions = presets.data?.presets ?? FALLBACK_PRESETS;
@@ -112,6 +112,7 @@ export function PersonaPanel() {
               groups.refresh();
               presets.refresh();
             }}
+            spinning={refreshing || groups.refreshing}
           />
         }
       >

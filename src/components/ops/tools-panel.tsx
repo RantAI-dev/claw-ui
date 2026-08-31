@@ -98,7 +98,7 @@ export function ToolsPanel() {
 
   return (
     <div className="space-y-5">
-      <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>Policy</SectionTitle>
+      <SectionTitle action={<RefreshButton onClick={cfg.refresh} spinning={cfg.refreshing} />}>Policy</SectionTitle>
       <PanelFrame loading={cfg.loading} error={cfg.error} loaded={cfg.loaded} onRefresh={cfg.refresh}>
         <div className="space-y-5">
           {/* Autonomy level — editable */}

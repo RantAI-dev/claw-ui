@@ -62,7 +62,13 @@ export class ApiError extends Error {
  */
 export function describeApiError(e: unknown): string {
   if (!(e instanceof ApiError)) {
-    return e instanceof Error ? e.message : String(e);
+    const msg = e instanceof Error ? e.message : String(e);
+    // fetch() rejects with a bare TypeError ("Failed to fetch") when the console's
+    // own server cannot be reached; that string names neither cause nor action.
+    if (e instanceof TypeError && /fetch/i.test(msg)) {
+      return "The console could not reach its server. Check the connection and try again.";
+    }
+    return msg;
   }
   switch (e.status) {
     case 401:

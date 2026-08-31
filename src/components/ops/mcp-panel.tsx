@@ -41,8 +41,12 @@ export function McpPanel() {
   const [working, setWorking] = React.useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = React.useState<string | null>(null);
 
+  // Names become TOML table keys and CLI arguments; a space made
+  // [mcp_servers."qa probe"], which nothing downstream expects.
+  const nameOk = /^[A-Za-z0-9_-]+$/.test(name.trim());
+
   const add = async () => {
-    if (!name.trim() || !command.trim()) return;
+    if (!name.trim() || !command.trim() || !nameOk) return;
     setBusy(true);
     try {
       await api.addMcpServer(name.trim(), {
@@ -83,7 +87,7 @@ export function McpPanel() {
 
   return (
     <div className="space-y-4">
-      <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>
+      <SectionTitle action={<RefreshButton onClick={cfg.refresh} spinning={cfg.refreshing} />}>
         Configured servers{" "}
         {cfg.data && <span className="text-muted-foreground">· {servers.length}</span>}
       </SectionTitle>
@@ -111,10 +115,15 @@ export function McpPanel() {
             placeholder={'args, space-separated; quote values with spaces (e.g. -y @scope/pkg --path "/a b")'}
             className="h-8 min-w-[200px] flex-1 font-mono text-xs"
           />
-          <Button size="sm" onClick={add} disabled={busy || !name.trim() || !command.trim()}>
+          <Button size="sm" onClick={add} disabled={busy || !name.trim() || !command.trim() || !nameOk}>
             <Plus className="size-4" /> Add
           </Button>
         </div>
+        {name.trim() && !nameOk && (
+          <p className="text-[11px] text-destructive" role="alert">
+            Server names use letters, digits, &quot;-&quot; and &quot;_&quot; only.
+          </p>
+        )}
         <p className="text-[11px] text-muted-foreground">
           Persisted to <code>[mcp_servers]</code>; the runtime connects on the next daemon restart.
         </p>
@@ -131,7 +140,10 @@ export function McpPanel() {
           <Card className="divide-y divide-border">
             {servers.map(([n, s]) => {
               const sArgs = Array.isArray(s?.args) ? (s.args as string[]) : [];
-              const cmd = [s?.command as string, ...sArgs].filter(Boolean).join(" ");
+              // Quote args with spaces so "/a b" reads as one argument, as stored.
+              const cmd = [s?.command as string, ...sArgs.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))]
+                .filter(Boolean)
+                .join(" ");
               const w = working === n;
               return (
                 <div key={n} className="flex items-center gap-3 px-3 py-2.5">
@@ -148,6 +160,7 @@ export function McpPanel() {
                     onClick={() => setPendingRemove(n)}
                     disabled={w}
                     title="Remove"
+                    aria-label={`Remove ${n}`}
                     aria-label={`Remove MCP server ${n}`}
                     className="shrink-0 hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
                   >

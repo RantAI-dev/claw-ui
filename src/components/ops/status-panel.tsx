@@ -27,7 +27,7 @@ export function StatusPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <SectionTitle action={<RefreshButton onClick={() => { status.refresh(); doctor.refresh(); }} />}>
+        <SectionTitle action={<RefreshButton onClick={() => { status.refresh(); doctor.refresh(); }} spinning={status.refreshing || doctor.refreshing} />}>
           Runtime
         </SectionTitle>
         <PanelFrame loading={status.loading} error={status.error} loaded={status.loaded} onRefresh={status.refresh}>
@@ -50,7 +50,7 @@ export function StatusPanel() {
       </div>
 
       <div>
-        <SectionTitle action={<RefreshButton onClick={() => insights.refresh()} />}>Usage</SectionTitle>
+        <SectionTitle action={<RefreshButton onClick={() => insights.refresh()} spinning={insights.refreshing} />}>Usage</SectionTitle>
         <PanelFrame
           loading={insights.loading}
           error={insights.error}

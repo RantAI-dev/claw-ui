@@ -342,6 +342,10 @@ export interface ModelCatalog {
   source: string;
   age_secs: number | null;
   count: number;
+  /** Set by the refresh route: false when the provider gave no list and the
+   *  response is the previous/curated one. */
+  refreshed?: boolean;
+  detail?: string;
 }
 
 export interface CronJob {

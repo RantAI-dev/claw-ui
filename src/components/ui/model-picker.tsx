@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -21,6 +22,7 @@ export function ModelPicker({
   defaultModel,
   className,
   compact = false,
+  onCatalog,
 }: {
   provider: string;
   value: string;
@@ -28,12 +30,18 @@ export function ModelPicker({
   defaultModel?: string;
   className?: string;
   compact?: boolean;
+  /** Called whenever the catalog changes, so a parent can read its default. */
+  onCatalog?: (catalog: ModelCatalog | null) => void;
 }) {
   const [catalog, setCatalog] = React.useState<ModelCatalog | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
   // A failed fetch must not read as "this provider has no models".
   const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => {
+    onCatalog?.(catalog);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog]);
 
   React.useEffect(() => {
     if (!provider) {
@@ -61,7 +69,13 @@ export function ModelPicker({
     if (!provider || refreshing) return;
     setRefreshing(true);
     try {
-      setCatalog(await api.refreshProviderModels(provider));
+      const c = await api.refreshProviderModels(provider);
+      // The route answers 200 with refreshed:false when the provider returned
+      // nothing; without this the spinner just stopped and the list stayed put.
+      if (c.refreshed === false) {
+        toast.error(c.detail || `${provider} returned no model list; showing the built-in one.`);
+      }
+      setCatalog(c);
       setFailed(false);
     } catch {
       // Keep the current list; the footer says the refresh did not land.
@@ -92,7 +106,7 @@ export function ModelPicker({
         disabled={refreshing}
         className="flex items-center gap-1 hover:text-foreground disabled:opacity-50"
       >
-        <RefreshCw className={cn("size-3", refreshing && "animate-spin")} /> refresh
+        <RefreshCw className={cn("size-3", refreshing && "animate-spin")} /> Refresh
       </button>
     </>
   );

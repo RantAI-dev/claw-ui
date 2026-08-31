@@ -45,7 +45,7 @@ export function ConfigPanel() {
 
   return (
     <div className="space-y-4">
-      <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>Config</SectionTitle>
+      <SectionTitle action={<RefreshButton onClick={cfg.refresh} spinning={cfg.refreshing} />}>Config</SectionTitle>
       <Card className="space-y-3 p-4">
         <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Default sampling
