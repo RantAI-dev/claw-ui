@@ -45,11 +45,12 @@ export function OpsView({ route, connection }: { route: Route; connection: Conne
     <div className="ops">
       <div className="ops-inner">
         <div className="ops-head">
-          <div className="eyebrow">
+          {/* The topbar already carries the route title as the page's h1; the
+              eyebrow is the section heading, so the title is not printed twice. */}
+          <h2 className="eyebrow">
             <span className="cdot" style={{ background: dot }} />
             {meta.eyebrow}
-          </div>
-          <h2>{meta.title}</h2>
+          </h2>
           <p>{meta.blurb}</p>
         </div>
         {PANELS[route]}
