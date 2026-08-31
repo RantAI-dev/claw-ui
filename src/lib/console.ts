@@ -117,7 +117,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   channels: {
     title: "Channels",
     eyebrow: "Connectivity",
-    blurb: "Messaging surfaces the agent is reachable on: Slack, Discord, Telegram, email and more.",
+    blurb: "Messaging surfaces the agent is reachable on. Telegram is set up here; the others with rantaiclaw setup or in config.toml.",
   },
   mcp: {
     title: "MCP Servers",

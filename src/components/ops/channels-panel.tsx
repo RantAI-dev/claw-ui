@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AlertTriangle } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -11,26 +12,10 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
-
-// Channels the backend supports (config schema). Telegram is fully manageable
-// from the console today; the rest are configurable via the TUI/config only and
-// are surfaced here as "under development" until their console flow ships.
-const OTHER_CHANNELS: { key: string; label: string }[] = [
-  { key: "whatsapp", label: "WhatsApp" },
-  { key: "discord", label: "Discord" },
-  { key: "slack", label: "Slack" },
-  { key: "signal", label: "Signal" },
-  { key: "matrix", label: "Matrix" },
-  { key: "mattermost", label: "Mattermost" },
-  { key: "email", label: "Email" },
-  { key: "irc", label: "IRC" },
-  { key: "imessage", label: "iMessage" },
-  { key: "linq", label: "Linq (SMS/RCS)" },
-  { key: "nextcloud_talk", label: "Nextcloud Talk" },
-  { key: "lark", label: "Lark / Feishu" },
-  { key: "dingtalk", label: "DingTalk" },
-  { key: "qq", label: "QQ" },
-];
+import { allowlistToastTitle, channelState, configuredRows, type ChannelState } from "@/lib/channels";
+import { parseRuntimeHealth } from "@/lib/status";
+import { channelDot } from "@/lib/console";
+import { cn } from "@/lib/utils";
 
 /** Pull the Telegram allowlist out of GET /config (the bot token itself is redacted). */
 function telegramAllowlist(config: Record<string, unknown> | null): string[] {
@@ -104,67 +89,107 @@ export function allowlistDrift(
 }
 
 export function ChannelsPanel() {
-  const { data, loading, error, refresh, loaded } = useAsync(() => api.channels(), []);
+  const { data, loading, error, refresh, loaded, refreshing } = useAsync(() => api.channels(), []);
   const cfg = useAsync(() => api.config(), []);
+  // Whether a configured channel actually runs is only in the runtime snapshot;
+  // a failure here degrades to "no snapshot", it never blocks the page.
+  const st = useAsync(() => api.status(), []);
   const tgConnected = !!data?.configured.includes("telegram");
   const gateway = useGatewayStatus();
   const staleStatus = statusIsStale(error, gateway.connection);
-  // Set while the gateway is reloading because of a save we just made, so the
-  // panel can say so instead of presenting the outage as a load error.
-  const [reloading, setReloading] = React.useState(false);
+  const runtime = st.data ? parseRuntimeHealth(st.data.runtime) : null;
+  const tgState = channelState("telegram", data?.configured ?? null, runtime, staleStatus);
+  const rows = configuredRows(data?.configured ?? null, runtime, staleStatus);
+  // Set after a save the gateway said restarts the runtime, so the outage that
+  // follows is presented as the change being applied, not as a load error.
+  // `waiting`: the response is in and the restart is scheduled (the gateway
+  // answers for a moment longer); `restarting`: the gateway has gone away;
+  // back to `idle` when it answers again, or after a bounded window when it
+  // never leaves (no managed service: the operator restarts `rantaiclaw
+  // daemon` by hand). The previous version cleared the flag whenever the
+  // gateway was online, which it always still is on the commit that set it,
+  // so the banner never rendered.
+  const [applying, setApplying] = React.useState<"idle" | "waiting" | "restarting">("idle");
   const settleTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const giveUpTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The runtime's pid when the restarting save was answered, and the latest
+  // one seen: a different pid means the restart is done, even when it was too
+  // quick for the connection hook to see the gateway go away.
+  const pidAtSave = React.useRef<number | null>(null);
+  const latestPid = React.useRef<number | null>(null);
+  latestPid.current = runtime?.pid ?? null;
 
   const refreshNow = React.useCallback(() => {
     refresh();
     cfg.refresh();
+    st.refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh, cfg.refresh]);
+  }, [refresh, cfg.refresh, st.refresh]);
 
   // A save that changes the bot token reloads the runtime (a few seconds), so
-  // refetch after a short settle delay — an instant refetch would race the
-  // restart. The timer is held in a ref and cleared on unmount; it used to be a
-  // bare `setTimeout` that fired into an unmounted tree.
-  //
-  // `restarting` comes from the gateway's `restarts_runtime`, because only the
-  // gateway knows: an allowlist-only edit is picked up live and never restarts
-  // anything. This used to enter the reloading state after *every* save, and the
-  // effect below cleared it on the next run — the gateway had never gone
-  // offline — so the "Reloading the runtime…" banner could not render at all in
-  // the ordinary case, and rendered a promise nothing would keep in the rest.
-  const refreshAfterReload = React.useCallback((restarting: boolean) => {
-    if (restarting) setReloading(true);
-    if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(refreshNow, 3000);
-  }, [refreshNow]);
+  // refetch after a short settle delay: an instant refetch would race the
+  // restart. `restarting` comes from the gateway's `restarts_runtime`, because
+  // only the gateway knows: an allowlist-only edit is picked up live and never
+  // restarts anything.
+  const refreshAfterReload = React.useCallback(
+    (restarting: boolean) => {
+      if (restarting) {
+        pidAtSave.current = latestPid.current;
+        setApplying("waiting");
+        if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
+        giveUpTimer.current = setTimeout(() => setApplying("idle"), 60_000);
+      }
+      if (settleTimer.current) clearTimeout(settleTimer.current);
+      settleTimer.current = setTimeout(refreshNow, 3000);
+    },
+    [refreshNow],
+  );
 
   React.useEffect(
     () => () => {
       if (settleTimer.current) clearTimeout(settleTimer.current);
+      if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
     },
     [],
   );
 
-  // Leave the reloading state when the gateway answers again — and give up
-  // after a bounded window rather than spinning forever, naming the recovery.
+  // Walk the banner through the restart: nothing happens while the gateway is
+  // still answering; the outage moves it to `restarting`; the return clears it.
+  // The refetch on that return is the offline-to-online edge below.
   React.useEffect(() => {
-    if (!reloading) return undefined;
-    if (gateway.connection === "online") {
-      setReloading(false);
+    const online = gateway.connection === "online";
+    if (applying === "waiting" && !online) setApplying("restarting");
+    if (applying === "restarting" && online) {
+      setApplying("idle");
+      if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
+    }
+  }, [applying, gateway.connection]);
+
+  // A managed restart can finish between two polls of the connection hook, so
+  // while applying, re-read the runtime every 5 s and end on a new pid.
+  const pid = runtime?.pid ?? null;
+  React.useEffect(() => {
+    if (applying === "idle") return undefined;
+    if (pid != null && pidAtSave.current != null && pid !== pidAtSave.current) {
+      setApplying("idle");
+      if (giveUpTimer.current) clearTimeout(giveUpTimer.current);
+      // The settle refetch may have failed into the outage; re-read everything
+      // now that the runtime is back, since the connection hook may never have
+      // seen it leave and so will not fire its own edge refetch.
       refreshNow();
       return undefined;
     }
-    const giveUp = setTimeout(() => setReloading(false), 60_000);
-    return () => clearTimeout(giveUp);
-  }, [reloading, gateway.connection, refreshNow]);
+    const id = setInterval(st.refresh, 5000);
+    return () => clearInterval(id);
+  }, [applying, pid, st.refresh, refreshNow]);
 
   // Recover from an outage the operator did not cause.
   //
-  // The effect above only fires while `reloading`, which is set exclusively by
-  // `refreshAfterReload` — i.e. only after the operator saved something. A
-  // gateway that went down and came back on its own left the panel showing
+  // A gateway that went down and came back on its own left the panel showing
   // "fetch failed" indefinitely, next to a header that had already recovered to
-  // "Daemon live", until someone clicked Retry. Refetch on the offline→online
-  // edge so the two surfaces cannot disagree.
+  // "Daemon live", until someone clicked Retry. Refetch on the offline-to-online
+  // edge so the two surfaces cannot disagree; the same edge ends a restart the
+  // operator caused.
   const wasOffline = React.useRef(false);
   React.useEffect(() => {
     const online = gateway.connection === "online";
@@ -174,46 +199,71 @@ export function ChannelsPanel() {
 
   return (
     <div>
-      <SectionTitle action={<RefreshButton onClick={refreshNow} />}>
-        Channels {data && <span className="text-muted-foreground">· {data.count} configured</span>}
+      {/* The topbar h1 already says Channels; the sections are Telegram and the rest. */}
+      <SectionTitle
+        action={
+          <RefreshButton onClick={refreshNow} spinning={refreshing || cfg.refreshing || st.refreshing} />
+        }
+      >
+        Telegram
       </SectionTitle>
-      {/* Gate on the config fetch too: the allowlist editor is seeded from
-          GET /config, so rendering it before config loads (or after it fails)
-          would let "Save allowlist" persist an empty deny-all list. */}
-      {reloading && (
-        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
-          Reloading the runtime after your change… the panel keeps its content and
-          refreshes on its own. If it does not come back, run{" "}
-          <code>systemctl --user reset-failed rantaiclaw.service</code> and start it again.
+      {applying !== "idle" && (
+        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Applying your change. The runtime reloads by itself when RantaiClaw runs as a
+          managed service; otherwise restart <code>rantaiclaw daemon</code>. This panel
+          refreshes when the gateway is back.
         </div>
       )}
+      {/* Gate on the config fetch too: the allowlist editor is seeded from
+          GET /config, so rendering it before config loads (or after it fails)
+          would let "Save allowlist" persist an empty deny-all list. The section
+          button is the one retry control, so the refresh-failure strip gets no
+          Retry of its own. */}
       <PanelFrame
         loading={loading || cfg.loading}
         error={error || cfg.error}
         loaded={loaded && cfg.loaded}
-        onRefresh={refreshNow}
+        loadingLabel="Loading channels…"
       >
         <TelegramCard
           connected={tgConnected}
-          statusStale={staleStatus}
+          state={tgState}
           allowedUsers={telegramAllowlist(cfg.data)}
           boundary={approvalBoundary(cfg.data)}
           onReload={refreshAfterReload}
         />
 
-        <div className="mt-4">
-          <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            More channels
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {OTHER_CHANNELS.map((c) => (
-              <UnderDevelopmentChannel
-                key={c.key}
-                label={c.label}
-                active={!!data?.configured.includes(c.key)}
-              />
-            ))}
-          </div>
+        <div className="mt-6">
+          <SectionTitle>Other channels</SectionTitle>
+          <p className="text-xs text-muted-foreground">
+            Set up with <code>rantaiclaw setup</code> or in config.toml; this console manages
+            Telegram.
+          </p>
+          {rows.length > 0 && (
+            <ul className="mt-2 divide-y divide-border/60 rounded-lg border border-border">
+              {rows.map((r) => (
+                <li key={r.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                  <span
+                    aria-hidden
+                    className="inline-block size-2 rounded-full"
+                    style={{ background: channelDot(r.key) }}
+                  />
+                  <span className="font-medium">{r.label}</span>
+                  <Badge variant={r.state.tone}>{r.state.label}</Badge>
+                  {r.state.detail && (
+                    <span
+                      className={cn(
+                        "basis-full text-xs",
+                        r.state.word === "error" ? "text-destructive" : "text-muted-foreground",
+                      )}
+                    >
+                      {r.state.detail}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       </PanelFrame>
     </div>
@@ -222,14 +272,15 @@ export function ChannelsPanel() {
 
 function TelegramCard({
   connected,
-  statusStale,
+  state,
   allowedUsers,
   boundary,
   onReload,
 }: {
+  /** A Telegram section exists in config (the editor is shown). */
   connected: boolean;
-  /** The last fetch failed or the gateway is offline — say so, do not guess. */
-  statusStale: boolean;
+  /** What the runtime says about it; drives the badge and its detail line. */
+  state: ChannelState;
   allowedUsers: string[];
   boundary: { owners: string[]; autonomousTools: boolean };
   onReload: (restartsRuntime: boolean) => void;
@@ -256,24 +307,27 @@ function TelegramCard({
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
+  // Nothing to save while the box holds the saved list (whitespace and a
+  // trailing comma are not a change).
+  const dirty =
+    parseUsers().join(",") !==
+    allowedUsers
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join(",");
 
-  // Both, not either. The gateway sets `warning` when the allowlist is empty or
-  // contains `*`, and puts the restart notice in `note` — so the `else if` here
-  // suppressed the restart notice in exactly the two states an operator is most
-  // likely to be in while editing.
-  const notify = (r: { warning?: string | null; note?: string }) => {
-    if (r.warning) toast.warning(r.warning);
-    if (r.note) toast.message(r.note);
-  };
-
+  // One toast per action. The gateway's `warning` (empty allowlist, `*`) is the
+  // toast's second line; its `note` restates either the count or the restart,
+  // which the banner already carries, so it is not shown.
   const connect = async () => {
     const t = token.trim();
     if (!t) return;
     setBusy(true);
     try {
       const r = await api.connectTelegram(t, parseUsers());
-      toast.success(`Connected Telegram @${r.bot_username}`);
-      notify(r);
+      toast.success(`Connected Telegram @${r.bot_username}`, {
+        description: r.warning ?? undefined,
+      });
       setToken("");
       onReload(r.restarts_runtime === true);
     } catch (e) {
@@ -295,8 +349,9 @@ function TelegramCard({
       const r = await api.updateTelegramAllowlist(parseUsers());
       // What the SERVER stored, not what was requested. A mismatch between the
       // two is exactly what an operator needs to see.
-      toast.success(`Allowlist updated — ${r.allowed_users} sender(s) allowed`);
-      notify(r);
+      toast.success(allowlistToastTitle(r.allowed_users), {
+        description: r.warning ?? undefined,
+      });
       onReload(r.restarts_runtime === true);
     } catch (e) {
       toast.error(describeApiError(e));
@@ -334,7 +389,7 @@ function TelegramCard({
     setBusy(true);
     try {
       const r = await api.disconnectTelegram();
-      toast.success("Disconnected Telegram");
+      toast.success("Telegram disconnected");
       setUsers("");
       setConfirmDisconnect(false);
       onReload(r.restarts_runtime === true);
@@ -351,24 +406,28 @@ function TelegramCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-sm">
           Telegram
-          {statusStale ? (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-              status unknown
-            </Badge>
-          ) : connected ? (
-            <Badge variant="success" className="text-[10px] uppercase tracking-wide">
-              connected
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-              not connected
-            </Badge>
-          )}
+          <Badge variant={state.tone}>{state.label}</Badge>
         </CardTitle>
+        {state.detail && (
+          <p
+            className={cn(
+              "text-xs",
+              state.word === "error" ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {state.detail}
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-2">
         {connected ? (
-          <>
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveAllowlist();
+            }}
+          >
             <label htmlFor="tg-allowlist" className="text-xs text-muted-foreground">
               Allowed user ids / usernames (comma-separated)
             </label>
@@ -382,40 +441,43 @@ function TelegramCard({
                 at all. Neither value appeared anywhere in this console, so a
                 connected channel with no owners looked the same as one with
                 them — and `autonomous_tools` silently voided both. */}
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-[11px]">
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
               {boundary.autonomousTools ? (
-                <div className="font-medium text-destructive">
-                  ⚠ autonomous_tools = true — messages on this channel run tools without
-                  approval. The owner list below does not restrain them.
+                <div className="flex items-start gap-2 font-medium text-destructive">
+                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  <span>
+                    autonomous_tools = true: messages on this channel run tools without
+                    approval. The owner list does not restrain them.
+                  </span>
                 </div>
               ) : boundary.owners.length === 0 ? (
                 <div className="text-muted-foreground">
-                  No approval owners — anything needing approval is auto-denied. Set
-                  <code className="mx-1">channels_config.approval_owners</code>, or send
-                  <code className="mx-1">/claim &lt;code&gt;</code> from the chat.
+                  No approval owners: anything that needs approval is denied. Set{" "}
+                  <code>channels_config.approval_owners</code>, or send{" "}
+                  <code>/claim &lt;code&gt;</code> from the chat.
                 </div>
               ) : (
                 <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
                   <span>May approve tool calls:</span>
                   {boundary.owners.map((o) => (
-                    <Badge key={o} variant="secondary" className="font-mono text-[10px]">
+                    <Badge key={o} variant="secondary" className="font-mono text-xs">
                       {o}
                     </Badge>
                   ))}
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
-                Saved straight into the running channel — no restart, and no need
-                to re-enter the bot token. Changing the token is the one edit that
-                reloads the runtime.
+                Saved into the running channel on its next message; no restart. To change
+                the bot token, disconnect and connect again.
               </span>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={saveAllowlist} disabled={busy}>
+              <div className="flex shrink-0 gap-2">
+                <Button type="submit" size="sm" variant="outline" disabled={busy || !dirty}>
                   {busy ? "Saving…" : "Save allowlist"}
                 </Button>
                 <Button
+                  type="button"
                   size="sm"
                   variant="destructive"
                   onClick={() => setConfirmDisconnect(true)}
@@ -425,33 +487,45 @@ function TelegramCard({
                 </Button>
               </div>
             </div>
-          </>
+          </form>
         ) : (
-          <>
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void connect();
+            }}
+          >
+            <label htmlFor="tg-token" className="text-xs text-muted-foreground">
+              Bot token
+            </label>
             <Input
+              id="tg-token"
               type="password"
-              placeholder="Bot token (from @BotFather)"
-              aria-label="Telegram bot token"
+              placeholder="123456789:AA… from @BotFather"
               value={token}
               onChange={(e) => setToken(e.target.value)}
               autoComplete="off"
             />
+            <label htmlFor="tg-users" className="text-xs text-muted-foreground">
+              Allowed user ids / usernames (comma-separated)
+            </label>
             <Input
-              placeholder="Allowed user ids / usernames (comma-separated)"
-              aria-label="Allowed user ids / usernames (comma-separated)"
+              id="tg-users"
+              placeholder="Empty denies every sender"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
-                The token is validated with Telegram, then saved (encrypted at rest). Leave allowed
-                users empty to deny all senders.
+                The token is checked with Telegram, then saved. An empty allowlist denies
+                every sender.
               </span>
-              <Button size="sm" onClick={connect} disabled={busy || !token.trim()}>
+              <Button type="submit" size="sm" className="shrink-0" disabled={busy || !token.trim()}>
                 {busy ? "Connecting…" : "Connect"}
               </Button>
             </div>
-          </>
+          </form>
         )}
       </CardContent>
     </Card>
@@ -459,8 +533,9 @@ function TelegramCard({
       open={confirmDisconnect}
       onClose={() => setConfirmDisconnect(false)}
       title="Disconnect Telegram?"
-      description="The saved bot token will be cleared — you'll need to re-enter it from @BotFather to reconnect."
+      description="The saved bot token is cleared. To reconnect, enter a new token from @BotFather."
       confirmLabel="Disconnect"
+      icon={null}
       busy={busy}
       onConfirm={disconnect}
     />
@@ -472,18 +547,19 @@ function TelegramCard({
         drift
           ? [
               drift.wouldRevoke.length > 0
-                ? `Saving now removes: ${drift.wouldRevoke.join(", ")} — added on the server since this panel loaded (a /claim or /bind, most likely).`
+                ? `Saving now removes: ${drift.wouldRevoke.join(", ")} (added on the server since this panel loaded, most likely by /claim or /bind).`
                 : "",
               drift.alsoChanged.length > 0
                 ? `Already removed on the server: ${drift.alsoChanged.join(", ")}.`
                 : "",
-              "Save anyway to replace the server's list with what is in the box.",
+              "Save anyway replaces the server's list with what is in the box.",
             ]
               .filter(Boolean)
               .join(" ")
           : ""
       }
       confirmLabel="Save anyway"
+      icon={null}
       busy={busy}
       onConfirm={async () => {
         setDrift(null);
@@ -491,23 +567,5 @@ function TelegramCard({
       }}
     />
     </>
-  );
-}
-
-function UnderDevelopmentChannel({ label, active }: { label: string; active: boolean }) {
-  return (
-    <Card className="rounded-lg border-dashed bg-muted/30 p-3 shadow-none">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{label}</span>
-        {active && (
-          <Badge variant="success" className="text-[9px] uppercase tracking-wide">
-            active
-          </Badge>
-        )}
-      </div>
-      <div className="mt-1 text-[11px] text-muted-foreground">
-        {active ? "Running · manage via TUI" : "Under development"}
-      </div>
-    </Card>
   );
 }

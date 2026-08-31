@@ -116,6 +116,21 @@ describe("describeApiError", () => {
     expect(new Set([auth, down, bad]).size).toBe(3);
   });
 
+  it("does not repeat the outage sentence when the upstream message is the same fact", () => {
+    // The proxy's 502 body carries "the gateway is unreachable"; the page used
+    // to read "…may be restarting. (the gateway is unreachable)".
+    expect(describeApiError(new ApiError("the gateway is unreachable", 502, null))).toBe(
+      "The gateway is unreachable; it may be restarting.",
+    );
+    expect(describeApiError(new ApiError("", 503, null))).toBe(
+      "The gateway is unreachable; it may be restarting.",
+    );
+    // A distinct upstream message is still worth showing.
+    expect(describeApiError(new ApiError("upstream timeout", 504, null))).toBe(
+      "The gateway is unreachable; it may be restarting. (upstream timeout)",
+    );
+  });
+
   it("passes a non-ApiError through unchanged", () => {
     expect(describeApiError(new Error("boom"))).toBe("boom");
     expect(describeApiError("plain string")).toBe("plain string");
