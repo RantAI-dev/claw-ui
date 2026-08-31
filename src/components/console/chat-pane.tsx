@@ -89,6 +89,9 @@ export function ConnectionBanner({
   const blockedHost = error?.includes("unexpected_host")
     ? window.location.hostname
     : null;
+  // The middleware's own outage sentence already says it; do not repeat it in
+  // parentheses after "Gateway unreachable".
+  const detail = error && !/could not reach the RantaiClaw gateway/i.test(error) ? ` (${error})` : "";
   return (
     <div
       className={
@@ -115,7 +118,7 @@ export function ConnectionBanner({
             localhost.
           </>
         ) : (
-          <>Gateway unreachable. Start the agent gateway, then retry{error ? ` (${error})` : ""}.</>
+          <>Gateway unreachable. Start the agent gateway, then retry{detail}.</>
         )}
       </span>
     </div>
@@ -485,7 +488,9 @@ export function ChatPane(props: ChatPaneProps) {
                   <div className="kb-menu" role="menu" aria-label="Knowledge bases for this chat">
                     <div className="kb-menu-head">Knowledge bases</div>
                     {kbGroups.length === 0 ? (
-                      <div className="kb-menu-empty">No knowledge bases yet.</div>
+                      <div className="kb-menu-empty">
+                        No knowledge bases yet. Create one under Knowledge Bases in the sidebar.
+                      </div>
                     ) : (
                       kbGroups.map((g) => {
                         const locked = alwaysOnSet.has(g.id);

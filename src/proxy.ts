@@ -11,7 +11,7 @@ import {
   shouldRefreshActivity,
   SESSION_COOKIE,
 } from "@/lib/auth";
-import { idleTimeoutMs } from "@/lib/auth-required";
+import { gatewayUnreachable, idleTimeoutMs } from "@/lib/auth-required";
 import { isBackgroundPath, SESSION_EXPIRED } from "@/lib/activity";
 import { expectedHosts, isCrossSiteWrite, isUnexpectedHost } from "@/lib/request-origin";
 
@@ -73,6 +73,26 @@ export default async function proxy(req: NextRequest) {
     }
   }
 
+  const { pathname } = req.nextUrl;
+  const isApi = pathname.startsWith("/api/");
+  const authPath = pathname === "/login" || pathname.startsWith("/api/auth");
+
+  // The login gate fails closed while the gateway cannot be asked whether login
+  // is on (see auth-required.ts). Left alone, an outage surfaced as
+  // "misconfigured: RANTAICLAW_UI_SECRET" on a dev launcher or as a login page
+  // on the shipped one: the wrong cause both times. Name it: API calls answer
+  // 502 (nothing can be served without the gateway, so nothing is exposed) and
+  // the page shells still render so the console can show its offline banner.
+  // The auth paths keep their own handling below.
+  if (!authPath && (await gatewayUnreachable())) {
+    return isApi
+      ? NextResponse.json(
+          { error: "gateway_unreachable", detail: "The console could not reach the RantaiClaw gateway." },
+          { status: 502 },
+        )
+      : NextResponse.next();
+  }
+
   if (!(await authEnabled())) return NextResponse.next();
 
   // Login is enabled but no real cookie secret is set → the gate is
@@ -86,10 +106,7 @@ export default async function proxy(req: NextRequest) {
     );
   }
 
-  const { pathname } = req.nextUrl;
-  if (pathname === "/login" || pathname.startsWith("/api/auth")) {
-    return NextResponse.next();
-  }
+  if (authPath) return NextResponse.next();
 
   const now = Date.now();
   const claims = await readSessionToken(req.cookies.get(SESSION_COOKIE)?.value, now);

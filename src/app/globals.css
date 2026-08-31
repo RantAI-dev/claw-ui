@@ -1084,6 +1084,46 @@
   color: var(--destructive);
 }
 
+/* failed turn */
+.turn-error {
+  margin-bottom: 10px;
+  border: 1px solid color-mix(in oklab, var(--destructive) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--destructive) 6%, transparent);
+  padding: 9px 11px;
+  font-size: 13px;
+  color: var(--foreground);
+}
+.turn-error-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.turn-error-head svg {
+  color: var(--destructive);
+  margin-top: 2px;
+}
+.turn-error-more {
+  margin-top: 6px;
+}
+.turn-error-more summary {
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+.turn-error-more pre {
+  margin: 6px 0 0;
+  max-height: 14em;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted-foreground);
+}
+
 /* thinking dots */
 .dots {
   display: inline-flex;

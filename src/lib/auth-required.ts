@@ -1,12 +1,18 @@
 import "server-only";
 import { GATEWAY_URL } from "./gateway";
 
-export type AuthInfo = { login_required: boolean; idle_timeout_secs: number };
+export type AuthInfo = {
+  login_required: boolean;
+  idle_timeout_secs: number;
+  /** Set when this answer is the fail-closed default because the gateway could
+   *  not be asked; the middleware names that cause instead of the login gate. */
+  unreachable?: boolean;
+};
 
 type Fetcher = () => Promise<AuthInfo>;
 
 /** What we assume when the gateway cannot be reached. See `createAuthInfoCache`. */
-const FAIL_CLOSED: AuthInfo = { login_required: true, idle_timeout_secs: 0 };
+const FAIL_CLOSED: AuthInfo = { login_required: true, idle_timeout_secs: 0, unreachable: true };
 
 /**
  * The connected RantaiClaw gateway's auth policy, cached with a short TTL so the
@@ -65,6 +71,13 @@ const cache = createAuthInfoCache(defaultFetcher, 30_000);
 /** True when the connected gateway requires console login. Fail-closed. */
 export async function isLoginRequired(now = Date.now()): Promise<boolean> {
   return (await cache.get(now)).login_required;
+}
+
+/** True while the gateway cannot be asked for its auth policy (the answer is
+ *  the fail-closed default, not a real one). Never cached, so the first
+ *  request after the gateway returns sees the real policy. */
+export async function gatewayUnreachable(now = Date.now()): Promise<boolean> {
+  return !!(await cache.get(now)).unreachable;
 }
 
 /**
