@@ -105,13 +105,20 @@ function instructionsSpan(
   const lines = rest.split("\n");
   const items: string[] = [];
   let consumed = 0;
+  // Blank lines inside the list are held back until a bullet follows them, so
+  // a gap between two items keeps the list going while trailing blanks before
+  // the next heading are not consumed. (A blank used to end the list, and the
+  // Form view silently dropped every bullet after it.)
+  let pendingBlank = 0;
   for (const line of lines) {
     const isBullet = /^[ \t]*-[ \t]+/.test(line);
     const isBlank = line.trim() === "";
     // Stop at the first line that is neither a bullet nor blank padding —
-    // the next heading, or prose. Trailing blanks before it are not consumed.
+    // the next heading, or prose.
     if (!isBullet && !isBlank) break;
     if (isBullet) {
+      consumed += pendingBlank;
+      pendingBlank = 0;
       // Marker off the front, stray CR off the back — nothing else. Trimming
       // here would strip a trailing space the moment it was typed, the same
       // way it did in the frontmatter.
@@ -120,7 +127,7 @@ function instructionsSpan(
     } else if (items.length === 0) {
       consumed += line.length + 1; // blank line between heading and first item
     } else {
-      break;
+      pendingBlank += line.length + 1;
     }
   }
   return { items, start: afterHeading, end: afterHeading + consumed };

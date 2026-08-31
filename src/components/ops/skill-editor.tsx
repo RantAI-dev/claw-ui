@@ -356,11 +356,14 @@ function TagInput({
   onChange: (tags: string[]) => void;
 }) {
   const [draft, setDraft] = React.useState("");
+  // Pasted "x,y" used to become one tag "xy"; split like the comma key does.
   const add = () => {
-    const t = draft.trim();
-    if (!t || tags.includes(t)) return;
-    onChange([...tags, t]);
+    const next = draft
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s && !tags.includes(s));
     setDraft("");
+    if (next.length) onChange([...tags, ...next]);
   };
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded-md border border-border bg-background p-1.5 focus-within:ring-1 focus-within:ring-ring">

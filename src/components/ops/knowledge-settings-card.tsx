@@ -230,21 +230,34 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
       <Input
         type="password"
         placeholder="Embedding API key (OpenRouter)"
+        aria-label="Embedding API key"
         autoComplete="off"
         value={embedding}
         aria-invalid={formError ? true : undefined}
+        aria-describedby={formError ? "kb-key-error" : undefined}
         onChange={(e) => {
           setEmbedding(e.target.value);
           setFormError(null);
         }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && embedding.trim() && !busy) saveAndActivate();
+        }}
       />
-      {formError && <p className="text-xs text-destructive">{formError}</p>}
+      {formError && (
+        <p id="kb-key-error" role="alert" className="text-xs text-destructive">
+          {formError}. Check the key and try again.
+        </p>
+      )}
       <Input
         type="password"
         placeholder="OCR / vision key (optional; leave blank to reuse the embedding key)"
+        aria-label="OCR / vision API key (optional)"
         autoComplete="off"
         value={vision}
         onChange={(e) => setVision(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && embedding.trim() && !busy) saveAndActivate();
+        }}
       />
       <div className="flex gap-2">
         <Button

@@ -51,6 +51,20 @@ export function PersonaPanel() {
     setAlwaysOn(Array.isArray(data.always_on_kbs) ? data.always_on_kbs : []);
   }, [data]);
 
+  // IANA zones only: "Not/AZone" saved fine and every timestamp the agent
+  // wrote afterwards was wrong.
+  const timezoneError = React.useMemo(() => {
+    const tz = timezone.trim();
+    if (!tz) return null;
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: tz });
+      return null;
+    } catch {
+      return "Not an IANA time zone (for example Asia/Jakarta or UTC).";
+    }
+  }, [timezone]);
+  const selectedPreset = presetOptions.find((p) => p.id === preset);
+
   const dirty =
     !!data &&
     (preset !== (data.preset ?? "") ||
@@ -65,11 +79,11 @@ export function PersonaPanel() {
     try {
       await api.setPersonality({
         preset: preset || undefined,
-        name,
-        role,
-        tone,
-        avoid, // "" clears the avoid block (three-state on the gateway)
-        timezone,
+        name: name.trim(),
+        role: role.trim(),
+        tone: tone.trim(),
+        avoid: avoid.trim(), // "" clears the avoid block (three-state on the gateway)
+        timezone: timezone.trim(),
         always_on_kbs: alwaysOn,
       });
       toast.success("Persona saved");
@@ -142,6 +156,11 @@ export function PersonaPanel() {
                   </option>
                 ))}
               </Select>
+              {selectedPreset?.description && (
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  {selectedPreset.description}
+                </span>
+              )}
             </label>
             <label className="block">
               <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Name</span>
@@ -149,7 +168,19 @@ export function PersonaPanel() {
             </label>
             <label className="block">
               <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Timezone</span>
-              <Input value={timezone} maxLength={64} placeholder="IANA zone, e.g. Asia/Jakarta" onChange={(e) => setTimezone(e.target.value)} className="mt-1" />
+              <Input
+                value={timezone}
+                maxLength={64}
+                placeholder="IANA zone, e.g. Asia/Jakarta"
+                aria-invalid={timezoneError ? true : undefined}
+                onChange={(e) => setTimezone(e.target.value)}
+                className="mt-1"
+              />
+              {timezoneError && (
+                <span role="alert" className="mt-1 block text-[11px] text-destructive">
+                  {timezoneError}
+                </span>
+              )}
             </label>
             <label className="block">
               <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Tone</span>
@@ -164,7 +195,7 @@ export function PersonaPanel() {
               <Textarea value={avoid} maxLength={400} rows={2} placeholder="Leave empty to clear" onChange={(e) => setAvoid(e.target.value)} className="mt-1" />
             </label>
             <div className="flex justify-end border-t border-border/60 pt-3">
-              <Button onClick={save} disabled={saving || !dirty} size="sm">
+              <Button onClick={save} disabled={saving || !dirty || timezoneError != null} size="sm">
                 {saving ? "Saving…" : "Save persona"}
               </Button>
             </div>

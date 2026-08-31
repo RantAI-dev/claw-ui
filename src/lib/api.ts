@@ -68,14 +68,24 @@ export function describeApiError(e: unknown): string {
     if (e instanceof TypeError && /fetch/i.test(msg)) {
       return "The console could not reach its server. Check the connection and try again.";
     }
+    // AbortSignal.timeout() rejects with a DOMException whose message is the
+    // browser's own ("The operation was aborted due to timeout").
+    if ((e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) || /aborted due to timeout/i.test(msg)) {
+      return "The request timed out. Try again.";
+    }
     return msg;
   }
   switch (e.status) {
     case 401:
     case 403:
       return `Not authorised; sign in again. (${e.message})`;
-    case 502:
     case 503:
+      // The gateway also answers 503 for a feature that is switched off
+      // ("The Knowledge Base is turned off…"); that message is the truth, and
+      // "may be restarting" over it named the wrong cause.
+      if (e.message && !/unreachable|connect|refused|timed? ?out/i.test(e.message)) return e.message;
+      return `The gateway is unreachable; it may be restarting. (${e.message})`;
+    case 502:
     case 504:
       return `The gateway is unreachable; it may be restarting. (${e.message})`;
     default:

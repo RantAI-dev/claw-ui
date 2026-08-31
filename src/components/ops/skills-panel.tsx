@@ -44,6 +44,16 @@ import { SkillEditor } from "./skill-editor";
 interface PendingUninstall {
   slug: string;
   name: string;
+  /** Where the skill came from; decides what "uninstall" destroys. */
+  origin?: string;
+}
+
+function uninstallDescription(t: PendingUninstall): string {
+  if (t.origin === "authored")
+    return `“${t.name}” and its folder will be deleted. It is not on ClawHub, so there is no copy to reinstall.`;
+  if (t.origin === "clawhub")
+    return `“${t.name}” will be removed from the agent. You can reinstall it from ClawHub later.`;
+  return `“${t.name}” will be removed from the agent.`;
 }
 
 export function SkillsPanel() {
@@ -199,7 +209,13 @@ export function SkillsPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
           value={view}
-          onChange={setView}
+          // One box serves both views; a ClawHub query must not silently
+          // become the Installed filter. "Search ClawHub instead" carries it
+          // on purpose and calls setView directly.
+          onChange={(v) => {
+            setView(v);
+            setQuery("");
+          }}
           options={[
             { value: "installed", label: `Installed${installed.data ? ` · ${installed.data.count}` : ""}` },
             { value: "browse", label: "Browse ClawHub" },
@@ -368,6 +384,7 @@ export function SkillsPanel() {
                       onClick={() => install(reference)}
                       disabled={busy}
                       className="shrink-0"
+                      aria-label={`Install ${s.displayName}`}
                     >
                       {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
                       Install
@@ -414,11 +431,7 @@ export function SkillsPanel() {
         open={!!pendingUninstall}
         onClose={() => setPendingUninstall(null)}
         title="Uninstall skill?"
-        description={
-          pendingUninstall
-            ? `“${pendingUninstall.name}” will be removed from the agent. You can reinstall it from ClawHub later.`
-            : undefined
-        }
+        description={pendingUninstall ? uninstallDescription(pendingUninstall) : undefined}
         confirmLabel="Uninstall"
         busy={working === pendingUninstall?.slug}
         onConfirm={uninstall}
@@ -575,7 +588,7 @@ function InstalledCard({
             <Power className="size-3.5" />
           </IconButton>
           <IconButton
-            onClick={() => slug && onUninstall({ slug, name: skill.name })}
+            onClick={() => slug && onUninstall({ slug, name: skill.name, origin: skill.origin?.kind })}
             disabled={busy || !slug}
             title={!slug ? "Not manageable here (no skill folder)" : "Uninstall"}
             aria-label={`Uninstall ${skill.name}`}

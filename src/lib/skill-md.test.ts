@@ -37,6 +37,13 @@ describe("readFields", () => {
     });
   });
 
+  it("keeps instruction bullets that follow a blank line", () => {
+    // A blank line inside the list used to end it; the Form view then showed
+    // the first bullets only and wrote the rest away on Save.
+    const md = "---\nname: x\ndescription: d\ntags: []\n---\n\n# x\n\n## Instructions\n- one\n\n- two\n\n## Notes\nprose\n";
+    expect(readFields(md)?.instructions).toEqual(["one", "two"]);
+  });
+
   it("returns null when the document has no frontmatter", () => {
     expect(readFields("# Just a heading\n")).toBeNull();
   });

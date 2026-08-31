@@ -26,6 +26,7 @@ export function Drawer({
   children: React.ReactNode;
 }) {
   const panelRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
   // Captured during the first render, before `autoFocus` on Close moves focus,
   // and handed back on unmount (Modal does the same).
   const [opener] = React.useState<HTMLElement | null>(() =>
@@ -74,6 +75,7 @@ export function Drawer({
       }}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
     >
       <div
         ref={panelRef}
@@ -95,7 +97,9 @@ export function Drawer({
                   {eyebrow}
                 </div>
               )}
-              <div className="truncate text-sm font-semibold">{title}</div>
+              <div id={titleId} className="truncate text-sm font-semibold">
+                {title}
+              </div>
             </div>
           </div>
           <button

@@ -115,7 +115,7 @@ export function MemoryPanel() {
     setWorking(key);
     try {
       await api.deleteMemory(key);
-      toast.success("Forgotten");
+      toast.success(`Forgot “${key}”`);
       setPendingForget(null);
       refresh();
     } catch (e) {
@@ -152,7 +152,11 @@ export function MemoryPanel() {
         <Textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && content.trim() && !busy) remember();
+          }}
           placeholder="A durable fact or preference the agent should remember…"
+          aria-label="Memory content"
           rows={2}
         />
         <div className="flex flex-wrap items-center gap-2">
@@ -182,7 +186,7 @@ export function MemoryPanel() {
         {/* Naming is what makes an entry addressable from the CLI and the API
             afterwards; unnamed ones get a UUID that means nothing to a reader. */}
         <p className="text-[11px] text-muted-foreground">
-          Without a name the agent generates one.
+          Without a name the agent generates one. Ctrl+Enter also saves.
         </p>
       </Card>
 
