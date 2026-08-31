@@ -67,11 +67,11 @@ export function describeApiError(e: unknown): string {
   switch (e.status) {
     case 401:
     case 403:
-      return `Not authorised — sign in again. (${e.message})`;
+      return `Not authorised; sign in again. (${e.message})`;
     case 502:
     case 503:
     case 504:
-      return `The gateway is unreachable — it may be restarting. (${e.message})`;
+      return `The gateway is unreachable; it may be restarting. (${e.message})`;
     default:
       return e.message;
   }

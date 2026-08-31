@@ -169,10 +169,13 @@ function stripDecorations(content: string): string {
 /** Mark any still-running tool chip as finished — used when a turn ends without
  *  a `tool_call_end` (cancelled/aborted, or a dropped end frame) so the Activity
  *  disclosure doesn't pulse "Running" forever. */
-function finalizeToolCalls(tools?: ToolCall[]): ToolCall[] | undefined {
+/** Close out calls still marked running when the turn ends. A turn that was
+ *  stopped or denied marks them `cancelled` so the chip reads "stopped", not
+ *  "err" (nothing failed) or "ok" (nothing ran). */
+function finalizeToolCalls(tools?: ToolCall[], cancelled = false): ToolCall[] | undefined {
   if (!tools?.length) return tools;
   return tools.map((t) =>
-    t.done ? t : { ...t, done: true, ok: t.ok ?? false },
+    t.done ? t : { ...t, done: true, ok: t.ok ?? false, cancelled: cancelled || undefined },
   );
 }
 
@@ -392,7 +395,7 @@ export function useChat(opts: UseChatOptions) {
               ...m,
               streaming: false,
               cancelled: ev.cancelled || m.cancelled,
-              toolCalls: finalizeToolCalls(m.toolCalls),
+              toolCalls: finalizeToolCalls(m.toolCalls, !!(ev.cancelled || m.cancelled)),
               content:
                 m.content || (ev.cancelled ? "_(stopped)_" : ev.text || ""),
             }));
@@ -430,7 +433,7 @@ export function useChat(opts: UseChatOptions) {
         patch(assistantId, (m) => ({
           ...m,
           streaming: false,
-          toolCalls: finalizeToolCalls(m.toolCalls),
+          toolCalls: finalizeToolCalls(m.toolCalls, aborted),
           ...(aborted
             ? { cancelled: true, content: m.content || "_(stopped)_" }
             : {

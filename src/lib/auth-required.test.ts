@@ -52,6 +52,15 @@ describe("auth-info cache", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("marks the fail-closed answer as unreachable so the cause can be named", async () => {
+    const c = createAuthInfoCache(async () => {
+      throw new Error("ECONNREFUSED");
+    }, 30_000);
+    const a = await c.get(1000);
+    expect(a.login_required).toBe(true);
+    expect(a.unreachable).toBe(true);
+  });
+
   it("fails CLOSED on login_required when the gateway errors", async () => {
     const c = createAuthInfoCache(
       vi.fn(async () => {

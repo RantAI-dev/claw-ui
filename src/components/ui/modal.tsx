@@ -13,6 +13,9 @@ interface ModalProps {
   footer?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
+  /** false: no X, and Escape/backdrop do nothing. For dialogs whose only exits
+   *  are the footer buttons (a tool approval, where dismiss is not deny). */
+  closable?: boolean;
 }
 
 /**
@@ -27,6 +30,7 @@ export function Modal({
   footer,
   children,
   className,
+  closable = true,
 }: ModalProps) {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
@@ -43,16 +47,21 @@ export function Modal({
     const focusFirst = () => {
       const panel = panelRef.current;
       if (!panel) return;
-      const focusable = panel.querySelector<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      );
+      // A child marked data-autofocus wins; otherwise the first focusable,
+      // which is the X in the header. React's autoFocus prop never reaches the
+      // DOM, hence the data attribute.
+      const focusable =
+        panel.querySelector<HTMLElement>("[data-autofocus]") ??
+        panel.querySelector<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
       (focusable ?? panel).focus();
     };
     focusFirst();
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onClose();
+        if (closable) onClose();
         return;
       }
       // Trap Tab focus within the dialog (aria-modal is advisory; enforce it).
@@ -91,7 +100,7 @@ export function Modal({
       // Return focus to the trigger only if it's still in the document.
       if (restoreTo && document.contains(restoreTo)) restoreTo.focus();
     };
-  }, [open, onClose]);
+  }, [open, onClose, closable]);
 
   if (!mounted || !open) return null;
 
@@ -100,7 +109,7 @@ export function Modal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-in fade-in-0"
       onMouseDown={(e) => {
         // Only close when the click starts on the backdrop itself.
-        if (e.target === e.currentTarget) onClose();
+        if (closable && e.target === e.currentTarget) onClose();
       }}
       role="dialog"
       aria-modal="true"
@@ -115,13 +124,15 @@ export function Modal({
           className,
         )}
       >
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
-        >
-          <X className="size-4" />
-        </button>
+        {closable && (
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
+          >
+            <X className="size-4" />
+          </button>
+        )}
 
         {(title || description) && (
           <div className="shrink-0 border-b border-border/60 px-5 pb-4 pt-5 pr-12">

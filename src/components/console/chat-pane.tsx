@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
   AlertTriangle,
   ArrowDown,
@@ -12,7 +13,6 @@ import {
   Loader2,
   Paperclip,
   RotateCcw,
-  Sparkles,
   Square,
   X,
 } from "lucide-react";
@@ -89,23 +89,28 @@ export function ConnectionBanner({
   const blockedHost = error?.includes("unexpected_host")
     ? window.location.hostname
     : null;
+  // The middleware's own outage sentence already says it; do not repeat it in
+  // parentheses after "Gateway unreachable".
+  const detail = error && !/could not reach the RantaiClaw gateway/i.test(error) ? ` (${error})` : "";
   return (
     <div
       className={
-        "flex items-start gap-2 border-b border-border px-7 py-2 font-mono text-[11px] " +
+        // Foreground text on the tint: the tone colours alone sit at 4.0:1 at
+        // this size, so the tone lives in the icon and the background.
+        "flex items-start gap-2 border-b border-border px-7 py-2 text-xs text-foreground " +
         (needsAuth
-          ? "bg-[color-mix(in_oklab,var(--accent-orange)_8%,transparent)] text-[var(--accent-orange)]"
-          : "bg-destructive/10 text-destructive")
+          ? "bg-[color-mix(in_oklab,var(--accent-orange)_8%,transparent)]"
+          : "bg-destructive/10")
       }
     >
       {needsAuth ? (
-        <KeyRound className="mt-px size-3.5 flex-none" />
+        <KeyRound className="mt-px size-3.5 flex-none text-[var(--accent-orange)]" />
       ) : (
-        <AlertTriangle className="mt-px size-3.5 flex-none" />
+        <AlertTriangle className="mt-px size-3.5 flex-none text-destructive" />
       )}
       <span>
         {needsAuth ? (
-          <>Gateway requires pairing — register a token, then restart the daemon.</>
+          <>Gateway requires pairing. Register a token, then restart the daemon.</>
         ) : blockedHost ? (
           <>
             Console reached via unlisted host “{blockedHost}”. Add it to
@@ -113,7 +118,7 @@ export function ConnectionBanner({
             localhost.
           </>
         ) : (
-          <>Gateway unreachable. Start the agent gateway, then retry{error ? ` — ${error}` : ""}.</>
+          <>Gateway unreachable. Start the agent gateway, then retry{detail}.</>
         )}
       </span>
     </div>
@@ -163,14 +168,21 @@ export function ChatPane(props: ChatPaneProps) {
   const atBottom = React.useRef(true);
   const [detached, setDetached] = React.useState(false);
 
-  // Close the KB picker on an outside click.
+  // Close the KB picker on an outside click or Escape.
   React.useEffect(() => {
     if (!kbOpen) return;
     const onDown = (e: MouseEvent) => {
       if (kbRef.current && !kbRef.current.contains(e.target as Node)) setKbOpen(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setKbOpen(false);
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [kbOpen]);
 
   const alwaysOnSet = React.useMemo(() => new Set(alwaysOnKbIds), [alwaysOnKbIds]);
@@ -319,9 +331,7 @@ export function ChatPane(props: ChatPaneProps) {
       <div className="scroll-area" ref={scrollRef} onScroll={onScroll} onWheel={onWheel}>
         {empty ? (
           <div className="chat-empty">
-            <div className="ce-mark">
-              <Sparkles className="size-6" />
-            </div>
+            <Image className="ce-mark" src={brand.logo} alt="" width={52} height={52} unoptimized />
             <div>
               <h2>How can I help?</h2>
               <p>Start a conversation with your {brand.name} agent.</p>
@@ -360,7 +370,7 @@ export function ChatPane(props: ChatPaneProps) {
       {detached && !empty && (
         <button className="jump-latest" onClick={jumpToLatest}>
           <ArrowDown />
-          {isStreaming ? "Jump to latest — still writing" : "Jump to latest"}
+          {isStreaming ? "Jump to latest (still writing)" : "Jump to latest"}
         </button>
       )}
 
@@ -405,7 +415,7 @@ export function ChatPane(props: ChatPaneProps) {
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
               aria-label={`Message ${agentName}`}
-              placeholder={`Message ${agentName}…  (⏎ to send, ⇧⏎ for newline)`}
+              placeholder={`Message ${agentName}…`}
             />
             <input
               ref={fileRef}
@@ -475,10 +485,12 @@ export function ChatPane(props: ChatPaneProps) {
                   {activeKbCount > 0 && <span>{activeKbCount} KB</span>}
                 </button>
                 {kbOpen && (
-                  <div className="kb-menu">
+                  <div className="kb-menu" role="menu" aria-label="Knowledge bases for this chat">
                     <div className="kb-menu-head">Knowledge bases</div>
                     {kbGroups.length === 0 ? (
-                      <div className="kb-menu-empty">No knowledge bases yet.</div>
+                      <div className="kb-menu-empty">
+                        No knowledge bases yet. Create one under Knowledge Bases in the sidebar.
+                      </div>
                     ) : (
                       kbGroups.map((g) => {
                         const locked = alwaysOnSet.has(g.id);
@@ -487,6 +499,8 @@ export function ChatPane(props: ChatPaneProps) {
                           <button
                             key={g.id}
                             type="button"
+                            role="menuitemcheckbox"
+                            aria-checked={on}
                             className={"kb-opt" + (on ? " on" : "")}
                             onClick={() => !locked && onToggleKb(g.id)}
                             disabled={locked}
@@ -512,7 +526,7 @@ export function ChatPane(props: ChatPaneProps) {
 
               <span
                 className="cchip readonly"
-                title="Provider is set on the agent — switch it in Configuration"
+                title="Provider is set on the agent. Switch it in Configuration."
               >
                 {defaultProvider || providerLabel}
               </span>

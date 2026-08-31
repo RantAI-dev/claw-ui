@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Brain, ChevronRight, FileText } from "lucide-react";
+import { AlertTriangle, Brain, Check, ChevronRight, FileText } from "lucide-react";
 import { summariseRecalledMemories } from "@/lib/recalled-memories";
 import type { ChatMessage, ToolCall } from "@/lib/types";
 import { toolIcon } from "@/lib/console";
@@ -37,11 +37,13 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
         </span>
         <span className="spark">
           {running ? (
-            <Badge variant="accent" className="px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+            <Badge variant="accent" className="px-1.5 py-0.5 text-[11px]">
               <span className="size-1.5 animate-pulse rounded-full bg-current" /> Running
             </Badge>
           ) : (
-            <span className="act-sub text-success">✓ done</span>
+            <span className="act-sub inline-flex items-center gap-1 text-success">
+              <Check className="size-3" /> done
+            </span>
           )}
         </span>
       </button>
@@ -49,8 +51,12 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
         <div className="act-list">
           {tools.map((t) => {
             const Ico = toolIcon(t.name);
-            const failed = t.done && t.ok === false;
-            const status = !t.done ? "run" : failed ? "err" : "ok";
+            // The gateway reports a user denial as a failed call with this
+            // marker; to the person who clicked Deny it is a stop, not an error.
+            const denied = /\[denied by user\]/.test(t.outputPreview || "");
+            const stopped = t.cancelled || denied;
+            const failed = t.done && t.ok === false && !stopped;
+            const status = !t.done ? "run" : stopped ? "stopped" : failed ? "err" : "ok";
             return (
               <div className="act-row" key={t.id}>
                 <div className="act-ico">
@@ -77,6 +83,29 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
     </div>
   );
 });
+
+/** A failed turn: one line the operator can read at a glance, with the gateway's
+ *  full report (often several retry attempts) behind a disclosure instead of a
+ *  wall of red text. */
+function TurnError({ message }: { message: string }) {
+  const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
+  const headline = lines[0] || "The turn failed.";
+  const detail = lines.slice(1).join("\n");
+  return (
+    <div className="turn-error" role="alert">
+      <div className="turn-error-head">
+        <AlertTriangle className="size-3.5 shrink-0" />
+        <span>{headline}</span>
+      </div>
+      {detail && (
+        <details className="turn-error-more">
+          <summary>Details</summary>
+          <pre>{detail}</pre>
+        </details>
+      )}
+    </div>
+  );
+}
 
 const BotTurn = React.memo(function BotTurn({
   m,
@@ -113,24 +142,7 @@ const BotTurn = React.memo(function BotTurn({
 
           {tools.length > 0 && <Activity tools={tools} defaultOpen={m.streaming ? true : tracesOpen} />}
 
-          {m.error && (
-            <div
-              className="appr-reason"
-              role="alert"
-              style={{
-                display: "flex",
-                gap: 8,
-                color: "var(--destructive)",
-                border: "1px solid color-mix(in oklab, var(--destructive) 35%, transparent)",
-                borderRadius: "var(--radius-md)",
-                padding: "9px 11px",
-                marginBottom: 10,
-              }}
-            >
-              <AlertTriangle style={{ width: 14, height: 14, flex: "none", marginTop: 1 }} />
-              <span style={{ whiteSpace: "pre-wrap" }}>{m.error}</span>
-            </div>
-          )}
+          {m.error && <TurnError message={m.error} />}
 
           {(display || showCursor) &&
             (renderMode === "gui" ? (
