@@ -74,7 +74,6 @@ function Radio<T extends string>({
           <button
             key={o}
             className={o === value ? "on" : ""}
-            style={o === value ? { background: "var(--brand-sky)" } : undefined}
             onClick={() => onChange(o)}
           >
             {o}
@@ -169,8 +168,7 @@ export function TweaksPanel({
           />
           <div
             style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 10,
+              fontSize: 11,
               lineHeight: 1.5,
               color: "var(--muted-foreground)",
               margin: "-4px 0 12px",
@@ -209,14 +207,16 @@ export function TweaksPanel({
             }}
           >
             <div style={{ fontSize: 12.5 }}>Context panel</div>
-            <div
+            <button
+              type="button"
               className={"switch" + (tweaks.rightPanel ? " on" : "")}
               onClick={() => setTweak("rightPanel", !tweaks.rightPanel)}
               role="switch"
               aria-checked={tweaks.rightPanel}
+              aria-label="Context panel"
             >
               <i />
-            </div>
+            </button>
           </div>
         </div>
       </aside>

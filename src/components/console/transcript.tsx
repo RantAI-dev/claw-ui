@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Brain, ChevronRight, FileText } from "lucide-react";
+import { AlertTriangle, Brain, Check, ChevronRight, FileText } from "lucide-react";
 import { summariseRecalledMemories } from "@/lib/recalled-memories";
 import type { ChatMessage, ToolCall } from "@/lib/types";
 import { toolIcon } from "@/lib/console";
@@ -37,11 +37,13 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
         </span>
         <span className="spark">
           {running ? (
-            <Badge variant="accent" className="px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
+            <Badge variant="accent" className="px-1.5 py-0.5 text-[11px]">
               <span className="size-1.5 animate-pulse rounded-full bg-current" /> Running
             </Badge>
           ) : (
-            <span className="act-sub text-success">✓ done</span>
+            <span className="act-sub inline-flex items-center gap-1 text-success">
+              <Check className="size-3" /> done
+            </span>
           )}
         </span>
       </button>

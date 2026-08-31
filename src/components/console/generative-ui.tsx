@@ -179,7 +179,7 @@ function Component({
                 >
                   {asText(item.value)}
                 </div>
-                <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                <div className="mt-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                   {asText(item.label)}
                 </div>
               </Card>

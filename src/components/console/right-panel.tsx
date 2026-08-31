@@ -43,25 +43,27 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
           <div className="kv">
             <div className="kv-row">
               <span className="k">model</span>
-              <span className="v">{data.model ? data.model.split("/").pop() : "—"}</span>
+              <span className="v">{data.model ? data.model.split("/").pop() : "not set"}</span>
             </div>
             <div className="kv-row">
               <span className="k">provider</span>
-              <span className="v">{data.provider || "—"}</span>
+              <span className="v">{data.provider || "not set"}</span>
             </div>
             <div className="kv-row">
               <span className="k">temperature</span>
-              <span className="v">{data.temperature || "—"}</span>
+              <span className="v">{data.temperature || "default"}</span>
             </div>
             <div className="kv-row">
               <span className="k">autonomy</span>
-              <span className="v" style={{ color: auto.dot }}>
+              {/* Dot carries the rung colour; the label stays foreground (purple text here was 2.5:1). */}
+              <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <i style={{ width: 7, height: 7, borderRadius: 999, background: auto.dot }} />
                 {auto.label}
               </span>
             </div>
             <div className="kv-row">
               <span className="k">version</span>
-              <span className="v">{data.version ? `v${data.version}` : "—"}</span>
+              <span className="v">{data.version ? `v${data.version}` : "unknown"}</span>
             </div>
             <div className="kv-row">
               <span className="k">paired</span>

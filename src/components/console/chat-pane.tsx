@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
   AlertTriangle,
   ArrowDown,
@@ -12,7 +13,6 @@ import {
   Loader2,
   Paperclip,
   RotateCcw,
-  Sparkles,
   Square,
   X,
 } from "lucide-react";
@@ -92,20 +92,22 @@ export function ConnectionBanner({
   return (
     <div
       className={
-        "flex items-start gap-2 border-b border-border px-7 py-2 font-mono text-[11px] " +
+        // Foreground text on the tint: the tone colours alone sit at 4.0:1 at
+        // this size, so the tone lives in the icon and the background.
+        "flex items-start gap-2 border-b border-border px-7 py-2 text-xs text-foreground " +
         (needsAuth
-          ? "bg-[color-mix(in_oklab,var(--accent-orange)_8%,transparent)] text-[var(--accent-orange)]"
-          : "bg-destructive/10 text-destructive")
+          ? "bg-[color-mix(in_oklab,var(--accent-orange)_8%,transparent)]"
+          : "bg-destructive/10")
       }
     >
       {needsAuth ? (
-        <KeyRound className="mt-px size-3.5 flex-none" />
+        <KeyRound className="mt-px size-3.5 flex-none text-[var(--accent-orange)]" />
       ) : (
-        <AlertTriangle className="mt-px size-3.5 flex-none" />
+        <AlertTriangle className="mt-px size-3.5 flex-none text-destructive" />
       )}
       <span>
         {needsAuth ? (
-          <>Gateway requires pairing — register a token, then restart the daemon.</>
+          <>Gateway requires pairing. Register a token, then restart the daemon.</>
         ) : blockedHost ? (
           <>
             Console reached via unlisted host “{blockedHost}”. Add it to
@@ -113,7 +115,7 @@ export function ConnectionBanner({
             localhost.
           </>
         ) : (
-          <>Gateway unreachable. Start the agent gateway, then retry{error ? ` — ${error}` : ""}.</>
+          <>Gateway unreachable. Start the agent gateway, then retry{error ? ` (${error})` : ""}.</>
         )}
       </span>
     </div>
@@ -319,9 +321,7 @@ export function ChatPane(props: ChatPaneProps) {
       <div className="scroll-area" ref={scrollRef} onScroll={onScroll} onWheel={onWheel}>
         {empty ? (
           <div className="chat-empty">
-            <div className="ce-mark">
-              <Sparkles className="size-6" />
-            </div>
+            <Image className="ce-mark" src={brand.logo} alt="" width={52} height={52} unoptimized />
             <div>
               <h2>How can I help?</h2>
               <p>Start a conversation with your {brand.name} agent.</p>
@@ -360,7 +360,7 @@ export function ChatPane(props: ChatPaneProps) {
       {detached && !empty && (
         <button className="jump-latest" onClick={jumpToLatest}>
           <ArrowDown />
-          {isStreaming ? "Jump to latest — still writing" : "Jump to latest"}
+          {isStreaming ? "Jump to latest (still writing)" : "Jump to latest"}
         </button>
       )}
 
@@ -405,7 +405,7 @@ export function ChatPane(props: ChatPaneProps) {
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
               aria-label={`Message ${agentName}`}
-              placeholder={`Message ${agentName}…  (⏎ to send, ⇧⏎ for newline)`}
+              placeholder={`Message ${agentName}…`}
             />
             <input
               ref={fileRef}
@@ -512,7 +512,7 @@ export function ChatPane(props: ChatPaneProps) {
 
               <span
                 className="cchip readonly"
-                title="Provider is set on the agent — switch it in Configuration"
+                title="Provider is set on the agent. Switch it in Configuration."
               >
                 {defaultProvider || providerLabel}
               </span>

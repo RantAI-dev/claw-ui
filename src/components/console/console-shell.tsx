@@ -471,7 +471,7 @@ export function ConsoleShell({
         // staleness guard and discarded the very read that would have corrected
         // the screen.
         autonomyWrittenAt.current = Date.now();
-        toast.success(`Autonomy → ${autonomyPreset(rung).label}`);
+        toast.success(`Autonomy set to ${autonomyPreset(rung).label}`);
       })
       .catch((e) => {
         setAutonomyState(previous);
@@ -888,7 +888,7 @@ export function ConsoleShell({
                     </div>
                   ) : sessionsError && sessions.length === 0 ? (
                     <div className="auto-blurb px-2.5 py-1">
-                      Couldn&apos;t load sessions — {sessionsError}{" "}
+                      Couldn&apos;t load sessions: {sessionsError}{" "}
                       <button
                         type="button"
                         className="underline"
@@ -902,7 +902,9 @@ export function ConsoleShell({
                     </div>
                   ) : filteredSessions.length === 0 ? (
                     <div className="auto-blurb px-2.5 py-1">
-                      {sessQuery.trim() ? "No matches." : "No sessions yet."}
+                      {sessQuery.trim()
+                        ? `No sessions match "${sessQuery.trim()}".`
+                        : "No sessions yet. Send a message to start one."}
                     </div>
                   ) : (
                     filteredSessions.map((s) => (
@@ -1037,7 +1039,9 @@ export function ConsoleShell({
                     key={p.id}
                     className={p.id === autonomy ? "on" : ""}
                     style={
-                      p.id === autonomy ? { background: p.dot } : undefined
+                      p.id === autonomy
+                        ? ({ ["--seg-on" as string]: p.dot } as React.CSSProperties)
+                        : undefined
                     }
                     onClick={() => changeAutonomy(p.id)}
                   >
@@ -1087,9 +1091,9 @@ export function ConsoleShell({
 
           <div className="topbar-spacer" />
 
-          <span className="pill">
+          <span className="pill" role="status" aria-label={connPill.label} title={connPill.label}>
             <span className="chan-dot" style={{ background: connPill.color }} />
-            {connPill.label}
+            <span className="pill-label">{connPill.label}</span>
           </span>
 
           {route === "chat" && (
@@ -1104,7 +1108,7 @@ export function ConsoleShell({
           )}
           {route === "chat" && (
             <button
-              className="icon-btn"
+              className="icon-btn ctx-toggle"
               onClick={() => setTweak("rightPanel", !tweaks.rightPanel)}
               aria-label="Toggle context panel"
               aria-pressed={tweaks.rightPanel}
@@ -1218,7 +1222,7 @@ export function ConsoleShell({
         // no-op; the explicit Deny button below is the only deny path. The modal
         // reopens if it is still pending (a resolved/expired request clears it).
         onClose={() => {}}
-        title="🔧 Approve tool?"
+        title="Approve tool?"
         description={
           chat.pendingApproval
             ? `The agent wants to run the “${chat.pendingApproval.tool}” tool.`
