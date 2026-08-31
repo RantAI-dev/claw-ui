@@ -159,3 +159,48 @@ This brings the management surface to **minimal parity with the Hermes web UI**.
 # 2. UI
 cd packages/rantaiclaw-ui && bun install && bun run dev   # http://127.0.0.1:3939
 ```
+
+## 10. Visual rules (2026-08-31 pass)
+
+Design read: an operator console (chat plus ops panels) for people who run an agent
+runtime, in the shadcn-neutral language on the RantAI blue tokens. Dials: ENERGY 1,
+RHYTHM 1, MOTION 2. Every decision below has its one-line reason; keep them true
+when you touch the UI.
+
+- **Dark is forced.** The console sits next to terminals and logs. The `.light` tokens
+  in `globals.css` are unused and there is no toggle.
+- **Palette.** Neutral greys, brand sky as the one accent, deep blue behind it. Status
+  colours (green, orange, red, purple) appear on dots and badge tints; never as text
+  below 12px, where they fail 4.5:1 on the dark ground.
+- **Type.** Geist for everything a person reads; Geist Mono only for machine values
+  (ids, model names, paths, commands, tool output). Section labels are 11px uppercase
+  sans with 0.06em tracking (`.eyebrow`). The Poppins files under `src/app/fonts` are
+  unused; fonts load through `next/font`.
+- **Gradient.** Only the agent identity marks (rail avatar, transcript avatar, accent
+  swatches) carry the sky-to-deep-blue gradient. No background orbs, no glass; the
+  topbar is solid.
+- **Radius.** 6px controls, 8px cards and nav rows, 12px composer. 999px only on dots,
+  toggles and the meter.
+- **Shadow.** Only what floats: jump-to-latest, popovers, modals, the mobile rail.
+  Cards sit flat.
+- **Glow.** The pending-approval dot ring and the selected graph node. Nothing else.
+- **Motion.** Spinners, thinking dots and the caret show real in-progress state; new
+  turns fade up once (300ms); hover and focus transitions. Nothing loops on a static
+  element.
+- **Left stripe.** The active nav marker and the generative-UI card tone. Both carry
+  state; a stripe with no state behind it does not ship.
+- **Arrows.** `tool → target` in activity rows and `subject → object` in relation lists
+  (with an sr-only "to"). None on buttons.
+- **Icons.** lucide, chosen with the stack. No sparkle, robot or magic glyphs; entity
+  extraction uses `Network`, re-extract uses `RefreshCw`, the empty chat shows the
+  product mark.
+- **Copy.** No em dashes. Empty states name the cause and the next action. Placeholders
+  say what goes in the field, never sample content. Missing values read as words
+  ("not set", "unknown", "no next run"), not a dash.
+- **Contrast.** Every text/background pair in the dark theme clears WCAG AA 4.5:1
+  (checked from the OKLCH tokens). `--destructive-foreground` is ink, the autonomy rung
+  uses a tint plus hairline in its colour, banners put the tone in the icon and keep the
+  text foreground.
+- **Keyboard and touch.** Class-styled controls share one focus ring (`--ring`, 2px).
+  Hover-revealed row actions stay visible on devices without hover; targets grow to
+  40px or more on coarse pointers.
