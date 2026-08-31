@@ -131,7 +131,7 @@ export function getFileTypeIcon(fileType?: string | null): FileTypeInfo {
 
 /** Human-readable byte size; mirrors the main app's formatFileSize. */
 export function formatFileSize(bytes?: number | null): string {
-  if (bytes == null || bytes === 0) return "—";
+  if (bytes == null || bytes === 0) return "";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;

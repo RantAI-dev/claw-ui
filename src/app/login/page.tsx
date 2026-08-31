@@ -37,7 +37,7 @@ export default function LoginPage() {
         const retry = Number(res.headers.get("retry-after"));
         if (res.status === 429 && Number.isFinite(retry) && retry > 0) {
           const when = retry >= 60 ? `${Math.ceil(retry / 60)} min` : `${retry}s`;
-          setError(`Too many attempts — try again in ${when}.`);
+          setError(`Too many attempts. Try again in ${when}.`);
         } else {
           setError(j.error || "Login failed");
         }
@@ -50,7 +50,7 @@ export default function LoginPage() {
       router.replace(safeNext ? next : "/chat");
       router.refresh();
     } catch {
-      setError("Network error — is the server reachable?");
+      setError("Network error. Is the server reachable?");
     } finally {
       setBusy(false);
     }
@@ -63,7 +63,7 @@ export default function LoginPage() {
           <Image src={brand.logo} alt={brand.name} width={40} height={40} className="rounded-lg" priority unoptimized />
           <h1 className="text-base font-semibold">{brand.productName}</h1>
           <p className="text-xs text-muted-foreground">
-            {idled ? "Signed out after a stretch of inactivity" : "Enter your password to continue"}
+            {idled ? "Signed out after a stretch of inactivity" : "Sign in with your console username and password"}
           </p>
         </div>
         <form onSubmit={submit} className="space-y-3">
@@ -76,6 +76,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Username"
+              aria-label="Username"
               className="pl-9"
             />
           </div>
@@ -87,6 +88,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Password"
+              aria-label="Password"
               className="pl-9"
             />
           </div>

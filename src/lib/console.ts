@@ -109,42 +109,42 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   channels: {
     title: "Channels",
     eyebrow: "Connectivity",
-    blurb: "Messaging surfaces the agent is reachable on — Slack, Discord, Telegram, email and more.",
+    blurb: "Messaging surfaces the agent is reachable on: Slack, Discord, Telegram, email and more.",
   },
   mcp: {
     title: "MCP Servers",
     eyebrow: "Model Context Protocol",
-    blurb: "MCP servers wired into the runtime via config — each exposes its own tool surface to the agent.",
+    blurb: "MCP servers wired into the runtime via config. Each exposes its own tool surface to the agent.",
   },
   tools: {
     title: "Tools & Autonomy",
     eyebrow: "Permissions",
-    blurb: "The autonomy level and the policy that governs it — auto-approved tools, the shell allowlist, rate and cost caps, and forbidden paths.",
+    blurb: "The autonomy level and the policy that governs it: auto-approved tools, the shell allowlist, rate and cost caps, and forbidden paths.",
   },
   providers: {
     title: "Providers",
     eyebrow: "Models & keys",
-    blurb: "Pick the active model provider and store its API key — encrypted at rest, never shown back.",
+    blurb: "Pick the active model provider and store its API key. It is encrypted at rest and never shown back.",
   },
   cron: {
     title: "Schedules",
     eyebrow: "Automation",
-    blurb: "Recurring agent jobs on cron expressions — create, pause, run now, or delete.",
+    blurb: "Recurring agent jobs on cron expressions: create, pause, run now, or delete.",
   },
   skills: {
     title: "Skills",
     eyebrow: "Capabilities",
-    blurb: "Skills the agent can use — write your own, or install them from the ClawHub marketplace.",
+    blurb: "Skills the agent can use. Write your own, or install them from the ClawHub marketplace.",
   },
   kb: {
     title: "Knowledge Bases",
     eyebrow: "Retrieval",
-    blurb: "Grouped document collections the agent can retrieve from — upload files, organize, and pick which bases a chat draws on.",
+    blurb: "Grouped document collections the agent can retrieve from. Upload files, organize, and pick which bases a chat draws on.",
   },
   kbgraph: {
     title: "Knowledge Graph",
     eyebrow: "Entity relationships",
-    blurb: "The entity-and-relation graph extracted across your knowledge bases — explore how people, organizations, and concepts connect.",
+    blurb: "The entity-and-relation graph extracted across your knowledge bases: how people, organizations, and concepts connect.",
   },
   memory: {
     title: "Memory",
@@ -182,7 +182,7 @@ export const AUTONOMY: AutonomyPreset[] = [
   {
     id: "strict",
     label: "Strict",
-    blurb: "Deny-by-default. Shell unregistered — describes, doesn't run.",
+    blurb: "Deny-by-default. Shell unregistered: describes, doesn't run.",
     dot: "var(--accent-purple)",
   },
   { id: "off", label: "Off", blurb: "Autonomous execution, no prompts. Trusted envs only.", dot: "var(--accent-green)" },

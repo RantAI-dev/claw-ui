@@ -16,9 +16,10 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
         <AlertTriangle className="size-6 text-destructive" />
       </div>
       <div>
-        <h2 className="text-lg font-semibold">Something went wrong</h2>
+        <h2 className="text-lg font-semibold">This view failed to render</h2>
         <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          An unexpected error occurred while rendering this view.
+          The console hit an error drawing this page. Try again re-renders it; if it keeps
+          failing, check the gateway log.
         </p>
         {/* The raw message can carry upstream gateway text (filesystem paths and
             the like), so keep it out of the headline and behind a disclosure. */}

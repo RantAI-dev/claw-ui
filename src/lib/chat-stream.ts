@@ -58,7 +58,7 @@ export async function streamChat(
     if (inactivityMs <= 0) return reader.read();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const stall = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("Response stream stalled — no data received.")), inactivityMs);
+      timer = setTimeout(() => reject(new Error("Response stream stalled: no data received.")), inactivityMs);
     });
     try {
       return await Promise.race([reader.read(), stall]);
