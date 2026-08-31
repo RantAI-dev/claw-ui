@@ -16,6 +16,11 @@ export function useGatewayStatus(pollMs = 15000) {
   // single 502 or a config hot-reload does not flap the whole console to
   // "offline" while a turn is streaming fine.
   const failuresRef = React.useRef(0);
+  // The two-failure debounce protects a console that WAS online from flapping
+  // during a long turn. A console that has never reached the gateway has
+  // nothing to protect, and "Connecting…" for 30s during an outage hid the
+  // banner that says what to do.
+  const everOnlineRef = React.useRef(false);
 
   const refresh = React.useCallback(async () => {
     try {
@@ -25,6 +30,7 @@ export function useGatewayStatus(pollMs = 15000) {
       setError(null);
       setNeedsAuth(false);
       failuresRef.current = 0;
+      everOnlineRef.current = true;
     } catch (e) {
       // Classify by status/reason, not by a regex over the message.
       if (e instanceof ApiError) {
@@ -58,7 +64,7 @@ export function useGatewayStatus(pollMs = 15000) {
       failuresRef.current += 1;
       setError(msg);
       setNeedsAuth(false);
-      if (failuresRef.current >= 2) {
+      if (failuresRef.current >= 2 || !everOnlineRef.current) {
         setConnection("offline");
       }
     }
