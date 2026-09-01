@@ -73,8 +73,9 @@ export function ToolsPanel() {
     return () => window.removeEventListener(AUTONOMY_CHANGED, refresh);
   }, [refresh]);
 
-  // One key per control being written, so only that control is disabled
-  // while its request is in flight.
+  // One key per control being written, so only that control is marked busy
+  // while its request is in flight. Marked, not disabled: disabling the
+  // focused button drops keyboard focus to the body mid-write.
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
   const [cmd, setCmd] = React.useState("");
   const [caps, setCaps] = React.useState<CapsDraft>({ actions: "", cost: "" });
@@ -105,6 +106,7 @@ export function ToolsPanel() {
     body: AutonomyBody,
     opts?: { broadcast?: boolean },
   ): Promise<GatewayAutonomy | null> => {
+    if (busyKey === key) return null;
     setBusyKey(key);
     try {
       const stored = (await api.setAutonomy(body)) as GatewayAutonomy;
@@ -191,43 +193,52 @@ export function ToolsPanel() {
 
   return (
     <div className="space-y-5">
-      <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>Policy</SectionTitle>
-      <PanelFrame loading={cfg.loading} error={cfg.error} loaded={cfg.loaded} onRefresh={cfg.refresh}>
+      <SectionTitle action={<RefreshButton onClick={cfg.refresh} spinning={cfg.refreshing} />}>
+        Policy
+      </SectionTitle>
+      <PanelFrame
+        loading={cfg.loading}
+        loadingLabel="Loading policy…"
+        error={cfg.error}
+        loaded={cfg.loaded}
+        onRefresh={cfg.refresh}
+      >
         <div className="space-y-5">
           {/* Autonomy level */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Autonomy level
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {AUTONOMY.map((p) => {
-                const on = p.id === rung;
-                return (
-                  <Button
-                    key={p.id}
-                    variant="outline"
-                    size="sm"
-                    disabled={busyKey === "rung"}
-                    onClick={() => setRung(p.id, p.label)}
-                    style={on ? { borderColor: p.dot, color: p.dot } : undefined}
-                  >
-                    <span
-                      className="inline-block size-[7px] rounded-full"
-                      style={{ background: p.dot }}
-                    />
-                    {p.label}
-                  </Button>
-                );
-              })}
+            <h4 className="eyebrow mb-2">Autonomy level</h4>
+            <div role="group" aria-label="Autonomy level" className="flex flex-wrap gap-2">
+              {AUTONOMY.map((p) => (
+                // The colour rides on the dot, a tint and a hairline; the text
+                // stays on the foreground (coloured text was 2.5:1 for purple).
+                <button
+                  key={p.id}
+                  type="button"
+                  className="rung"
+                  aria-pressed={p.id === rung}
+                  aria-busy={busyKey === "rung"}
+                  style={{ ["--rung" as string]: p.dot } as React.CSSProperties}
+                  onClick={() => setRung(p.id, p.label)}
+                >
+                  <i className="dot" aria-hidden />
+                  {p.label}
+                </button>
+              ))}
             </div>
             <p className="mt-2 text-xs text-muted-foreground">{preset.blurb}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Applies to the next tool call, in chat and on channels. Changing the rung also
+              revokes every &ldquo;Always&rdquo; grant.
+            </p>
           </div>
 
           {/* Per-tool auto-approve */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Tool policy · auto-approve runs without asking
-            </div>
+            <h4 className="eyebrow mb-1">Tool policy</h4>
+            <p className="mb-2 text-xs text-muted-foreground">
+              Under Smart a tool runs without the prompt when it is auto-approved; an always-ask
+              entry, then the rung, come first.
+            </p>
             <Card className="divide-y divide-border">
               {hasWildcard(a) && (
                 <div className="px-3 py-2.5 text-[11px] text-muted-foreground">
@@ -251,7 +262,8 @@ export function ToolsPanel() {
                       type="button"
                       className={"switch" + (auto ? " on" : "")}
                       onClick={() => toggleTool(tool)}
-                      disabled={busyKey === `tool:${tool}` || !effective}
+                      aria-busy={busyKey === `tool:${tool}`}
+                      disabled={!effective}
                       role="switch"
                       aria-checked={auto}
                       aria-label={`Auto-approve ${tool}`}
@@ -267,21 +279,18 @@ export function ToolsPanel() {
 
           {/* Shell allowlist */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Shell allowlist · {allowed.length}
-            </div>
+            <h4 className="eyebrow mb-2">Shell allowlist · {allowed.length}</h4>
             {allowed.length > 0 && (
-              <div className="mb-2.5 flex flex-wrap gap-1.5">
+              <div className="allow-chips mb-2.5">
                 {allowed.map((c) => (
-                  <Badge key={c} variant="secondary" className="gap-1.5 font-mono">
+                  <Badge key={c} variant="secondary" className="allow-chip gap-1.5 font-mono">
                     {c}
                     <button
                       type="button"
                       onClick={() => removeCmd(c)}
-                      disabled={busyKey === `chip:${c}`}
-                      title="Remove"
+                      aria-busy={busyKey === `chip:${c}`}
                       aria-label={`Remove ${c}`}
-                      className="inline-flex cursor-pointer text-muted-foreground hover:text-foreground"
+                      className="chip-x"
                     >
                       <X className="size-3" aria-hidden />
                     </button>
@@ -303,7 +312,8 @@ export function ToolsPanel() {
               <Button
                 size="sm"
                 onClick={addCmd}
-                disabled={busyKey === "allow" || !commandBasename(cmd)}
+                aria-busy={busyKey === "allow"}
+                disabled={!commandBasename(cmd)}
               >
                 <Plus className="size-4" /> Add
               </Button>
@@ -312,9 +322,7 @@ export function ToolsPanel() {
 
           {/* Rate & cost caps */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Rate &amp; cost caps
-            </div>
+            <h4 className="eyebrow mb-2">Rate &amp; cost caps</h4>
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
                 actions / hour
@@ -337,7 +345,15 @@ export function ToolsPanel() {
                   className="h-8 w-28"
                 />
               </label>
-              <Button size="sm" onClick={saveCaps} disabled={busyKey === "caps" || !cc.dirty}>
+              {/* aria-disabled, not disabled: a clean Save keeps focus after a save
+                  lands (the button goes clean while it is the focused element). */}
+              <Button
+                size="sm"
+                onClick={saveCaps}
+                aria-disabled={!cc.dirty}
+                aria-busy={busyKey === "caps"}
+                className="aria-disabled:opacity-50"
+              >
                 Save caps
               </Button>
               <span className="text-xs text-muted-foreground" aria-live="polite">
@@ -352,9 +368,7 @@ export function ToolsPanel() {
 
           {/* Safety flags */}
           <div>
-            <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-              Safety flags
-            </div>
+            <h4 className="eyebrow mb-2">Safety flags</h4>
             <Card className="divide-y divide-border">
               {SAFETY_FLAGS.map(({ key, label }) => {
                 const on = a[key] === true;
@@ -365,7 +379,7 @@ export function ToolsPanel() {
                       type="button"
                       className={"switch" + (on ? " on" : "")}
                       onClick={() => toggleFlag(key, label)}
-                      disabled={busyKey === `flag:${key}`}
+                      aria-busy={busyKey === `flag:${key}`}
                       role="switch"
                       aria-checked={on}
                       aria-label={label}
@@ -381,9 +395,7 @@ export function ToolsPanel() {
           {/* Forbidden paths */}
           {forbidden.length > 0 && (
             <div>
-              <div className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                Forbidden paths · {forbidden.length} (read-only)
-              </div>
+              <h4 className="eyebrow mb-2">Forbidden paths · {forbidden.length} (read-only)</h4>
               <div className="flex flex-wrap gap-1.5">
                 {forbidden.map((p) => (
                   <Badge key={p} variant="outline" className="font-mono text-muted-foreground">
@@ -393,10 +405,6 @@ export function ToolsPanel() {
               </div>
             </div>
           )}
-
-          <p className="text-xs text-muted-foreground">
-            Changes apply to new agent runs; the daemon reloads policy on restart.
-          </p>
         </div>
       </PanelFrame>
     </div>

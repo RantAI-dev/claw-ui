@@ -102,6 +102,13 @@ describe("installSkill error handling", () => {
 });
 
 describe("describeApiError", () => {
+  it("does not restate the proxy's outage wording in the parenthetical", () => {
+    // The refresh-failure strip read "The gateway is unreachable; it may be
+    // restarting. (The console could not reach the RantaiClaw gateway.)".
+    const e = new ApiError("The console could not reach the RantaiClaw gateway.", 502, null);
+    expect(describeApiError(e)).toBe("The gateway is unreachable; it may be restarting.");
+  });
+
   it("distinguishes a session expiry from a restarting gateway from a bad request", () => {
     // All three used to render identically, because every caller flattened the
     // error to `.message`.

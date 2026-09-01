@@ -156,7 +156,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring;
   }
   html,
   body {
@@ -1759,23 +1759,32 @@
   gap: 12px;
 }
 .switch {
+  position: relative;
   width: 38px;
   height: 22px;
   border-radius: 999px;
   background: oklch(var(--af) /10%);
-  border: 1px solid var(--border);
+  /* The off state used to have no 3:1 boundary (track 2.6:1, knob 2.7:1). */
+  border: 1px solid oklch(var(--af) /25%);
   cursor: pointer;
   padding: 2px;
   transition: background var(--duration-fast);
   flex: none;
+}
+/* A 44x40 hit area: the control itself is 38x22, under the touch guideline. */
+.switch::before {
+  content: "";
+  position: absolute;
+  inset: -9px -3px;
 }
 .switch > i {
   display: block;
   width: 16px;
   height: 16px;
   border-radius: 999px;
-  background: var(--muted-foreground);
-  transition: transform var(--duration-base), background var(--duration-fast);
+  background: var(--foreground);
+  opacity: 0.72;
+  transition: transform var(--duration-base), opacity var(--duration-fast);
 }
 .switch.on {
   background: color-mix(in oklab, var(--brand-sky) 55%, transparent);
@@ -1783,7 +1792,83 @@
 }
 .switch.on > i {
   transform: translateX(16px);
-  background: white;
+  opacity: 1;
+}
+.switch:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Tools & Autonomy: the rung buttons. The active one carries its colour on
+   a tint and a hairline; the text stays on the foreground (coloured text was
+   2.5:1 for purple, 4.1:1 for red at 12px). The dot keeps the colour. */
+.rung {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.rung:hover {
+  background: var(--secondary);
+}
+.rung:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.rung > .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--rung);
+  flex: none;
+}
+.rung[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--rung) 16%, transparent);
+  border-color: color-mix(in oklab, var(--rung) 60%, transparent);
+  /* Weight is the state cue that does not depend on hue: purple cannot reach
+     3:1 on this background at any alpha. */
+  font-weight: 600;
+}
+/* A write in flight: marked, never disabled (disabling the focused control
+   drops keyboard focus to the body). */
+.rung[aria-busy="true"],
+.switch[aria-busy="true"],
+.chip-x[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* The shell-allowlist chips and their removal button. */
+.allow-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  margin: -4px -2px -4px 0;
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.chip-x:hover {
+  color: var(--foreground);
+}
+.chip-x:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* search input */
@@ -2029,6 +2114,8 @@ pre.toml {
 .cchip:focus-visible,
 .jump-latest:focus-visible,
 .attach-x:focus-visible,
+.rung:focus-visible,
+.chip-x:focus-visible,
 .switch:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -2061,6 +2148,23 @@ pre.toml {
   .cchip {
     min-width: 40px;
     justify-content: center;
+  }
+  .rung {
+    min-height: 40px;
+  }
+  /* One command per row, so the removal button gets a 40px target without
+     overlapping the next chip. */
+  .allow-chips {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .allow-chip {
+    min-height: 40px;
+    justify-content: space-between;
+  }
+  .chip-x {
+    padding: 12px;
+    margin: -12px -8px -12px 0;
   }
 }
 

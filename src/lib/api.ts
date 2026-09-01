@@ -76,7 +76,9 @@ export function describeApiError(e: unknown): string {
       // unreachable)". Keep the parenthetical only when it adds something.
       const base = "The gateway is unreachable; it may be restarting.";
       const m = e.message.trim();
-      return !m || /gateway is unreachable/i.test(m) ? base : `${base} (${m})`;
+      // The proxy's outage body says "could not reach the RantaiClaw gateway";
+      // restating it in the parenthetical said the same thing twice.
+      return !m || /gateway is unreachable|could not reach/i.test(m) ? base : `${base} (${m})`;
     }
     default:
       return e.message;
