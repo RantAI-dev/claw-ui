@@ -235,7 +235,9 @@ describe("ChannelsPanel actions", () => {
     render(<ChannelsPanel />);
     const box = (await screen.findByLabelText(/Allowed user ids/)) as HTMLInputElement;
     const save = screen.getByRole("button", { name: "Save allowlist" }) as HTMLButtonElement;
-    expect(box.value).toBe("alice");
+    // The box is seeded by an effect after the card mounts; CI is slow enough
+    // to read it first.
+    await waitFor(() => expect(box.value).toBe("alice"));
     expect(save.disabled).toBe(true);
     // Whitespace and a trailing comma are not a change.
     fireEvent.change(box, { target: { value: " alice , " } });

@@ -256,7 +256,8 @@ describe("ProvidersPanel", () => {
     await waitFor(() => expect(providerTrigger()).toBeTruthy());
     expect(screen.getByLabelText("Provider").getAttribute("aria-haspopup")).toBe("listbox");
     expect(screen.getByLabelText("Model").getAttribute("aria-haspopup")).toBe("listbox");
-    const keyInput = screen.getByLabelText("API key for Ollama") as HTMLInputElement;
+    // The label names the provider once the secrets effect has seeded it.
+    const keyInput = (await screen.findByLabelText("API key for Ollama")) as HTMLInputElement;
     expect(keyInput.getAttribute("autocomplete")).toBe("new-password");
     expect(keyInput.getAttribute("placeholder")).toBe("Paste the key for Ollama");
     expect((screen.getByLabelText(/API base URL override/) as HTMLInputElement).getAttribute("autocomplete")).toBe("off");
