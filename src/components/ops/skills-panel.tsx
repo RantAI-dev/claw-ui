@@ -25,6 +25,7 @@ import {
   type SkillCandidate,
 } from "@/lib/clawhub";
 import { SKILLS_CHANGED } from "@/lib/console";
+import { countLine, removalCopy, skillCounts, skillState, versionLabel } from "@/lib/skills";
 import { cn, formatNumber } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,19 +38,16 @@ import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
 import { SkillEditor } from "./skill-editor";
 
-/** The skill a pending uninstall refers to. Carries the display name because
- *  the confirmation asks about the thing the user sees, while every route
- *  addresses the directory — quoting the slug back made the prompt read as if
- *  it were about some other skill. */
-interface PendingUninstall {
-  slug: string;
-  name: string;
-}
-
 export function SkillsPanel() {
   const installed = useAsync(() => api.skills(), []);
   const [view, setView] = React.useState<"installed" | "browse">("installed");
-  const [query, setQuery] = React.useState("");
+  // One query per view. A single value served both, so a term typed to filter
+  // the installed list became a ClawHub search on the switch, and a ClawHub
+  // search came back as a silent filter ("2 of 7 shown") on the way back.
+  const [installedQuery, setInstalledQuery] = React.useState("");
+  const [hubQuery, setHubQuery] = React.useState("");
+  const query = view === "installed" ? installedQuery : hubQuery;
+  const setQuery = view === "installed" ? setInstalledQuery : setHubQuery;
   const [hub, setHub] = React.useState<ClawHubSkill[] | null>(null);
   const [hubLoading, setHubLoading] = React.useState(false);
   const [hubError, setHubError] = React.useState<string | null>(null);
@@ -57,8 +55,7 @@ export function SkillsPanel() {
   // the error state had no way to ask for one.
   const [hubNonce, setHubNonce] = React.useState(0);
   const [working, setWorking] = React.useState<string | null>(null);
-  const [pendingUninstall, setPendingUninstall] =
-    React.useState<PendingUninstall | null>(null);
+  const [pendingUninstall, setPendingUninstall] = React.useState<Skill | null>(null);
   const [ambiguous, setAmbiguous] = React.useState<{
     reference: string;
     candidates: SkillCandidate[];
@@ -84,7 +81,7 @@ export function SkillsPanel() {
     const t = setTimeout(
       async () => {
         try {
-          const { items } = await api.clawhub(query.trim() || undefined);
+          const { items } = await api.clawhub(hubQuery.trim() || undefined);
           setHub(items);
         } catch (e) {
           setHubError(describeApiError(e));
@@ -93,10 +90,10 @@ export function SkillsPanel() {
           setHubLoading(false);
         }
       },
-      query.trim() ? 350 : 0,
+      hubQuery.trim() ? 350 : 0,
     );
     return () => clearTimeout(t);
-  }, [view, query, hubNonce]);
+  }, [view, hubQuery, hubNonce]);
 
   const skills = React.useMemo(
     () => installed.data?.skills || [],
@@ -115,17 +112,17 @@ export function SkillsPanel() {
   // Client-side, over the list already in hand. The gateway has no filter
   // parameter and the list is small, so a round trip would only add latency.
   const matching = React.useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = installedQuery.trim().toLowerCase();
     if (!q) return skills;
     return skills.filter((s) =>
       [s.name, s.description ?? "", s.slug ?? "", ...(s.tags || [])].some((f) =>
         f.toLowerCase().includes(q),
       ),
     );
-  }, [skills, query]);
+  }, [skills, installedQuery]);
 
-  const enabledCount = skills.filter((s) => s.enabled !== false).length;
-  const disabledCount = skills.length - enabledCount;
+  const counts = React.useMemo(() => skillCounts(skills), [skills]);
+  const removal = pendingUninstall ? removalCopy(pendingUninstall) : null;
 
   // Keyed on `slug`, not `name`: the gateway rejects a path parameter with a
   // space in it, so passing the display name 400s for every hand-written skill.
@@ -172,15 +169,16 @@ export function SkillsPanel() {
 
   const uninstall = async () => {
     const target = pendingUninstall;
-    if (!target) return;
+    if (!target?.slug) return;
+    const copy = removalCopy(target);
     setWorking(target.slug);
     try {
-      const r = await api.uninstallSkill(target.slug);
-      toast.success(`Removed ${r.name}`);
+      await api.uninstallSkill(target.slug);
+      toast.success(copy.toast);
       setPendingUninstall(null);
       reload();
     } catch (e) {
-      toast.error(`Remove failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`${copy.confirm} failed: ${e instanceof Error ? e.message : e}`);
     } finally {
       setWorking(null);
     }
@@ -240,6 +238,7 @@ export function SkillsPanel() {
         <PanelFrame
           loading={installed.loading}
           error={installed.error}
+          loaded={installed.loaded}
           onRefresh={installed.refresh}
         >
           {skills.length === 0 ? (
@@ -264,9 +263,17 @@ export function SkillsPanel() {
           ) : matching.length === 0 ? (
             <EmptyState
               icon={<Search className="size-6" />}
-              title={`Nothing installed matches “${query.trim()}”.`}
+              title={`Nothing installed matches “${installedQuery.trim()}”.`}
               action={
-                <Button size="sm" variant="outline" onClick={() => setView("browse")}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    // The one deliberate hand-off between the two queries.
+                    setHubQuery(installedQuery);
+                    setView("browse");
+                  }}
+                >
                   Search ClawHub instead
                 </Button>
               }
@@ -274,9 +281,12 @@ export function SkillsPanel() {
           ) : (
             <div className="space-y-3">
               <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                {query.trim()
-                  ? `${matching.length} of ${skills.length} shown`
-                  : `${enabledCount} enabled${disabledCount ? ` · ${disabledCount} disabled` : ""}`}
+                {countLine(
+                  counts,
+                  installedQuery.trim()
+                    ? { query: installedQuery.trim(), shown: matching.length }
+                    : undefined,
+                )}
               </p>
               <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
                 {matching.map((s) => (
@@ -406,17 +416,15 @@ export function SkillsPanel() {
         />
       )}
 
+      {/* The words follow the origin: an authored skill's only copy is the
+          directory being removed, a ClawHub one can be fetched again. */}
       <ConfirmModal
         open={!!pendingUninstall}
         onClose={() => setPendingUninstall(null)}
-        title="Uninstall skill?"
-        description={
-          pendingUninstall
-            ? `“${pendingUninstall.name}” will be removed from the agent. You can reinstall it from ClawHub later.`
-            : undefined
-        }
-        confirmLabel="Uninstall"
-        busy={working === pendingUninstall?.slug}
+        title={removal?.title ?? ""}
+        description={removal?.body}
+        confirmLabel={removal?.confirm ?? "Uninstall"}
+        busy={!!pendingUninstall && working === pendingUninstall.slug}
         onConfirm={uninstall}
       />
 
@@ -520,26 +528,33 @@ function InstalledCard({
   busy: boolean;
   onEdit: (slug: string) => void;
   onToggle: (slug: string, label: string, enabled: boolean) => void;
-  onUninstall: (target: PendingUninstall) => void;
+  onUninstall: (skill: Skill) => void;
 }) {
+  // `active` is what the loader injects; `enabled` is only the config flag. A
+  // skill whose binary or env is missing is enabled and never loaded, and the
+  // card used to show it exactly like one that works.
+  const state = skillState(skill);
   const enabled = skill.enabled !== false;
   // Without a slug the skill has no directory of its own (an open-skills file)
   // and no route can act on it.
   const slug = skill.slug;
   const editable = skill.origin?.kind === "authored" && !!slug;
+  const version = versionLabel(skill);
+  const removal = removalCopy(skill);
 
   return (
-    <Card className={cn("flex flex-col gap-2 p-3", !enabled && "opacity-60")}>
+    <Card className={cn("flex flex-col gap-2 p-3", state.kind === "disabled" && "opacity-60")}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="truncate text-sm font-semibold">{skill.name}</span>
-            {skill.version && (
-              <span className="text-[10px] text-muted-foreground">v{skill.version}</span>
-            )}
+            {version && <span className="text-[10px] text-muted-foreground">{version}</span>}
             <OriginBadge skill={skill} />
-            {!enabled && (
+            {state.kind === "disabled" && (
               <Badge variant="warning" className="shrink-0 text-[10px]">disabled</Badge>
+            )}
+            {state.kind === "not-loadable" && (
+              <Badge variant="warning" className="shrink-0 text-[10px]">not loadable</Badge>
             )}
           </div>
           {slug && skill.name !== slug && (
@@ -565,16 +580,18 @@ function InstalledCard({
             aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
             className={cn(
               "disabled:opacity-50",
-              enabled && "text-success hover:bg-success/10 hover:text-success",
+              // Green means "in force", not "switched on": an enabled skill the
+              // loader dropped keeps the plain icon and the reasons line says why.
+              state.kind === "active" && "text-success hover:bg-success/10 hover:text-success",
             )}
           >
             <Power className="size-3.5" />
           </IconButton>
           <IconButton
-            onClick={() => slug && onUninstall({ slug, name: skill.name })}
+            onClick={() => slug && onUninstall(skill)}
             disabled={busy || !slug}
-            title="Uninstall"
-            aria-label={`Uninstall ${skill.name}`}
+            title={removal.confirm}
+            aria-label={removal.actionLabel}
             className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
           >
             {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -583,6 +600,12 @@ function InstalledCard({
       </div>
       {skill.description && (
         <p className="line-clamp-2 text-xs text-muted-foreground">{skill.description}</p>
+      )}
+      {state.reasons.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          {state.kind === "disabled" ? "Would not load: " : "Not loaded: "}
+          {state.reasons.join("; ")}
+        </p>
       )}
       {(skill.tags?.length || skill.tools?.length) ? (
         <div className="flex flex-wrap gap-1.5">
