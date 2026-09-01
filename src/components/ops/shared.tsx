@@ -88,7 +88,7 @@ export function PanelFrame({
 }) {
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-2 py-14 text-xs text-muted-foreground">
         <Loader2 className="size-4 animate-spin" /> {loadingLabel ?? "Loading…"}
       </div>
     );

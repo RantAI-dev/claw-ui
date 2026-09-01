@@ -198,6 +198,10 @@ describe("SkillsPanel: removing a skill", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(uninstallSkill).toHaveBeenCalledWith("kopi-pagi"));
     expect(toastSuccess).toHaveBeenCalledWith("Deleted Kopi Pagi");
+    // The trigger left with the card; a keyboard user is not dropped on <body>.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Write" })),
+    );
   });
 
   it("names the ClawHub reference an uninstalled skill can be fetched from again", async () => {
@@ -212,6 +216,16 @@ describe("SkillsPanel: removing a skill", () => {
       ),
     ).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Uninstall" })).toBeTruthy();
+  });
+});
+
+describe("SkillsPanel: chrome", () => {
+  it("uses the shared label scale and a focus ring on the segments", async () => {
+    render(<SkillsPanel />);
+    await screen.findByText("Kopi Pagi");
+    expect(screen.getByText("2 active").className).toContain("eyebrow");
+    expect(installedTab().className).toContain("focus-visible:outline-2");
+    expect(browseTab().className).toContain("pointer-coarse:min-h-10");
   });
 });
 

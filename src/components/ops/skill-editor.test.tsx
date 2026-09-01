@@ -158,3 +158,41 @@ describe("SkillEditor: what the form can and cannot hold", () => {
     expect(document.body.textContent).not.toContain("—");
   });
 });
+
+describe("SkillEditor: drawer chrome", () => {
+  it("is a dialog named by its title", () => {
+    renderCreate();
+    expect(screen.getByRole("dialog", { name: "Write a skill" })).toBeTruthy();
+  });
+
+  it("gives the remove buttons a focus ring and a touch size", () => {
+    renderCreate();
+    fireEvent.change(screen.getByLabelText("Tags"), { target: { value: "kopi" } });
+    fireEvent.keyDown(screen.getByLabelText("Tags"), { key: "Enter" });
+    for (const name of ["Remove tag kopi", "Remove step 1"]) {
+      const cls = screen.getByRole("button", { name }).className;
+      expect(cls).toContain("focus-visible:outline-2");
+      expect(cls).toContain("pointer-coarse:min-h-10");
+    }
+    expect(screen.getByRole("button", { name: "Close" }).className).toContain("focus-visible:outline-2");
+  });
+
+  it("returns focus to whatever opened it", async () => {
+    function Host({ open }: { open: boolean }) {
+      return (
+        <>
+          <button type="button">Open</button>
+          {open && <SkillEditor mode="create" existing={[]} onClose={onClose} onSaved={onSaved} />}
+        </>
+      );
+    }
+    const { rerender } = render(<Host open={false} />);
+    const trigger = screen.getByRole("button", { name: "Open" });
+    trigger.focus();
+    rerender(<Host open />);
+    await waitFor(() => expect(document.activeElement?.id).toBe("skill-name"));
+    rerender(<Host open={false} />);
+    expect(document.activeElement).toBe(trigger);
+  });
+});
+

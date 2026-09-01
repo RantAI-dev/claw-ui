@@ -108,6 +108,9 @@ export function SkillsPanel() {
     refreshInstalled();
     window.dispatchEvent(new CustomEvent(SKILLS_CHANGED));
   }, [refreshInstalled]);
+  // Where focus goes after a removal: the trigger leaves with the card, and
+  // the confirm's own restore has nothing left to land on.
+  const writeRef = React.useRef<HTMLButtonElement>(null);
 
   // Client-side, over the list already in hand. The gateway has no filter
   // parameter and the list is small, so a round trip would only add latency.
@@ -176,7 +179,11 @@ export function SkillsPanel() {
       await api.uninstallSkill(target.slug);
       toast.success(copy.toast);
       setPendingUninstall(null);
-      reload();
+      // Refetch before moving focus: until the list is back the removed
+      // card's button is still in the DOM and the confirm restores to it.
+      await refreshInstalled();
+      window.dispatchEvent(new CustomEvent(SKILLS_CHANGED));
+      writeRef.current?.focus();
     } catch (e) {
       toast.error(`${copy.confirm} failed: ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -198,20 +205,20 @@ export function SkillsPanel() {
         <Segmented
           value={view}
           onChange={setView}
+          className="max-sm:w-full max-sm:[&>button]:flex-1"
           options={[
             { value: "installed", label: `Installed${installed.data ? ` · ${installed.data.count}` : ""}` },
             { value: "browse", label: "Browse ClawHub" },
           ]}
         />
-        <div className="relative min-w-[11rem] flex-1">
+        <div className="relative min-w-[8rem] flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             aria-label={view === "installed" ? "Filter installed skills" : "Search ClawHub"}
-            placeholder={
-              view === "installed" ? "Filter installed skills…" : "Search ClawHub skills…"
-            }
+            // Short enough to survive the 170 px the phone toolbar leaves it.
+            placeholder={view === "installed" ? "Filter skills…" : "Search ClawHub…"}
             className="pl-8 pr-8"
           />
           {view === "browse" && hubLoading ? (
@@ -228,7 +235,12 @@ export function SkillsPanel() {
             )
           )}
         </div>
-        <Button size="sm" variant="outline" onClick={() => setEditor({ mode: "create" })}>
+        <Button
+          ref={writeRef}
+          size="sm"
+          variant="outline"
+          onClick={() => setEditor({ mode: "create" })}
+        >
           <Plus className="size-3.5" /> Write
         </Button>
         <RefreshButton onClick={refreshActive} />
@@ -280,7 +292,7 @@ export function SkillsPanel() {
             />
           ) : (
             <div className="space-y-3">
-              <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+              <p className="eyebrow">
                 {countLine(
                   counts,
                   installedQuery.trim()
@@ -439,7 +451,7 @@ export function SkillsPanel() {
         }
       >
         <div className="flex flex-col gap-2">
-          {(ambiguous?.candidates || []).map((c) => (
+          {(ambiguous?.candidates || []).map((c, i) => (
             <div
               key={c.reference}
               className="flex items-center justify-between gap-2 rounded-md border p-2"
@@ -476,6 +488,8 @@ export function SkillsPanel() {
                 onClick={() => install(c.reference)}
                 disabled={working === c.reference}
                 className="shrink-0"
+                // First focus on the first choice, not on the dialog's X.
+                data-autofocus={i === 0 ? true : undefined}
               >
                 {working === c.reference ? (
                   <Loader2 className="size-3.5 animate-spin" />

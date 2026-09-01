@@ -28,6 +28,12 @@ import { toast } from "sonner";
  */
 const MAX_BODY_BYTES = 64 * 1024;
 
+/** The small X on a tag chip or a step row: 20 px around a 12-14 px glyph on a
+ *  fine pointer, 40 px on a coarse one, and the same 2 px ring as every other
+ *  control. The bare glyph was 12×12 with the browser's default outline. */
+const REMOVE_BUTTON =
+  "inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10 pointer-coarse:min-w-10";
+
 interface SkillEditorProps {
   mode: "create" | "edit";
   /** Directory name. Required in edit mode; unused when creating. */
@@ -109,21 +115,22 @@ export function SkillEditor({
   const name = fields?.name.trim() ?? "";
   const derivedSlug = slugify(name);
 
-  // The drawer's shared chrome autofocuses its close button. Land in the field
-  // the user came here to fill instead: a new skill starts with typing a name;
-  // an existing one's name is read-only, so the first field that can change,
-  // or the Markdown source when the form cannot hold the file. Once, after the
-  // content is there, so a later switch of views does not yank focus around.
+  // The drawer's shared chrome focuses its close button. Land in the field the
+  // user came here to fill instead: a new skill starts with typing a name; an
+  // existing one's name is read-only, so the first field that can change, or
+  // the Markdown source when the form cannot hold the file. Runs when the
+  // content is there and not again on a view switch, so it does not yank
+  // focus around; the target is whichever field is mounted, read off the
+  // refs rather than tracked as a dependency. (A "ran once" ref survived
+  // StrictMode's double effect in dev and left focus on the X.)
   const nameRef = React.useRef<HTMLInputElement>(null);
   const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
   const markdownRef = React.useRef<HTMLTextAreaElement>(null);
-  const focusedOnce = React.useRef(false);
   React.useEffect(() => {
-    if (focusedOnce.current || loading || loadError) return;
-    focusedOnce.current = true;
+    if (loading || loadError) return;
     if (mode === "create") nameRef.current?.focus();
-    else (formAvailable ? descriptionRef.current : markdownRef.current)?.focus();
-  }, [mode, loading, loadError, formAvailable]);
+    else (descriptionRef.current ?? markdownRef.current)?.focus();
+  }, [mode, loading, loadError]);
 
   // Escape, the X, the backdrop and Cancel all come through here. A document
   // typed by hand cannot be regenerated, so a changed one asks before it goes;
@@ -203,7 +210,7 @@ export function SkillEditor({
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-12 font-mono text-xs text-muted-foreground">
+          <div className="flex items-center justify-center gap-2 py-12 text-xs text-muted-foreground">
             <Loader2 className="size-4 animate-spin" /> Loading the skill…
           </div>
         ) : loadError ? (
@@ -423,7 +430,7 @@ function TagInput({
             type="button"
             onClick={() => onChange(tags.filter((x) => x !== t))}
             aria-label={`Remove tag ${t}`}
-            className="cursor-pointer text-muted-foreground hover:text-destructive"
+            className={REMOVE_BUTTON}
           >
             <X className="size-3" />
           </button>
@@ -501,7 +508,7 @@ function ListInput({
             type="button"
             onClick={() => onChange(items.filter((_, idx) => idx !== i))}
             aria-label={`Remove step ${i + 1}`}
-            className="cursor-pointer text-muted-foreground hover:text-destructive"
+            className={REMOVE_BUTTON}
           >
             <X className="size-3.5" />
           </button>
