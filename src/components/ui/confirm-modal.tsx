@@ -15,6 +15,7 @@ export function ConfirmModal({
   busy,
   onConfirm,
   icon = <Trash2 className="size-4" />,
+  tone = "destructive",
 }: {
   open: boolean;
   onClose: () => void;
@@ -26,6 +27,9 @@ export function ConfirmModal({
   /** Icon on the confirm button. Defaults to the bin (most callers delete);
    *  pass `null` for a confirm that does not delete anything. */
   icon?: React.ReactNode;
+  /** The confirm button's variant. Red is right for a delete; a confirm that
+   *  restores a default (reset a URL override) is not destructive. */
+  tone?: "destructive" | "default";
 }) {
   return (
     <Modal
@@ -39,7 +43,7 @@ export function ConfirmModal({
           <Button variant="outline" size="sm" onClick={onClose} disabled={busy} data-autofocus>
             Cancel
           </Button>
-          <Button variant="destructive" size="sm" onClick={onConfirm} disabled={busy}>
+          <Button variant={tone === "default" ? "default" : "destructive"} size="sm" onClick={onConfirm} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : icon}
             {confirmLabel}
           </Button>

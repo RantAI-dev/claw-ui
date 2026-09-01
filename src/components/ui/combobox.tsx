@@ -12,10 +12,12 @@ export interface ComboboxItem {
 }
 
 /**
- * Generic searchable combobox — one styled trigger + popover used everywhere so
+ * Generic searchable combobox: one styled trigger + popover used everywhere so
  * provider and model pickers look identical (no native `<select>` mismatch).
  * `allowCustom` adds a "Use …" row for free-text values; `footer` renders an
- * optional row (e.g. count + refresh).
+ * optional row (e.g. count + refresh). Closing the popover with Escape or a
+ * pick puts focus back on the trigger, so a keyboard user continues from the
+ * picker instead of from the top of the document.
  */
 export function Combobox({
   items,
@@ -31,6 +33,8 @@ export function Combobox({
   allowCustom = false,
   footer,
   className,
+  id,
+  ariaLabelledBy,
 }: {
   items: ComboboxItem[];
   value: string;
@@ -45,12 +49,17 @@ export function Combobox({
   allowCustom?: boolean;
   footer?: React.ReactNode;
   className?: string;
+  /** id for the trigger button, so a `<label htmlFor>` can point at it. */
+  id?: string;
+  /** id of the visible label naming this picker; read on the trigger and the list. */
+  ariaLabelledBy?: string;
 }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   // Row the arrow keys are on; -1 = none (Enter then takes the first match).
   const [active, setActive] = React.useState(-1);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
   const listId = React.useId();
 
   // A closed popover forgets its search and highlight.
@@ -76,13 +85,20 @@ export function Combobox({
     : items;
   const showCustom = allowCustom && q.length > 0 && !items.some((it) => it.value.toLowerCase() === q);
 
-  // Visible label for the current value — fall back to the raw value (custom ids).
+  // Visible label for the current value; fall back to the raw value (custom ids).
   const selectedLabel = items.find((it) => it.value === value)?.label ?? value;
+
+  // Escape and a pick close the popover and hand focus back to the trigger; an
+  // outside click does not (the pointer already went somewhere else).
+  const close = (refocus: boolean) => {
+    setOpen(false);
+    if (refocus) triggerRef.current?.focus();
+  };
 
   const pick = (v: string) => {
     onChange(v);
-    setOpen(false);
     setQuery("");
+    close(true);
   };
 
   // Rows in the order they render: matches, then the "Use …" row.
@@ -94,7 +110,7 @@ export function Combobox({
 
   const onInputKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
-      setOpen(false);
+      close(true);
       return;
     }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -103,7 +119,7 @@ export function Combobox({
       const step = e.key === "ArrowDown" ? 1 : -1;
       const next = active < 0 ? (step > 0 ? 0 : rows.length - 1) : (active + step + rows.length) % rows.length;
       setActive(next);
-      document.getElementById(optionId(next))?.scrollIntoView({ block: "nearest" });
+      document.getElementById(optionId(next))?.scrollIntoView?.({ block: "nearest" });
       return;
     }
     if (e.key === "Enter") {
@@ -116,15 +132,18 @@ export function Combobox({
   return (
     <div ref={rootRef} className={cn("relative", className)}>
       <button
+        ref={triggerRef}
+        id={id}
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-labelledby={ariaLabelledBy}
         title={value ? selectedLabel : placeholder}
         className={cn(
-          "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer disabled:cursor-default disabled:opacity-50",
-          compact && "h-7 text-[11px]",
+          "flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring cursor-pointer disabled:cursor-default disabled:opacity-50",
+          compact ? "h-7 text-[11px]" : "pointer-coarse:min-h-11",
         )}
       >
         <span className={cn("truncate", mono && "font-mono", !value && "text-muted-foreground")}>
@@ -156,11 +175,11 @@ export function Combobox({
               aria-autocomplete="list"
               aria-activedescendant={active >= 0 ? optionId(active) : undefined}
               placeholder={searchPlaceholder}
-              className={cn("h-8 flex-1 rounded-sm bg-transparent text-xs focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring", mono && "font-mono")}
+              className={cn("h-8 flex-1 rounded-sm bg-transparent text-xs focus-visible:outline-2 focus-visible:outline-ring", mono && "font-mono")}
             />
           </div>
 
-          <div id={listId} role="listbox" className="max-h-64 overflow-y-auto py-1">
+          <div id={listId} role="listbox" aria-labelledby={ariaLabelledBy} className="max-h-64 overflow-y-auto py-1">
             {loading ? (
               <div className="px-2 py-2 text-[11px] text-muted-foreground">Loading…</div>
             ) : filtered.length === 0 && !showCustom ? (
@@ -177,7 +196,7 @@ export function Combobox({
                   onMouseEnter={() => setActive(i)}
                   onClick={() => pick(it.value)}
                   className={cn(
-                    "flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted",
+                    "flex min-h-9 w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted pointer-coarse:min-h-11",
                     mono && "font-mono",
                     it.value === value && "bg-muted/60",
                     active === i && "bg-muted",
@@ -185,7 +204,7 @@ export function Combobox({
                 >
                   <span className="truncate">{it.label}</span>
                   <span className="flex shrink-0 items-center gap-1">
-                    {it.hint && <span className="text-[9px] text-muted-foreground">{it.hint}</span>}
+                    {it.hint && <span className="text-[11px] text-muted-foreground">{it.hint}</span>}
                     {it.value === value && <Check className="size-3.5 text-accent" />}
                   </span>
                 </button>
@@ -201,7 +220,7 @@ export function Combobox({
                 onMouseEnter={() => setActive(filtered.length)}
                 onClick={() => pick(query.trim())}
                 className={cn(
-                  "flex w-full items-center gap-1 px-2 py-1.5 text-left text-xs hover:bg-muted",
+                  "flex min-h-9 w-full items-center gap-1 px-2 py-1.5 text-left text-xs hover:bg-muted pointer-coarse:min-h-11",
                   active === filtered.length && "bg-muted",
                 )}
               >
@@ -211,7 +230,7 @@ export function Combobox({
           </div>
 
           {footer && (
-            <div className="flex items-center justify-between border-t border-border/60 px-2 py-1 text-[10px] text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-y-1 border-t border-border/60 px-2 py-1 text-[11px] text-muted-foreground">
               {footer}
             </div>
           )}
