@@ -35,7 +35,7 @@ export function ModelPicker({
   compact?: boolean;
   /** id of the visible label naming this picker. */
   ariaLabelledBy?: string;
-  /** Called with the catalog once it has loaded for the current `provider`. */
+  /** Called with the catalog once it has loaded (or been refreshed) for the current `provider`. */
   onCatalog?: (catalog: ModelCatalog) => void;
 }) {
   const [catalog, setCatalog] = React.useState<ModelCatalog | null>(null);
@@ -82,6 +82,7 @@ export function ModelPicker({
       const c = await api.refreshProviderModels(provider);
       setCatalog(c);
       setLoadError(null);
+      onCatalogRef.current?.(c);
       setRefreshNote(
         c.refreshed === false
           ? `Live list unavailable (no key, or the provider is unreachable); showing the ${
