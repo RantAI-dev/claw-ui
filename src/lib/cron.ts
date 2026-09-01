@@ -1,5 +1,8 @@
-// Cron expression helpers: human-readable description, quick-fill presets, and
-// a client-side 5-field validator (mirrors the backend's 5-field cron syntax).
+// Cron helpers: human-readable descriptions, quick-fill presets, a client-side
+// 5-field validator (mirrors the backend's 5-field syntax), the job/run state
+// words, and the gateway sentences the panel has to read.
+
+import type { CronJob, CronSchedule } from "./types";
 
 export const DOW = [
   "Sunday",
@@ -81,3 +84,128 @@ function validField(field: string, min: number, max: number): boolean {
     return true;
   });
 }
+
+// ---- Times ----
+
+/** Epoch milliseconds for a gateway timestamp (RFC 3339, epoch seconds or
+ *  epoch milliseconds), or null when it is absent or unreadable. */
+export function whenMs(ts: string | number | null | undefined): number | null {
+  if (ts == null) return null;
+  const ms = typeof ts === "number" ? (ts < 1e12 ? ts * 1000 : ts) : Date.parse(ts);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** A gateway timestamp in the browser's locale and zone; "not yet" when absent. */
+export function fmtWhen(ts: string | number | null | undefined): string {
+  if (ts == null) return "not yet";
+  const ms = whenMs(ts);
+  return ms == null ? String(ts) : new Date(ms).toLocaleString();
+}
+
+/** The browser's IANA zone, or "" when the runtime cannot tell. */
+export function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// ---- Schedules ----
+
+/** "every 5 min" / "every 30 s" / "every 1500 ms"; `long` spells the unit out. */
+export function formatEvery(ms: number, long = false): string {
+  if (ms > 0 && ms % 60_000 === 0) {
+    const m = ms / 60_000;
+    return m === 1 ? "every minute" : `every ${m} ${long ? "minutes" : "min"}`;
+  }
+  if (ms > 0 && ms % 1000 === 0) {
+    const s = ms / 1000;
+    return `every ${s} ${long ? (s === 1 ? "second" : "seconds") : "s"}`;
+  }
+  return `every ${ms} ms`;
+}
+
+/** Mirrors the Rust `Display for Schedule`. The stored `expression` string is
+ *  empty for at/every jobs, so render from the structured `schedule`. */
+export function formatSchedule(s: CronSchedule): string {
+  switch (s.kind) {
+    case "cron":
+      return s.tz ? `${s.expr} (${s.tz})` : s.expr;
+    case "at":
+      return `once at ${fmtWhen(s.at)}`;
+    case "every":
+      return formatEvery(s.every_ms);
+  }
+}
+
+// ---- Job and run state ----
+
+/** How stale a due time may be before the row says "overdue": four polls of the
+ *  scheduler's default 15 s tick. */
+export const OVERDUE_GRACE_MS = 60_000;
+
+export type JobState = "scheduled" | "overdue" | "paused" | "ran-once" | "missed";
+
+/** What the row says about a job right now. A disabled job is "paused", except
+ *  a one-off whose time has passed: "ran-once" when a run was recorded, else
+ *  "missed". An enabled job whose due time is older than the grace is
+ *  "overdue" (the scheduler loop lives in the daemon; the console cannot see
+ *  whether it is running, only that the time went by). */
+export function jobState(
+  job: Pick<CronJob, "enabled" | "next_run" | "last_run" | "schedule">,
+  now: number,
+): JobState {
+  if (!job.enabled) {
+    if (job.schedule.kind === "at") {
+      const at = whenMs(job.schedule.at);
+      if (at != null && at <= now) return job.last_run ? "ran-once" : "missed";
+    }
+    return "paused";
+  }
+  const next = whenMs(job.next_run);
+  if (next != null && next < now - OVERDUE_GRACE_MS) return "overdue";
+  return "scheduled";
+}
+
+/** One vocabulary for `last_status` (ok/error) and run rows (ok/refused/error). */
+export function statusWord(status: string | null | undefined): string {
+  if (!status) return "";
+  const s = status.toLowerCase();
+  return s === "error" ? "failed" : s;
+}
+
+export function statusTone(
+  status: string | null | undefined,
+): "secondary" | "destructive" | "warning" {
+  const s = (status ?? "").toLowerCase();
+  if (s === "ok") return "secondary";
+  if (s === "error") return "destructive";
+  return "warning";
+}
+
+// ---- Gateway sentences the panel reads ----
+
+export const POLICY_PREFIX = "blocked by security policy: ";
+
+/** The reason behind a policy refusal, or null when the output is not one. */
+export function refusalReason(output: string): string | null {
+  const t = output.trim();
+  return t.toLowerCase().startsWith(POLICY_PREFIX) ? t.slice(POLICY_PREFIX.length).trim() : null;
+}
+
+/** The create warning reads "created, but will not run on its schedule
+ *  (<reason>); force-run it with an approval, …". The console cannot force-run
+ *  anything (the approval is inert at fire time), so it shows the reason and
+ *  drops the advice. Any other shape is returned as is. */
+export function createWarningReason(warning: string): string {
+  const m = /^created, but will not run on its schedule \((.+)\); force-run/i.exec(warning.trim());
+  return m ? m[1] : warning.trim();
+}
+
+/** The gateway refuses `enabled: true` on a one-off whose time has passed. */
+export function isPastOneOffRefusal(message: string): boolean {
+  return /cannot re-enable one-shot/i.test(message);
+}
+
+export const PAST_ONE_OFF = "This one-off's time has passed. Edit it with a new time to run it again.";

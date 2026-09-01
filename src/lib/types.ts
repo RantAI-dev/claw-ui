@@ -370,14 +370,25 @@ export interface CronJob {
   last_output: string | null;
 }
 
+export interface CronList {
+  jobs: CronJob[];
+  count: number;
+  /** Feature switches the gateway reports with every list (absent on an older
+   *  gateway, which reads as "unknown", never as "off"). */
+  cron_enabled?: boolean;
+  scheduler_enabled?: boolean;
+}
+
 export interface CronRun {
   id: number;
   job_id: string;
   started_at: string;
   finished_at: string;
-  status: string; // "ok" | "error"
+  status: string; // "ok" | "refused" | "error"
   output: string | null;
   duration_ms: number | null;
+  /** 1-based retry attempt; a retried job writes one row per attempt. */
+  attempt?: number;
 }
 
 // ---- Chat SSE event frames ----

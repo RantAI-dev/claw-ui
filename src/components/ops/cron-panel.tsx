@@ -1,10 +1,24 @@
 "use client";
 
 import * as React from "react";
-import { History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
-import { api, describeApiError } from "@/lib/api";
+import { AlertTriangle, History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
+import { api, ApiError, describeApiError } from "@/lib/api";
 import type { CronJob, CronRun, CronSchedule } from "@/lib/types";
-import { CRON_PRESETS, describeCron, validateCron } from "@/lib/cron";
+import {
+  CRON_PRESETS,
+  PAST_ONE_OFF,
+  browserTimeZone,
+  createWarningReason,
+  describeCron,
+  fmtWhen,
+  formatSchedule,
+  isPastOneOffRefusal,
+  jobState,
+  refusalReason,
+  statusTone,
+  statusWord,
+  validateCron,
+} from "@/lib/cron";
 import { useAsync } from "@/hooks/use-async";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -18,42 +32,36 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
-function fmtWhen(ts: string | number | null): string {
-  if (ts == null) return "—";
-  try {
-    const ms = typeof ts === "number" ? (ts < 1e12 ? ts * 1000 : ts) : Date.parse(ts);
-    if (!Number.isFinite(ms)) return String(ts);
-    return new Date(ms).toLocaleString();
-  } catch {
-    return String(ts);
-  }
+const POLL_MS = 15000;
+const CRON_OFF = "Cron is off (cron.enabled=false)";
+
+function jobLabel(j: Pick<CronJob, "id" | "name">): string {
+  return j.name || j.id.slice(0, 8);
 }
 
-// Mirrors the Rust `Display for Schedule`. The stored `expression` string is
-// empty for at/every jobs, so render from the structured `schedule` instead of
-// falling back to the bare kind word ("at"/"every") with no time.
-function formatSchedule(s: CronSchedule): string {
-  switch (s.kind) {
-    case "cron":
-      return s.tz ? `${s.expr} (${s.tz})` : s.expr;
-    case "at":
-      return `at ${fmtWhen(s.at)}`;
-    case "every": {
-      const mins = s.every_ms / 60000;
-      return Number.isInteger(mins) && mins >= 1
-        ? `every ${mins} min`
-        : `every ${s.every_ms}ms`;
-    }
-  }
+/** A feature-switch notice over the list (the gateway reports both switches
+ *  with every list; the CLI prints the same warning on `cron list`). */
+function Notice({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      role="status"
+      className="flex items-start gap-2 rounded-md border border-warning/60 bg-warning/10 px-3 py-2 text-xs"
+    >
+      <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+      <span>{children}</span>
+    </div>
+  );
 }
 
 export function CronPanel() {
-  const { data, loading, error, refresh, refreshing } = useAsync(() => api.cron(), []);
+  const { data, loading, error, refresh, refreshing, loaded } = useAsync(() => api.cron(), []);
   const [jobKind, setJobKind] = React.useState<"agent" | "shell">("agent");
   const [prompt, setPrompt] = React.useState("");
   const [command, setCommand] = React.useState("");
   const [expr, setExpr] = React.useState("0 9 * * *");
-  const [tz, setTz] = React.useState("");
+  // The zone the operator sees is the honest default: a blank zone means UTC
+  // on the gateway, not the server's clock.
+  const [tz, setTz] = React.useState(browserTimeZone);
   const [name, setName] = React.useState("");
   const [kind, setKind] = React.useState<CronSchedule["kind"]>("cron");
   const [everyMin, setEveryMin] = React.useState("60");
@@ -61,14 +69,11 @@ export function CronPanel() {
   const [model, setModel] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
-  // A run the security policy refused, with the full reason — the operator can
-  // re-issue it explicitly.
-  const [pendingApproval, setPendingApproval] = React.useState<{ id: string; reason: string } | null>(
-    null,
-  );
   const [deleting, setDeleting] = React.useState(false);
   const [editing, setEditing] = React.useState<CronJob | null>(null);
   const [history, setHistory] = React.useState<CronJob | null>(null);
+  // Re-read with every poll so an "overdue" row flips without a reload.
+  const [now, setNow] = React.useState(() => Date.now());
 
   const schedulePreview = describeCron(expr);
   const cronError = kind === "cron" ? validateCron(expr) : null;
@@ -76,9 +81,16 @@ export function CronPanel() {
   // Live refresh: a job firing in the background surfaces without a manual click.
   // `useAsync` keeps stale content mounted during a refresh, so this doesn't flash.
   React.useEffect(() => {
-    const t = setInterval(refresh, 15000);
+    const t = setInterval(() => {
+      setNow(Date.now());
+      refresh();
+    }, POLL_MS);
     return () => clearInterval(t);
   }, [refresh]);
+
+  // Absent on an older gateway → unknown, never "off".
+  const cronOff = data?.cron_enabled === false;
+  const schedulerOff = data?.scheduler_enabled === false;
 
   const buildSchedule = (): CronSchedule | null => {
     if (kind === "every") {
@@ -131,11 +143,13 @@ export function CronPanel() {
     try {
       const created = await api.createCron(payload);
       // The API creates the job either way, but attaches `warning` when a shell
-      // job's command would be refused by the scheduler's fire-time gate — i.e.
-      // it will not run on its schedule. Surface that instead of a plain success
-      // so the operator isn't left thinking a silently-inert job is scheduled.
+      // job's command would be refused by the scheduler's fire-time gate. The
+      // console cannot force-run it (the approval is inert at fire time), so it
+      // shows the reason and drops the API's force-run advice.
       if (created.warning) {
-        toast.warning(created.warning);
+        toast.warning("Created, but it will not run on its schedule", {
+          description: `${createWarningReason(created.warning)}. Use an allowlisted low-risk command.`,
+        });
       } else {
         toast.success("Cron job created");
       }
@@ -157,33 +171,38 @@ export function CronPanel() {
       await api.updateCron(id, { enabled });
       refresh();
     } catch (e) {
-      toast.error(String(e instanceof Error ? e.message : e));
+      const msg = describeApiError(e);
+      toast.error(isPastOneOffRefusal(msg) ? PAST_ONE_OFF : msg);
     }
   };
-  const run = async (id: string, approved = false) => {
-    const t = toast.loading("Running job…");
+  const run = async (j: CronJob) => {
+    const t = toast.loading(`Running ${jobLabel(j)}…`);
     try {
-      const r = await api.runCron(id, approved);
+      const r = await api.runCron(j.id);
       const output = r.output || "";
       if (r.success) {
         toast.success("Job ran", { id: t, description: output.slice(0, 200) });
         refresh();
         return;
       }
-      // A refusal by the security policy is not a failed job, and the reason
-      // used to be truncated at 200 characters — which is exactly where the
-      // policy's explanation lives. `approved=true` existed on the API with no
-      // caller, so a gated job was simply unrunnable from the console. It is a
-      // privileged path, so it is never sent silently.
-      if (!approved && /approval|not approved|denied|policy/i.test(output)) {
-        setPendingApproval({ id, reason: output });
-        toast.dismiss(t);
-        return;
+      // A policy refusal is not a failed job: it never ran, and the scheduled
+      // path applies the same gate, so the job will not run on its own either.
+      // There is no approval to offer: the gateway ignores one at fire time.
+      const reason = refusalReason(output);
+      if (reason) {
+        toast.error("Blocked by policy", {
+          id: t,
+          description: `${reason}. It will not run on its schedule either.`,
+        });
+      } else {
+        toast.error("Job failed", { id: t, description: output.slice(0, 200) });
       }
-      toast.error("Job failed", { id: t, description: output.slice(0, 200) });
       refresh();
     } catch (e) {
-      toast.error(`Run failed: ${describeApiError(e)}`, { id: t });
+      // The handler's own gate answers 400 with the policy sentence before
+      // anything runs; every other failure is the request itself.
+      const refused = e instanceof ApiError && e.status === 400;
+      toast.error(refused ? "Run refused" : "Run failed", { id: t, description: describeApiError(e) });
     }
   };
   const del = async () => {
@@ -203,6 +222,7 @@ export function CronPanel() {
 
   const createDisabled =
     busy ||
+    cronOff ||
     (jobKind === "shell" ? !command.trim() : !prompt.trim()) ||
     (kind === "cron" && (!expr.trim() || cronError != null));
 
@@ -211,6 +231,14 @@ export function CronPanel() {
       <SectionTitle action={<RefreshButton onClick={refresh} spinning={refreshing} />}>
         Scheduled jobs {data && <span className="text-muted-foreground">· {data.count}</span>}
       </SectionTitle>
+
+      {schedulerOff && (
+        <Notice>
+          The scheduler loop is off (scheduler.enabled=false): these jobs will not fire until it
+          is re-enabled.
+        </Notice>
+      )}
+      {cronOff && <Notice>Cron is off (cron.enabled=false): jobs are read-only here.</Notice>}
 
       <Card className="space-y-2 p-3">
         <div className="flex items-center justify-between">
@@ -284,7 +312,7 @@ export function CronPanel() {
               <Input
                 value={tz}
                 onChange={(e) => setTz(e.target.value)}
-                placeholder="tz (e.g. UTC)"
+                placeholder="zone (blank = UTC)"
                 aria-label="Timezone (IANA)"
                 className="h-8 w-40 text-xs"
               />
@@ -319,7 +347,12 @@ export function CronPanel() {
             placeholder="name (optional)"
             className="h-8 min-w-[120px] flex-1 text-xs"
           />
-          <Button size="sm" onClick={create} disabled={createDisabled}>
+          <Button
+            size="sm"
+            onClick={create}
+            disabled={createDisabled}
+            title={cronOff ? CRON_OFF : undefined}
+          >
             <Plus className="size-4" /> Create
           </Button>
         </div>
@@ -339,7 +372,7 @@ export function CronPanel() {
         {kind === "cron" && expr.trim() && !cronError && (
           <p className="text-[11px] text-muted-foreground">
             {schedulePreview ? `Runs ${schedulePreview}` : "Custom cron schedule"} ·{" "}
-            {tz.trim() ? tz.trim() : "server time zone"}
+            {tz.trim() ? tz.trim() : "UTC"}
           </p>
         )}
         {kind === "every" && everyMin.trim() && (
@@ -349,72 +382,130 @@ export function CronPanel() {
         )}
       </Card>
 
-      <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
+      <PanelFrame
+        loading={loading}
+        error={error}
+        loaded={loaded}
+        loadingLabel="Loading jobs…"
+        empty={data?.count === 0}
+        onRefresh={refresh}
+      >
         <Card className="divide-y divide-border">
-          {data?.jobs.map((j) => (
-            <div
-              key={j.id}
-              className={cn("flex items-center gap-1.5 px-3 py-2.5", !j.enabled && "opacity-60")}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{j.name || j.id.slice(0, 8)}</span>
-                  <Badge variant="secondary" className="text-[10px]">{j.job_type}</Badge>
-                  {!j.enabled && <Badge variant="warning" className="text-[10px]">paused</Badge>}
-                </div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">
-                  {formatSchedule(j.schedule)} · next {fmtWhen(j.next_run)}
-                  {j.last_status ? ` · last: ${j.last_status} (${fmtWhen(j.last_run)})` : ""}
-                </div>
-                {(j.prompt || j.command) && (
-                  <div className="truncate text-[11px] text-muted-foreground/80">
-                    {j.job_type === "shell" ? j.command : j.prompt}
+          {data?.jobs.map((j) => {
+            const label = jobLabel(j);
+            const state = jobState(j, now);
+            const pastOneOff = state === "ran-once" || state === "missed";
+            const when =
+              state === "scheduled"
+                ? `next ${fmtWhen(j.next_run)}`
+                : state === "overdue"
+                  ? `due since ${fmtWhen(j.next_run)}`
+                  : state === "paused"
+                    ? "paused"
+                    : state === "ran-once"
+                      ? `ran once at ${fmtWhen(j.last_run)}`
+                      : `missed at ${fmtWhen(j.schedule.kind === "at" ? j.schedule.at : j.next_run)}`;
+            return (
+              <div key={j.id} className="flex items-center gap-1.5 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium">{label}</span>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {j.job_type}
+                    </Badge>
+                    {state === "overdue" && (
+                      <Badge variant="warning" className="text-[10px]">
+                        overdue
+                      </Badge>
+                    )}
+                    {state === "paused" && (
+                      <Badge variant="warning" className="text-[10px]">
+                        paused
+                      </Badge>
+                    )}
+                    {state === "ran-once" && (
+                      <Badge variant="secondary" className="text-[10px]">
+                        ran once
+                      </Badge>
+                    )}
+                    {state === "missed" && (
+                      <Badge variant="warning" className="text-[10px]">
+                        missed
+                      </Badge>
+                    )}
                   </div>
-                )}
+                  <div className="truncate font-mono text-[11px] text-muted-foreground">
+                    {formatSchedule(j.schedule)} · {when}
+                    {j.last_status
+                      ? ` · last ${statusWord(j.last_status)} ${fmtWhen(j.last_run)}`
+                      : ""}
+                  </div>
+                  {(j.prompt || j.command) && (
+                    <div className="truncate text-[11px] text-muted-foreground/80">
+                      {j.job_type === "shell" ? j.command : j.prompt}
+                    </div>
+                  )}
+                </div>
+                <IconButton
+                  onClick={() => toggle(j.id, !j.enabled)}
+                  disabled={cronOff || pastOneOff}
+                  title={
+                    cronOff ? CRON_OFF : pastOneOff ? PAST_ONE_OFF : j.enabled ? "Disable" : "Enable"
+                  }
+                  aria-label={j.enabled ? "Disable job" : "Enable job"}
+                  className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
+                >
+                  <Power className="size-3.5" />
+                </IconButton>
+                <IconButton
+                  onClick={() => run(j)}
+                  disabled={cronOff}
+                  title={cronOff ? CRON_OFF : "Run now"}
+                  aria-label="Run job now"
+                >
+                  <Play className="size-3.5" />
+                </IconButton>
+                <IconButton
+                  onClick={() => setHistory(j)}
+                  title="Run history"
+                  aria-label={`Run history for ${label}`}
+                >
+                  <History className="size-3.5" />
+                </IconButton>
+                <IconButton
+                  onClick={() => setEditing(j)}
+                  disabled={cronOff}
+                  title={cronOff ? CRON_OFF : "Edit"}
+                  aria-label={`Edit job ${label}`}
+                >
+                  <Pencil className="size-3.5" />
+                </IconButton>
+                <IconButton
+                  onClick={() => setPendingDelete({ id: j.id, name: label })}
+                  disabled={cronOff}
+                  title={cronOff ? CRON_OFF : "Delete"}
+                  aria-label={`Delete job ${label}`}
+                  className="hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                </IconButton>
               </div>
-              <IconButton
-                onClick={() => toggle(j.id, !j.enabled)}
-                title={j.enabled ? "Disable" : "Enable"}
-                aria-label={j.enabled ? "Disable job" : "Enable job"}
-                className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
-              >
-                <Power className="size-3.5" />
-              </IconButton>
-              <IconButton onClick={() => run(j.id)} title="Run now" aria-label="Run job now">
-                <Play className="size-3.5" />
-              </IconButton>
-              <IconButton
-                onClick={() => setHistory(j)}
-                title="Run history"
-                aria-label={`Run history for ${j.name || j.id.slice(0, 8)}`}
-              >
-                <History className="size-3.5" />
-              </IconButton>
-              <IconButton
-                onClick={() => setEditing(j)}
-                title="Edit"
-                aria-label={`Edit job ${j.name || j.id.slice(0, 8)}`}
-              >
-                <Pencil className="size-3.5" />
-              </IconButton>
-              <IconButton
-                onClick={() => setPendingDelete({ id: j.id, name: j.name || j.id.slice(0, 8) })}
-                title="Delete"
-                aria-label={`Delete job ${j.name || j.id.slice(0, 8)}`}
-                className="hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" />
-              </IconButton>
-            </div>
-          ))}
+            );
+          })}
         </Card>
-        <p className="mt-2 px-1 text-[10px] text-muted-foreground">
-          Next-run times are shown in your local time zone; cron expressions run in the server&apos;s
-          (or a job&apos;s chosen time zone).
+        <p className="mt-2 px-1 text-[11px] text-muted-foreground">
+          Jobs fire from the RantaiClaw daemon (<code>rantaiclaw daemon</code>), not from this
+          console. Times are shown in your local zone; a cron expression without a zone runs in
+          UTC.
         </p>
       </PanelFrame>
 
-      <EditCronModal job={editing} onClose={() => setEditing(null)} onSaved={refresh} />
+      <EditCronModal
+        job={editing}
+        onClose={() => setEditing(null)}
+        onSaved={refresh}
+        disabledReason={cronOff ? CRON_OFF : null}
+      />
       <CronRunsModal job={history} onClose={() => setHistory(null)} />
 
       <ConfirmModal
@@ -430,18 +521,6 @@ export function CronPanel() {
         busy={deleting}
         onConfirm={del}
       />
-      <ConfirmModal
-        open={!!pendingApproval}
-        onClose={() => setPendingApproval(null)}
-        title="This job needs approval to run"
-        description={pendingApproval?.reason}
-        confirmLabel="Run with approval"
-        onConfirm={async () => {
-          const p = pendingApproval;
-          setPendingApproval(null);
-          if (p) await run(p.id, true);
-        }}
-      />
     </div>
   );
 }
@@ -452,10 +531,13 @@ function EditCronModal({
   job,
   onClose,
   onSaved,
+  disabledReason,
 }: {
   job: CronJob | null;
   onClose: () => void;
   onSaved: () => void;
+  /** Why Save is unavailable (cron switched off), or null. */
+  disabledReason: string | null;
 }) {
   const [name, setName] = React.useState("");
   const [prompt, setPrompt] = React.useState("");
@@ -519,13 +601,18 @@ function EditCronModal({
       open={!!job}
       onClose={onClose}
       title="Edit scheduled job"
-      description={job.name || job.id.slice(0, 8)}
+      description={jobLabel(job)}
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button size="sm" onClick={save} disabled={busy || (isCron && cronError != null)}>
+          <Button
+            size="sm"
+            onClick={save}
+            disabled={busy || disabledReason != null || (isCron && cronError != null)}
+            title={disabledReason ?? undefined}
+          >
             Save
           </Button>
         </>
@@ -577,7 +664,7 @@ function EditCronModal({
             <Input
               value={tz}
               onChange={(e) => setTz(e.target.value)}
-              placeholder="tz (e.g. UTC)"
+              placeholder="zone (blank = UTC)"
               className="h-8 w-40 text-xs"
               aria-label="Timezone"
             />
@@ -617,7 +704,7 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
       open={!!job}
       onClose={onClose}
       title="Run history"
-      description={job.name || job.id.slice(0, 8)}
+      description={jobLabel(job)}
     >
       <div className="max-h-[50vh] space-y-2 overflow-y-auto">
         {error && <p className="text-[11px] text-destructive">{error}</p>}
@@ -628,10 +715,13 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
         {runs?.map((r) => (
           <details key={r.id} className="rounded border border-border px-2 py-1.5">
             <summary className="flex cursor-pointer items-center gap-2 text-[11px]">
-              <Badge variant={r.status === "ok" ? "secondary" : "warning"} className="text-[10px]">
-                {r.status}
+              <Badge variant={statusTone(r.status)} className="text-[10px]">
+                {statusWord(r.status)}
               </Badge>
               <span className="text-muted-foreground">{fmtWhen(r.started_at)}</span>
+              {(r.attempt ?? 1) > 1 && (
+                <span className="text-muted-foreground">attempt {r.attempt}</span>
+              )}
               <span className="text-muted-foreground/70">
                 {r.duration_ms != null ? `${r.duration_ms}ms` : ""}
               </span>
