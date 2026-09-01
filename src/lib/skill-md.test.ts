@@ -58,6 +58,37 @@ describe("readFields", () => {
     expect(blank?.description).toBe("Panduan menyeduh kopi V60.");
   });
 
+  it("returns null when the Instructions section opens with prose", () => {
+    // The Form would show an empty step list over a paragraph the model
+    // reads, and a step added there would land in front of it.
+    const prose = DOC.replace(
+      "## Instructions\n- Rasio 1:15 sampai 1:17\n- Bloom 30-45 detik\n",
+      "## Instructions\n\nRead the whole file first. Then answer in two sentences.\n",
+    );
+    expect(readFields(prose)).toBeNull();
+  });
+
+  it("still holds an empty Instructions section followed by a heading, or by nothing", () => {
+    const thenHeading = DOC.replace(
+      "## Instructions\n- Rasio 1:15 sampai 1:17\n- Bloom 30-45 detik\n",
+      "## Instructions\n\n",
+    );
+    expect(readFields(thenHeading)?.instructions).toEqual([]);
+    expect(readFields("---\nname: X\n---\n\n# X\n\n## Instructions\n")?.instructions).toEqual([]);
+    expect(readFields("---\nname: X\n---\n\n# X\n\n## Instructions")?.instructions).toEqual([]);
+  });
+
+  it("edits the bullets when prose follows them, and leaves the prose where it was", () => {
+    const mixed = DOC.replace(
+      "- Bloom 30-45 detik\n",
+      "- Bloom 30-45 detik\n\nThen taste it.\n",
+    );
+    expect(readFields(mixed)?.instructions).toEqual(["Rasio 1:15 sampai 1:17", "Bloom 30-45 detik"]);
+    const written = writeField(mixed, "instructions", ["Only step"]);
+    expect(written).toContain("## Instructions\n- Only step\n\nThen taste it.\n");
+    expect(written).toContain("## Troubleshooting");
+  });
+
   it("returns null when the name key is missing entirely", () => {
     // Distinct from an empty value: there is no line for the form to patch.
     const noName = "---\ndescription: x\n---\n\n## Instructions\n- a\n";
