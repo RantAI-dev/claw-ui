@@ -96,4 +96,64 @@ describe("PersonaPanel", () => {
     // The field is not reset — the edit survives so it can be retried.
     expect((screen.getByDisplayValue("Nova") as HTMLInputElement).value).toBe("Nova");
   });
+
+  it("fills a fresh profile with the runtime defaults, says so, and saves exactly those", async () => {
+    personality.mockResolvedValue({ profile: "default", preset: null, configured: false });
+    render(<PersonaPanel />);
+    expect(await screen.findByText(/No persona saved yet/)).toBeTruthy();
+    const name = screen.getByLabelText("Name") as HTMLInputElement;
+    expect(name.value).toBe("RantaiClaw");
+    expect((screen.getByLabelText("Tone") as HTMLInputElement).value).toBe("neutral");
+    expect((screen.getByLabelText("Role") as HTMLTextAreaElement).value).toBe(
+      "general productivity and helpful assistance",
+    );
+    expect((screen.getByLabelText("Timezone") as HTMLInputElement).value).toBe(
+      Intl.DateTimeFormat().resolvedOptions().timeZone,
+    );
+    const save = screen.getByRole("button", { name: /save persona/i }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(setPersonality).toHaveBeenCalledTimes(1));
+    const body = setPersonality.mock.calls[0][0] as Record<string, string>;
+    expect(body.preset).toBe("default");
+    for (const k of ["name", "role", "tone", "timezone"]) expect(body[k].length).toBeGreaterThan(0);
+  });
+
+  it("requires a name and refuses to save without one", async () => {
+    render(<PersonaPanel />);
+    const name = (await screen.findByDisplayValue("RantaiClaw")) as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "  " } });
+    expect(screen.getByRole("alert").textContent).toBe("Name is required.");
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    const save = screen.getByRole("button", { name: /save persona/i }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+    expect(setPersonality).not.toHaveBeenCalled();
+  });
+
+  it("refuses a made-up timezone and offers the browser's", async () => {
+    render(<PersonaPanel />);
+    await screen.findByDisplayValue("RantaiClaw");
+    const tz = screen.getByLabelText("Timezone") as HTMLInputElement;
+    fireEvent.change(tz, { target: { value: "Mars/Olympus Mons" } });
+    expect(screen.getByRole("alert").textContent).toMatch(/IANA/);
+    expect((screen.getByRole("button", { name: /save persona/i }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /^Use this browser's timezone/ }));
+    expect(tz.value).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows the selected preset's description and follows the selection", async () => {
+    personalityPresets.mockResolvedValue({
+      presets: [
+        { id: "default", label: "Default", description: "Balanced general-purpose helper." },
+        { id: "concise_pro", label: "Concise Pro", description: "Short, formal, lead-with-the-answer." },
+      ],
+    });
+    render(<PersonaPanel />);
+    expect(await screen.findByText("Balanced general-purpose helper.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Preset"), { target: { value: "concise_pro" } });
+    expect(screen.getByText("Short, formal, lead-with-the-answer.")).toBeTruthy();
+    expect(screen.queryByText("Balanced general-purpose helper.")).toBeNull();
+  });
 });

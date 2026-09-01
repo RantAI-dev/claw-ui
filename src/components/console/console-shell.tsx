@@ -752,7 +752,8 @@ export function ConsoleShell({
     (dense ? " dense" : "");
 
   const agentName = personality?.name?.trim() || "RantaiClaw";
-  const agentRole = personality?.role?.trim() || "AI employee";
+  // The saved role or nothing: a fallback role is a claim the runtime never made.
+  const agentRole = personality?.role?.trim() || "";
   const agentInitials = initials(agentName);
 
   const effectiveProvider = provider || status?.provider || "";
@@ -1056,7 +1057,7 @@ export function ConsoleShell({
               </div>
               <div className="agent-meta">
                 <b>{agentName}</b>
-                <div>{agentRole}</div>
+                {agentRole && <div>{agentRole}</div>}
               </div>
             </div>
 
