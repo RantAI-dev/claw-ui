@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Network, Sparkles } from "lucide-react";
+import { AlertTriangle, FileText, Network, RefreshCw, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { formatNumber, relativeTime } from "@/lib/utils";
 import { formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -86,7 +87,19 @@ function DocPreview({ documentId }: { documentId: string }) {
   }
 
   if (doc.error) {
-    return <div className="py-10 text-center text-sm text-destructive">{doc.error}</div>;
+    return (
+      <EmptyState
+        tone="destructive"
+        icon={<AlertTriangle className="size-6" />}
+        title="Couldn't load this document"
+        hint={doc.error}
+        action={
+          <Button size="sm" variant="outline" onClick={doc.refresh}>
+            <RefreshCw /> Retry
+          </Button>
+        }
+      />
+    );
   }
 
   const d = doc.data;

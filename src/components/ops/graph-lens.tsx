@@ -5,7 +5,7 @@ import { Network, RefreshCw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, IconButton, PanelFrame, StatTile } from "./shared";
@@ -51,7 +51,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
   const documentId = activeScope.kind === "document" ? activeScope.documentId : undefined;
   const groupId = activeScope.kind === "group" ? activeScope.groupId : undefined;
 
-  const { data, error, loading, refresh } = useAsync(() => {
+  const { data, error, loading, loaded, refreshing, refresh } = useAsync(() => {
     if (activeScope.kind === "document") {
       return api.kbDocumentIntelligence(activeScope.documentId).then(fromIntelligence);
     }
@@ -120,8 +120,14 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
         ) : (
           <div />
         )}
-        <IconButton onClick={refresh} title="Refresh graph" aria-label="Refresh graph" className="shrink-0">
-          <RefreshCw className="size-4" />
+        <IconButton
+          onClick={refresh}
+          disabled={refreshing}
+          title="Refresh graph"
+          aria-label="Refresh graph"
+          className="shrink-0"
+        >
+          <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
         </IconButton>
       </div>
 
@@ -143,7 +149,13 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
         </div>
       )}
 
-      <PanelFrame loading={graphState === "loading"} error={error} onRefresh={refresh}>
+      <PanelFrame
+        loading={graphState === "loading"}
+        error={error}
+        loaded={loaded}
+        onRefresh={refresh}
+        loadingLabel="Loading the graph…"
+      >
         {graphState === "disabled" ? (
           <EmptyState
             icon={<Network className="size-6" />}
@@ -151,8 +163,8 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
             hint={
               <>
                 Set <code>KB_INTELLIGENCE_ENABLED</code> to extract entities and relations across
-                your knowledge bases — a document&apos;s <em>Re-extract</em> also works while
-                disabled.
+                your knowledge bases. A document&apos;s <em>Re-extract</em> also works while it is
+                off.
                 {data?.capability?.extraction_model && (
                   <ModelNote model={data.capability.extraction_model} />
                 )}
@@ -180,7 +192,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
             title="No graph yet"
             hint={
               <>
-                No entities have been extracted for this scope yet — try a document&apos;s{" "}
+                No entities have been extracted for this scope yet. Try a document&apos;s{" "}
                 <em>Re-extract</em>.
                 {data?.capability?.extraction_model && (
                   <ModelNote model={data.capability.extraction_model} />
@@ -251,8 +263,8 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
 function ModelNote({ model }: { model: string }) {
   return (
     <span className="mt-2 block text-[11px] text-muted-foreground">
-      Extraction model: <code>{model}</code>
-      {isSmallModel(model) && " — small; the extracted graph may be sparse or noisy."}
+      Extraction model: <code>{model}</code>.
+      {isSmallModel(model) && " A small model may give a sparse or noisy graph."}
     </span>
   );
 }

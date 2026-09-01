@@ -22,6 +22,7 @@ import {
   Upload,
   Sparkles,
   Eye,
+  AlertTriangle,
 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
@@ -32,6 +33,14 @@ import {
   MAX_BYTES,
 } from "@/lib/attachments";
 import type { KbDocument, KbGroup } from "@/lib/types";
+import {
+  countLine,
+  deleteDocCopy,
+  deleteGroupCopy,
+  duplicateTitles,
+  ingestNote,
+  unlinkDocCopy,
+} from "@/lib/kb";
 import { cn, relativeTime, formatNumber } from "@/lib/utils";
 import { getFileTypeIcon, formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +54,7 @@ import { Modal } from "@/components/ui/modal";
 import { EmptyState, PanelFrame, RefreshButton } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { GraphLens } from "./graph-lens";
-import { KnowledgeSettingsCard } from "./knowledge-settings-card";
+import { KnowledgeSettingsCard, type KnowledgeStatusState } from "./knowledge-settings-card";
 import { toast } from "sonner";
 
 const PRESET_COLORS = [
@@ -83,15 +92,21 @@ export function KbPanel() {
     ? (kbStatus.data.enabled ?? kbStatus.data.embedding_configured)
     : false;
 
-  if (kbStatus.loading) return null;
-  if (!kbEnabled) {
-    // Activation screen only — no Documents/Graph chrome, no doomed fetches.
-    return <KnowledgeSettingsCard onChanged={kbStatus.refresh} />;
+  if (kbStatus.loading) {
+    return (
+      <PanelFrame loading loadingLabel="Loading Knowledge Base status…">
+        <></>
+      </PanelFrame>
+    );
   }
-  return <KbPanelBody onStatusChanged={kbStatus.refresh} />;
+  if (!kbEnabled) {
+    // Activation screen only: no Documents/Graph chrome, no doomed fetches.
+    return <KnowledgeSettingsCard status={kbStatus} />;
+  }
+  return <KbPanelBody status={kbStatus} />;
 }
 
-function KbPanelBody({ onStatusChanged }: { onStatusChanged: () => void }) {
+function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
   const groups = useAsync(() => api.kbGroups(), []);
   const [selected, setSelected] = React.useState<KbGroup | null>(null);
   const [view, setView] = React.useState<LibraryView>("documents");
@@ -108,7 +123,7 @@ function KbPanelBody({ onStatusChanged }: { onStatusChanged: () => void }) {
 
   return (
     <div className="space-y-4">
-      <KnowledgeSettingsCard onChanged={onStatusChanged} />
+      <KnowledgeSettingsCard status={status} />
 
       <Segmented
         value={view}
@@ -194,28 +209,26 @@ function KbList({
 
   return (
     <div className="space-y-4">
-      {/* Header — the page title comes from the ops header; this row is stats + action */}
+      {/* Header: the page title comes from the ops header; this row is the count + actions.
+          The count waits for the list: "0 knowledge bases" before the data was a number
+          nobody had computed. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <Database className="size-3.5" />
-            {formatNumber(list.length)} knowledge base{list.length === 1 ? "" : "s"}
-          </span>
-          <span className="text-muted-foreground/40">·</span>
-          <span className="flex items-center gap-1.5">
-            <BookOpen className="size-3.5" />
-            {formatNumber(totalDocs)} document{totalDocs === 1 ? "" : "s"}
-          </span>
-        </div>
+        <span className="eyebrow">{groups.loaded ? countLine(list.length, totalDocs) : ""}</span>
         <div className="flex items-center gap-2">
-          <RefreshButton onClick={groups.refresh} />
+          <RefreshButton onClick={groups.refresh} spinning={groups.refreshing} />
           <Button size="sm" onClick={openCreate}>
             <Plus className="size-4" /> New knowledge base
           </Button>
         </div>
       </div>
 
-      <PanelFrame loading={groups.loading} error={groups.error} onRefresh={groups.refresh}>
+      <PanelFrame
+        loading={groups.loading}
+        error={groups.error}
+        loaded={groups.loaded}
+        onRefresh={groups.refresh}
+        loadingLabel="Loading knowledge bases…"
+      >
         {list.length === 0 ? (
           <EmptyState
             icon={<Database className="size-6" />}
@@ -256,11 +269,7 @@ function KbList({
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete knowledge base"
-        description={
-          deleteTarget
-            ? `Delete “${deleteTarget.name}”? Documents stay in the library but are unlinked.`
-            : undefined
-        }
+        description={deleteTarget ? deleteGroupCopy(deleteTarget).body : undefined}
         busy={deleting}
         onConfirm={confirmDelete}
       />
@@ -344,12 +353,6 @@ function KbCard({
           )}
         </div>
       </div>
-
-      {group.updated_at != null && (
-        <div className="mt-3 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
-          Updated {relativeTime(group.updated_at)}
-        </div>
-      )}
     </div>
   );
 }
@@ -495,6 +498,10 @@ interface UploadEntry {
   name: string;
   status: "uploading" | "ready" | "error";
   error?: string;
+  /** The gateway's extraction measurement, once the upload succeeded. */
+  note?: string;
+  /** The gateway flagged the extraction as thin (it may retrieve poorly). */
+  thin?: boolean;
 }
 
 function KbDetail({
@@ -574,6 +581,9 @@ function KbDetail({
       status: "uploading",
     }));
     setUploads((prev) => [...prev, ...seeded]);
+    // The gateway titles a document by its file stem and accepts the same
+    // stem twice; say so rather than growing a silent second "notes".
+    const dupes = duplicateTitles(arr, docs.data ?? []);
 
     let ok = 0;
     let failed = 0;
@@ -593,11 +603,19 @@ function KbDetail({
       try {
         // Link to this group at ingest via the gateway's `groups` field — no
         // separate kbAddDocToGroup round-trip and no UUID category pollution.
-        await ingestFile(file, { groups: [group.id] });
+        const r = await ingestFile(file, { groups: [group.id] });
         ok += 1;
+        const note = ingestNote(r);
         setUploads((prev) =>
-          prev.map((u) => (u.id === entryId ? { ...u, status: "ready" } : u)),
+          prev.map((u) =>
+            u.id === entryId ? { ...u, status: "ready", note: note.text, thin: note.thin } : u,
+          ),
         );
+        if (note.thin) {
+          toast.warning(
+            `${file.name} extracted only ${formatNumber(r.chars_extracted)} characters; it may retrieve poorly.`,
+          );
+        }
       } catch (e) {
         failed += 1;
         const msg = errMsg(e);
@@ -611,13 +629,19 @@ function KbDetail({
     }
 
     if (ok) toast.success(`Added ${ok} document${ok === 1 ? "" : "s"} to “${group.name}”`);
+    if (ok && dupes.length) {
+      toast.warning(
+        `${dupes.map((d) => `“${d}”`).join(", ")} already existed in this knowledge base; added again.`,
+      );
+    }
     if (ok || failed) {
       docs.refresh();
       onChanged();
     }
-    // Clear the finished rows after a short beat (keep errors visible longer).
+    // Clear the plain "ready" rows after a short beat; keep failures and thin
+    // extractions on screen, since both ask the operator for a decision.
     setTimeout(() => {
-      setUploads((prev) => prev.filter((u) => u.status === "error"));
+      setUploads((prev) => prev.filter((u) => u.status === "error" || u.thin));
     }, 2500);
   };
 
@@ -712,7 +736,7 @@ function KbDetail({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          <RefreshButton onClick={docs.refresh} />
+          <RefreshButton onClick={docs.refresh} spinning={docs.refreshing} />
           <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
             <Pencil className="size-3.5" /> Edit
           </Button>
@@ -823,7 +847,10 @@ function KbDetail({
               {u.status === "uploading" && (
                 <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
               )}
-              {u.status === "ready" && (
+              {u.status === "ready" && u.thin && (
+                <AlertTriangle className="size-3.5 shrink-0 text-warning" />
+              )}
+              {u.status === "ready" && !u.thin && (
                 <Check className="size-3.5 shrink-0 text-success" />
               )}
               {u.status === "error" && (
@@ -841,7 +868,7 @@ function KbDetail({
                 {u.status === "uploading"
                   ? "uploading…"
                   : u.status === "ready"
-                    ? "ready"
+                    ? (u.note ?? "ready")
                     : u.error || "failed"}
               </span>
             </div>
@@ -888,12 +915,14 @@ function KbDetail({
       <PanelFrame
         loading={docs.loading}
         error={docs.error}
-        empty={false}
+        loaded={docs.loaded}
         onRefresh={docs.refresh}
+        loadingLabel="Loading documents…"
       >
         {visible.length === 0 ? (
           <DocsEmpty
-            searching={search.trim().length > 0}
+            query={search.trim()}
+            total={(docs.data ?? []).length}
             onUpload={() => fileRef.current?.click()}
           />
         ) : view === "grid" ? (
@@ -953,7 +982,7 @@ function KbDetail({
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         title="Delete knowledge base"
-        description={`Delete “${group.name}”? Documents stay in the library but are unlinked.`}
+        description={deleteGroupCopy(group).body}
         busy={deleting}
         onConfirm={confirmDelete}
       />
@@ -963,9 +992,7 @@ function KbDetail({
         onClose={() => setUnlinkDoc(null)}
         title="Remove from this knowledge base"
         description={
-          unlinkDoc
-            ? `Remove “${unlinkDoc.title || unlinkDoc.id.slice(0, 8)}” from “${group.name}”? It stays in the library and in any other knowledge bases it belongs to.`
-            : ""
+          unlinkDoc ? unlinkDocCopy(unlinkDoc.title || unlinkDoc.id.slice(0, 8), group.name) : ""
         }
         confirmLabel="Remove"
         busy={unlinking}
@@ -976,11 +1003,7 @@ function KbDetail({
         open={!!deleteDoc}
         onClose={() => setDeleteDoc(null)}
         title="Delete document"
-        description={
-          deleteDoc
-            ? `Delete “${deleteDoc.title || deleteDoc.id.slice(0, 8)}” from the library? It leaves every knowledge base and stops being used for retrieval.`
-            : ""
-        }
+        description={deleteDoc ? deleteDocCopy(deleteDoc.title || deleteDoc.id.slice(0, 8)) : ""}
         busy={deletingDoc}
         onConfirm={confirmDeleteDoc}
       />
@@ -998,20 +1021,23 @@ function KbDetail({
 }
 
 function DocsEmpty({
-  searching,
+  query,
+  total,
   onUpload,
 }: {
-  searching: boolean;
+  query: string;
+  total: number;
   onUpload: () => void;
 }) {
+  const searching = query.length > 0;
   return (
     <div className="rounded-xl border border-dashed border-border bg-muted/20">
       <EmptyState
         icon={<BookOpen className="size-6" />}
-        title={searching ? "No matching documents" : "No documents yet"}
+        title={searching ? `No documents match “${query}”.` : "No documents yet"}
         hint={
           searching
-            ? "Try a different search."
+            ? `Clear the search to see all ${formatNumber(total)} document${total === 1 ? "" : "s"}.`
             : "Upload files above to add them to this knowledge base."
         }
         action={

@@ -2,6 +2,7 @@
 // the RantaiClaw KB (scoped per-conversation via the `categories`/`category`
 // field == a client-generated conversation id), then relevant chunks are
 // retrieved on each send and injected into the SENT message only.
+import { describeIngestError } from "@/lib/kb";
 
 // Accepted upload extensions: documents + common code/text formats.
 // Source of truth: RantAIClaw src/kb/file/mod.rs (MARKDOWN/PDF/IMAGE/TEXT
@@ -59,6 +60,10 @@ export function imageAcceptAttr(): string {
 export interface IngestResult {
   document_id: string;
   chunks_stored: number;
+  /** Characters the gateway extracted from the upload (absent on older gateways). */
+  chars_extracted?: number;
+  /** The gateway's own "this extracted poorly" flag (under ~100 chars per page). */
+  low_text_density?: boolean;
 }
 
 /**
@@ -70,8 +75,10 @@ export interface IngestResult {
 export type IngestScope = string | { groups: string[] };
 
 /**
- * Upload one file to the KB ingest proxy. Throws a clear Error on any non-ok
- * response.
+ * Upload one file to the KB ingest proxy. Throws an Error whose message is an
+ * operator sentence (see `describeIngestError`): the gateway's own `detail`
+ * for an unsupported type is just the filename, and its missing-OCR-key
+ * failure names an env var, so neither is shown raw.
  */
 export async function ingestFile(file: File, scope: IngestScope): Promise<IngestResult> {
   const form = new FormData();
@@ -93,15 +100,23 @@ export async function ingestFile(file: File, scope: IngestScope): Promise<Ingest
     /* non-JSON body */
   }
   if (!res.ok) {
-    const obj = data as { detail?: unknown; error?: unknown } | null;
-    const detail = obj?.detail || obj?.error || text || res.statusText;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new Error(
+      describeIngestError({ status: res.status, body: data, text, statusText: res.statusText }),
+    );
   }
-  const obj = (data || {}) as { document_id?: string; chunks_stored?: number };
-  return {
+  const obj = (data || {}) as {
+    document_id?: string;
+    chunks_stored?: number;
+    chars_extracted?: number;
+    low_text_density?: boolean;
+  };
+  const out: IngestResult = {
     document_id: String(obj.document_id || ""),
     chunks_stored: Number(obj.chunks_stored || 0),
   };
+  if (typeof obj.chars_extracted === "number") out.chars_extracted = obj.chars_extracted;
+  if (typeof obj.low_text_density === "boolean") out.low_text_density = obj.low_text_density;
+  return out;
 }
 
 export interface KbSearchResult {
