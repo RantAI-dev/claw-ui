@@ -6,7 +6,8 @@ import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { AUTONOMY_CHANGED, autonomyPreset, levelToRung } from "@/lib/console";
+import { AUTONOMY_CHANGED, autonomyPreset } from "@/lib/console";
+import { rungFromAutonomy } from "@/lib/autonomy";
 import {
   doctorSummary,
   emptyValue,
@@ -16,7 +17,7 @@ import {
   skippedSentence,
   sortBySeverity,
 } from "@/lib/status";
-import type { StatusInfo } from "@/lib/types";
+import type { GatewayConfig, StatusInfo } from "@/lib/types";
 import { formatNumber, relativeTime } from "@/lib/utils";
 import {
   EmptyState,
@@ -84,14 +85,16 @@ function HealthCard({ runtime }: { runtime: unknown }) {
   );
 }
 
-function autonomyLabel(s: StatusInfo): string {
-  // Show the preset the rest of the console speaks in, not the raw enforcement
-  // level: `autonomy_preset` is what tells Manual from Smart (both are
-  // `Supervised`). An older gateway omits it; `levelToRung` then reads the level,
-  // which can only ever say Smart for a supervised gateway. Neither field means
-  // the payload cannot say, so say that.
-  if (!s.autonomy_preset && !s.autonomy) return "unknown";
-  return autonomyPreset(s.autonomy_preset ?? levelToRung(s.autonomy)).label;
+function autonomyLabel(cfg: { data: GatewayConfig | null; error: string | null }): string {
+  // The rung the rest of the console speaks in, read from the same config and
+  // the same classifier as the rail and the Tools panel. `/status` also
+  // carries `autonomy_preset`, but the gateway calls any non-empty
+  // `always_ask` Manual, and a fresh install ships `always_ask = ["ssh",
+  // "pty"]` beside two auto-approved tools: it said "manual" for a policy
+  // that never prompts for those two. Three surfaces on one classifier
+  // cannot disagree; the gateway's own word is a backend follow-up.
+  if (cfg.data?.autonomy) return autonomyPreset(rungFromAutonomy(cfg.data.autonomy)).label;
+  return cfg.error ? "unknown" : "…";
 }
 
 /** Same cadence as the topbar pill (`useGatewayStatus`). */
@@ -99,17 +102,23 @@ const STATUS_POLL_MS = 15000;
 
 export function StatusPanel() {
   const status = useAsync(() => api.status(), []);
+  const cfg = useAsync(() => api.config(), []);
   const doctor = useAsync(() => api.doctor(), []);
   const insights = useAsync(() => api.insights(), []);
   const s = status.data;
   const skipped = skippedSentence(doctor.data?.skipped);
 
   // The health snapshot is the one thing on this page that changes on its
-  // own, and the rail can change the rung while the page is open. Re-read
-  // `/status` on the rail's broadcast and on the pill's cadence while the tab
-  // is visible; doctor and usage stay on their buttons. `refresh` keeps the
-  // content mounted, so nothing flashes.
-  const refreshStatus = status.refresh;
+  // own, and the rail or the Tools panel can change the rung while the page
+  // is open. Re-read `/status` and `/config` on the rung broadcast and on the
+  // pill's cadence while the tab is visible; doctor and usage stay on their
+  // buttons. `refresh` keeps the content mounted, so nothing flashes.
+  const refreshStatusRaw = status.refresh;
+  const refreshCfg = cfg.refresh;
+  const refreshStatus = React.useCallback(() => {
+    refreshStatusRaw();
+    refreshCfg();
+  }, [refreshStatusRaw, refreshCfg]);
   React.useEffect(() => {
     window.addEventListener(AUTONOMY_CHANGED, refreshStatus);
     return () => window.removeEventListener(AUTONOMY_CHANGED, refreshStatus);
@@ -162,6 +171,7 @@ export function StatusPanel() {
             size="sm"
             onClick={() => {
               status.refresh();
+              cfg.refresh();
               doctor.refresh();
               insights.refresh();
             }}
@@ -195,7 +205,7 @@ export function StatusPanel() {
                 <KeyVal k="Version" v={emptyValue(s.version, "unknown")} />
                 <KeyVal k="Provider" v={emptyValue(s.provider)} />
                 <KeyVal k="Model" v={emptyValue(s.model)} mono={!!s.model} />
-                <KeyVal k="Autonomy" v={autonomyLabel(s)} />
+                <KeyVal k="Autonomy" v={autonomyLabel(cfg)} />
                 <KeyVal k="Pairing" v={pairingLabel(s.paired)} />
                 <KeyVal k="Memory backend" v={emptyValue(s.memory_backend)} />
                 <KeyVal k="Workspace" v={emptyValue(s.workspace_dir)} mono={!!s.workspace_dir} />

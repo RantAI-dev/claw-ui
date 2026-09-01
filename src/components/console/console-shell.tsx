@@ -28,20 +28,20 @@ import {
   channelDot,
   autonomyReadIsStale,
   initials,
-  levelToRung,
   NAV,
   nextCycledRung,
   shiftTabCyclesAutonomy,
   ROUTE_META,
   type Route,
   resolveHashRoute,
-  rungToAutonomyPayload,
   SKILLS_CHANGED,
   PERSONA_CHANGED,
   CONFIG_CHANGED,
   AUTONOMY_CHANGED,
 } from "@/lib/console";
+import { rungFromAutonomy, rungToAutonomyPayload } from "@/lib/autonomy";
 import type {
+  GatewayAutonomy,
   GatewayConfig,
   KbGroup,
   Personality,
@@ -113,6 +113,10 @@ export function ConsoleShell({
   // rather than allowed to snap the control back to what the operator just
   // changed away from.
   const autonomyWrittenAt = React.useRef(0);
+  // The autonomy object from the last config read. A rung write is built from
+  // it: Smart keeps the always-ask entries outside the built-in set (ssh, pty
+  // by default), so the payload needs the current list, not a blank one.
+  const lastAutonomy = React.useRef<GatewayAutonomy | null>(null);
   const [railCollapsed, setRailCollapsed] = React.useState(false);
   const [tweaksOpen, setTweaksOpen] = React.useState(false);
   const [authOn, setAuthOn] = React.useState(false);
@@ -301,7 +305,7 @@ export function ConsoleShell({
   }, [sessQuery]);
 
   // Project the gateway's autonomy config onto the 4-rung ladder. The rung is
-  // `level` + `always_ask` (see `levelToRung`); both the console and the
+  // `level` + `always_ask` (see `rungFromAutonomy`); both the console and the
   // TUI/CLI write that pair, so this reflects a preset switched on either
   // surface.
   const applyAutonomyFromConfig = React.useCallback(
@@ -309,7 +313,8 @@ export function ConsoleShell({
       if (autonomyReadIsStale(readStartedAt, autonomyWrittenAt.current)) return;
       const auto = c?.autonomy;
       if (!auto) return;
-      setAutonomyState(levelToRung(auto.level, auto.always_ask?.length || 0));
+      lastAutonomy.current = auto;
+      setAutonomyState(rungFromAutonomy(auto));
     },
     [],
   );
@@ -418,6 +423,24 @@ export function ConsoleShell({
   // tracks an operator action, not a live metric. Mirrors `useGatewayStatus`:
   // refresh immediately on becoming visible rather than waiting out a full
   // interval, since a whole hidden period may have gone by.
+  const readAutonomy = React.useCallback(() => {
+    const startedAt = Date.now();
+    api
+      .config()
+      .then((c) => applyAutonomyFromConfig(c, startedAt))
+      .catch(() => {});
+  }, [applyAutonomyFromConfig]);
+
+  // The Tools panel writes the same setting and broadcasts after its write;
+  // re-read on it so the rail flips with the request, not with the 30 s poll.
+  // The rail's own dispatch (in `changeAutonomy`) lands here too: one
+  // idempotent re-read that starts after the write stamp, so the staleness
+  // guard lets it through.
+  React.useEffect(() => {
+    window.addEventListener(AUTONOMY_CHANGED, readAutonomy);
+    return () => window.removeEventListener(AUTONOMY_CHANGED, readAutonomy);
+  }, [readAutonomy]);
+
   React.useEffect(() => {
     let id: ReturnType<typeof setInterval> | null = null;
 
@@ -428,13 +451,7 @@ export function ConsoleShell({
       }
     };
 
-    const refresh = () => {
-      const startedAt = Date.now();
-      api
-        .config()
-        .then((c) => applyAutonomyFromConfig(c, startedAt))
-        .catch(() => {});
-    };
+    const refresh = readAutonomy;
 
     const sync = () => {
       if (document.visibilityState === "hidden") {
@@ -455,7 +472,7 @@ export function ConsoleShell({
       stop();
       document.removeEventListener("visibilitychange", sync);
     };
-  }, [applyAutonomyFromConfig]);
+  }, [readAutonomy]);
 
   // Persist an autonomy rung change to the gateway (maps 4 rungs → real level + always_ask).
   const autonomyRef = React.useRef(autonomy);
@@ -468,8 +485,9 @@ export function ConsoleShell({
     const previous = autonomyRef.current;
     setAutonomyState(rung);
     api
-      .setAutonomy(rungToAutonomyPayload(rung))
-      .then(() => {
+      .setAutonomy(rungToAutonomyPayload(rung, lastAutonomy.current))
+      .then((stored) => {
+        lastAutonomy.current = stored as GatewayAutonomy;
         // Stamped in `then` only. In `finally`, a FAILED write armed the
         // staleness guard and discarded the very read that would have corrected
         // the screen.
@@ -1045,11 +1063,12 @@ export function ConsoleShell({
                 <span>Autonomy</span>
                 <span className="kbd">⇧⇥</span>
               </div>
-              <div className="seg">
+              <div className="seg" role="group" aria-label="Autonomy level">
                 {AUTONOMY.map((p) => (
                   <button
                     key={p.id}
                     className={p.id === autonomy ? "on" : ""}
+                    aria-pressed={p.id === autonomy}
                     style={
                       p.id === autonomy
                         ? ({ ["--seg-on" as string]: p.dot } as React.CSSProperties)
