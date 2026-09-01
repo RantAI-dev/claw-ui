@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CronJob, CronList, CronRun } from "@/lib/types";
 import { PAST_ONE_OFF, toLocalInput } from "@/lib/cron";
+import { FOCUSABLE } from "@/components/ui/modal";
 
 const cron = vi.fn();
 const createCron = vi.fn();
@@ -109,9 +110,9 @@ describe("CronPanel feature switches", () => {
     expect(await screen.findByText(/Cron is off \(cron\.enabled=false\)/)).toBeTruthy();
     expect(button("Create").disabled).toBe(true);
     expect(button("Create").title).toMatch(/Cron is off/);
-    expect(button("Disable job").disabled).toBe(true);
-    expect(button("Run job now").disabled).toBe(true);
-    expect(button(/^Delete job/).disabled).toBe(true);
+    expect(button("Pause Morning hello").disabled).toBe(true);
+    expect(button("Run Morning hello now").disabled).toBe(true);
+    expect(button(/^Delete /).disabled).toBe(true);
     // Reads stay open.
     expect(button(/^Run history/).disabled).toBe(false);
   });
@@ -139,7 +140,7 @@ describe("CronPanel row state", () => {
     render(<CronPanel />);
     expect(await screen.findByText("paused")).toBeTruthy();
     expect(screen.queryByText(/next /)).toBeNull();
-    expect(button("Enable job").disabled).toBe(false);
+    expect(button("Resume Morning hello").disabled).toBe(false);
   });
 
   it("reads a past one-off as ran once and blocks Resume with the reason", async () => {
@@ -160,7 +161,7 @@ describe("CronPanel row state", () => {
     render(<CronPanel />);
     expect(await screen.findByText("ran once")).toBeTruthy();
     expect(screen.getByText(/ran once at/)).toBeTruthy();
-    const resume = button("Enable job");
+    const resume = button("Resume Morning hello");
     expect(resume.disabled).toBe(true);
     expect(resume.title).toBe(PAST_ONE_OFF);
   });
@@ -202,7 +203,7 @@ describe("CronPanel run now", () => {
     );
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    fireEvent.click(button("Run job now"));
+    fireEvent.click(button("Run Morning hello now"));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     // The id alone: the panel never asks for an approval the gateway ignores.
     expect(runCron.mock.calls[0]).toEqual(["j1", undefined]);
@@ -226,7 +227,7 @@ describe("CronPanel run now", () => {
     );
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    fireEvent.click(button("Run job now"));
+    fireEvent.click(button("Run Morning hello now"));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     const [title, opts] = toastError.mock.calls[0] as [string, { description: string }];
     expect(title).toBe("Run refused");
@@ -238,7 +239,7 @@ describe("CronPanel run now", () => {
     runCron.mockImplementation(() => Promise.reject(new ApiError("upstream", 502, null)));
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    fireEvent.click(button("Run job now"));
+    fireEvent.click(button("Run Morning hello now"));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     const [title, opts] = toastError.mock.calls[0] as [string, { description: string }];
     expect(title).toBe("Run failed");
@@ -377,7 +378,7 @@ describe("CronPanel edit", () => {
     );
     render(<CronPanel />);
     await screen.findByText("every-30s");
-    fireEvent.click(button("Edit job every-30s"));
+    fireEvent.click(button("Edit every-30s"));
     const interval = (await screen.findByLabelText("Interval in minutes")) as HTMLInputElement;
     expect(interval.value).toBe("0.5");
     expect(screen.queryByText("Whole minutes only")).toBeNull(); // untouched: not re-validated
@@ -394,8 +395,8 @@ describe("CronPanel edit", () => {
   it("sends no schedule when only the name changed", async () => {
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    fireEvent.click(button("Edit job Morning hello"));
-    const name = (await screen.findByLabelText("Name")) as HTMLInputElement;
+    fireEvent.click(button("Edit Morning hello"));
+    const name = within(await screen.findByRole("dialog")).getByLabelText("Name") as HTMLInputElement;
     fireEvent.change(name, { target: { value: "Evening hello" } });
     fireEvent.click(button("Save"));
     await waitFor(() => expect(updateCron).toHaveBeenCalledWith("j1", { name: "Evening hello" }));
@@ -410,7 +411,7 @@ describe("CronPanel edit", () => {
     );
     render(<CronPanel />);
     await screen.findByText("past");
-    fireEvent.click(button("Edit job past"));
+    fireEvent.click(button("Edit past"));
     expect(await screen.findByText(/time has passed\. Give it a new time/)).toBeTruthy();
     expect(button("Save").disabled).toBe(false); // a rename is still allowed
     const when = screen.getByLabelText("Run once at") as HTMLInputElement;
@@ -431,7 +432,7 @@ describe("CronPanel copy, empty state and feedback", () => {
     );
     render(<CronPanel />);
     await screen.findByText("sh");
-    fireEvent.click(button("Delete job sh"));
+    fireEvent.click(button("Delete sh"));
     expect(await screen.findByText(/and its command will be removed/)).toBeTruthy();
   });
 
@@ -447,10 +448,10 @@ describe("CronPanel copy, empty state and feedback", () => {
   it("toasts a pause and maps an outage on the toggle", async () => {
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    fireEvent.click(button("Disable job"));
+    fireEvent.click(button("Pause Morning hello"));
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Paused Morning hello"));
     updateCron.mockImplementation(() => Promise.reject(new ApiError("upstream", 502, null)));
-    fireEvent.click(button("Disable job"));
+    fireEvent.click(button("Pause Morning hello"));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     expect(String(toastError.mock.calls[0][0])).toMatch(/gateway is unreachable/);
   });
@@ -461,8 +462,92 @@ describe("CronPanel copy, empty state and feedback", () => {
     );
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    fireEvent.click(button("Run job now"));
+    fireEvent.click(button("Run Morning hello now"));
     await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
     expect(toastSuccess).toHaveBeenCalledWith("Ran Morning hello", { id: "t1", description: "You said: hi" });
+  });
+});
+
+describe("CronPanel keyboard, contrast, names and sizes", () => {
+  it("opens Run history on the first row and counts every row as focusable", async () => {
+    const runs: CronRun[] = [
+      { id: 1, job_id: "j1", started_at: iso(-60_000), finished_at: iso(-59_000), status: "ok", output: "a", duration_ms: 1 },
+      { id: 2, job_id: "j1", started_at: iso(-50_000), finished_at: iso(-49_000), status: "ok", output: "b", duration_ms: 1 },
+    ];
+    cronRuns.mockImplementation(() => Promise.resolve({ runs, count: 2 }));
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    fireEvent.click(button(/^Run history/));
+    const dialog = await screen.findByRole("dialog");
+    const summaries = Array.from(dialog.querySelectorAll("summary"));
+    expect(summaries).toHaveLength(2);
+    await waitFor(() => expect(document.activeElement).toBe(summaries[0]));
+    const focusable = Array.from(dialog.querySelectorAll(FOCUSABLE));
+    expect(focusable).toContain(summaries[0]);
+    expect(focusable).toContain(summaries[1]);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("opens Edit on the name field", async () => {
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    fireEvent.click(button("Edit Morning hello"));
+    const name = within(await screen.findByRole("dialog")).getByLabelText("Name");
+    await waitFor(() => expect(document.activeElement).toBe(name));
+  });
+
+  it("dims a paused job through its words, not its opacity", async () => {
+    cron.mockImplementation(() => Promise.resolve(list([job({ enabled: false })])));
+    render(<CronPanel />);
+    const title = await screen.findByText("Morning hello");
+    expect(title.className).toMatch(/text-muted-foreground/);
+    const row = title.closest("div.flex.flex-wrap") as HTMLElement;
+    expect(row.className).not.toMatch(/opacity/);
+    expect(screen.getByText("paused")).toBeTruthy();
+  });
+
+  it("names every field and every action", async () => {
+    cron.mockImplementation(() =>
+      Promise.resolve(list([job(), job({ id: "j2", name: "Nightly" })])),
+    );
+    render(<CronPanel />);
+    await screen.findByText("Nightly");
+    expect(screen.getByLabelText("Prompt")).toBeTruthy();
+    expect(screen.getByLabelText("Name")).toBeTruthy();
+    expect(screen.getByLabelText("Model override")).toBeTruthy();
+    const runs = screen.getAllByRole("button", { name: /^Run .* now$/ }).map((b) => b.getAttribute("aria-label"));
+    expect(runs).toEqual(["Run Morning hello now", "Run Nightly now"]);
+    expect(screen.getByRole("button", { name: "Pause Nightly" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete Nightly" })).toBeTruthy();
+  });
+
+  it("gives the presets, the selects and the row actions the shared focus ring and touch size", async () => {
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    const preset = screen.getByRole("button", { name: "Every hour" });
+    expect(preset.className).toMatch(/focus-visible:outline-2/);
+    expect(preset.className).toMatch(/pointer-coarse:min-h-10/);
+    const kind = screen.getByLabelText("Job kind");
+    expect(kind.className).toMatch(/focus-visible:outline-2/);
+    expect(kind.className).toMatch(/pointer-coarse:min-h-10/);
+    expect(screen.getByLabelText("Prompt").className).toMatch(/focus-visible:outline-2/);
+    const pause = button("Pause Morning hello");
+    expect(pause.className).toMatch(/pointer-coarse:min-h-10/);
+    expect(pause.className).toMatch(/pointer-coarse:min-w-10/);
+    fireEvent.click(button("Edit Morning hello"));
+    const close = await screen.findByRole("button", { name: "Close" });
+    expect(close.className).toMatch(/focus-visible:outline-2/);
+  });
+
+  it("puts Create after the last field, beside the preview", async () => {
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    const create = button("Create");
+    const preview = screen.getByText(/Runs at 09:00, every day/);
+    expect(create.parentElement).toBe(preview.parentElement);
+    const model = screen.getByLabelText("Model override");
+    // eslint-disable-next-line no-bitwise
+    expect(model.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

@@ -15,7 +15,7 @@ export const DOW = [
 ];
 
 /** Best-effort plain-English summary of a 5-field cron expr. Returns null for
- *  anything it can't describe confidently — the caller shows "custom schedule". */
+ *  anything it can't describe confidently: the caller shows "custom schedule". */
 export function describeCron(expr: string): string | null {
   const f = expr.trim().split(/\s+/);
   if (f.length !== 5) return null;
