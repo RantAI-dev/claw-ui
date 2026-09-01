@@ -4,6 +4,12 @@ import * as React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** Everything first-focus and the Tab trap count as focusable inside a dialog.
+ *  `summary` is natively focusable but was missing, so a dialog whose rows
+ *  are disclosures trapped Tab on its own X. */
+export const FOCUSABLE =
+  'button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])';
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -52,9 +58,7 @@ export function Modal({
       // DOM, hence the data attribute.
       const focusable =
         panel.querySelector<HTMLElement>("[data-autofocus]") ??
-        panel.querySelector<HTMLElement>(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
+        panel.querySelector<HTMLElement>(FOCUSABLE);
       (focusable ?? panel).focus();
     };
     focusFirst();
@@ -68,11 +72,9 @@ export function Modal({
       if (e.key === "Tab") {
         const panel = panelRef.current;
         if (!panel) return;
-        const items = Array.from(
-          panel.querySelectorAll<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-          ),
-        ).filter((el) => !el.hasAttribute("disabled") && el.offsetParent !== null);
+        const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+          (el) => !el.hasAttribute("disabled") && el.offsetParent !== null,
+        );
         if (items.length === 0) {
           e.preventDefault();
           panel.focus();
@@ -100,7 +102,10 @@ export function Modal({
       // Return focus to the trigger only if it's still in the document.
       if (restoreTo && document.contains(restoreTo)) restoreTo.focus();
     };
-  }, [open, onClose, closable]);
+    // `mounted`: the first render is a portal-less null, so an effect keyed on
+    // `open` alone ran before the panel existed and never focused anything
+    // when a dialog mounts already open (Edit, Run history).
+  }, [open, onClose, closable, mounted]);
 
   if (!mounted || !open) return null;
 
@@ -128,7 +133,7 @@ export function Modal({
           <button
             onClick={onClose}
             aria-label="Close"
-            className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer"
+            className="absolute right-3 top-3 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           >
             <X className="size-4" />
           </button>

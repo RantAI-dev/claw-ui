@@ -126,6 +126,9 @@ describe("ChannelsPanel actions", () => {
   async function saveWith(users: string) {
     render(<ChannelsPanel />);
     const box = (await screen.findByLabelText(/Allowed user ids/)) as HTMLInputElement;
+    // The box is seeded from the config read after it renders; typing before
+    // the seed lands is overwritten by it, and Save stays disabled (not dirty).
+    await waitFor(() => expect(box.value).toBe("alice"));
     fireEvent.change(box, { target: { value: users } });
     fireEvent.click(screen.getByRole("button", { name: "Save allowlist" }));
     await waitFor(() => expect(updateTelegramAllowlist).toHaveBeenCalledTimes(1));

@@ -3,6 +3,7 @@ import type {
   ChannelsInfo,
   ClawHubSkill,
   CronJob,
+  CronList,
   CronRun,
   CronSchedule,
   DoctorResult,
@@ -227,7 +228,7 @@ export const api = {
     rc<ModelCatalog>(`providers/${encodeURIComponent(id)}/models/refresh`, {
       method: "POST",
     }),
-  cron: () => rc<{ jobs: CronJob[]; count: number }>("cron"),
+  cron: () => rc<CronList>("cron"),
   createCron: (body: {
     schedule: CronSchedule;
     job_type?: "agent" | "shell";
@@ -266,11 +267,12 @@ export const api = {
     rc<{ id: string; deleted: boolean }>(`cron/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
-  runCron: (id: string, approved = false) =>
-    rc<{ id: string; success: boolean; output: string }>(
-      `cron/${encodeURIComponent(id)}/run${approved ? "?approved=true" : ""}`,
-      { method: "POST" },
-    ),
+  // No `approved` flag: the gateway accepts `?approved=true` but the fire-time
+  // gate re-checks without it, so an "approved" run is refused all the same.
+  runCron: (id: string) =>
+    rc<{ id: string; success: boolean; output: string }>(`cron/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+    }),
   cronRuns: (id: string, limit = 50) =>
     rc<{ runs: CronRun[]; count: number }>(
       `cron/${encodeURIComponent(id)}/runs?limit=${limit}`,

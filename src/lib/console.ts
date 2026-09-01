@@ -142,7 +142,8 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   cron: {
     title: "Schedules",
     eyebrow: "Automation",
-    blurb: "Recurring agent jobs on cron expressions: create, pause, run now, or delete.",
+    blurb:
+      "Jobs the agent or the shell runs on a schedule: a cron expression, an interval or a one-off time. Create, edit, pause, run now, read the run history.",
   },
   skills: {
     title: "Skills",
