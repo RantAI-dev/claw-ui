@@ -226,7 +226,7 @@ describe("KbPanel detail", () => {
     expect(within(dialog).queryByText(/library/)).toBeNull();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete document from library" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete document" })[0]);
     const d2 = await screen.findByRole("dialog");
     expect(
       within(d2).getByText("Delete “notes”? It leaves every knowledge base and stops being used for retrieval."),
@@ -272,5 +272,121 @@ describe("KbPanel detail", () => {
     fireEvent.change(input, { target: { files: [new File(["x"], "fresh.md")] } });
     await screen.findByText("ready · 1,405 characters extracted");
     expect(toastWarning).not.toHaveBeenCalled();
+  });
+});
+
+describe("KbPanel keyboard, touch and semantics", () => {
+  it("the name is the card's button and the card itself has no role", async () => {
+    const { container } = render(<KbPanel />);
+    await screen.findByRole("button", { name: "Product Docs" });
+    expect(container.querySelector("[role=button][aria-label^='Open knowledge base']")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Product Docs" }));
+    await screen.findByRole("heading", { level: 3, name: "Product Docs" });
+  });
+
+  it("Enter on a card's Edit opens the editor, not the base", async () => {
+    render(<KbPanel />);
+    const edit = await screen.findByRole("button", { name: "Edit knowledge base Legal" });
+    fireEvent.keyDown(edit, { key: "Enter" });
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(edit);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Edit knowledge base" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 3 })).toBeNull();
+  });
+
+  it("the dropzone's two controls each open their own chooser and nothing else", async () => {
+    render(<KbPanel />);
+    await openProductDocs();
+    await screen.findByText("notes");
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
+    const images = screen.getByRole("button", { name: /Upload images instead/ });
+    fireEvent.keyDown(images, { key: "Enter" });
+    fireEvent.keyDown(images, { key: " " });
+    expect(clickSpy).not.toHaveBeenCalled();
+    fireEvent.click(images);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect((clickSpy.mock.instances[0] as HTMLInputElement).accept.startsWith(".png")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /choose documents/ }));
+    expect(clickSpy).toHaveBeenCalledTimes(2);
+    expect((clickSpy.mock.instances[1] as HTMLInputElement).accept.startsWith(".pdf")).toBe(true);
+    clickSpy.mockRestore();
+  });
+
+  it("the modal opens on Name, labels its fields and offers the colours as a radiogroup", async () => {
+    render(<KbPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "New knowledge base" }));
+    const dialog = await screen.findByRole("dialog");
+    const name = within(dialog).getByLabelText("Name");
+    await waitFor(() => expect(document.activeElement).toBe(name));
+    expect(within(dialog).getByLabelText("Description")).toBeTruthy();
+    const group = within(dialog).getByRole("radiogroup", { name: "Color" });
+    const radios = within(group).getAllByRole("radio");
+    expect(radios).toHaveLength(8);
+    const checked = radios.find((r) => r.getAttribute("aria-checked") === "true")!;
+    expect(checked).toBeTruthy();
+    const i = radios.indexOf(checked);
+    fireEvent.keyDown(checked, { key: "ArrowRight" });
+    const next = radios[(i + 1) % radios.length];
+    expect(next.getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(next);
+    expect(checked.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("a stored colour outside the presets is kept as 'Current colour'", async () => {
+    kbGroups.mockResolvedValue([group({ id: "g-x", name: "Odd", color: "#123456" })]);
+    render(<KbPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit knowledge base Odd" }));
+    const dialog = await screen.findByRole("dialog");
+    const current = within(dialog).getByRole("radio", { name: "Current colour" });
+    expect(current.getAttribute("aria-checked")).toBe("true");
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(9);
+  });
+
+  it("actions exist on touch, are 40px on coarse pointers, and clipped text carries a title", async () => {
+    const { container } = render(<KbPanel />);
+    await screen.findByRole("button", { name: "Product Docs" });
+    const desc = screen.getByText("Specs, RFCs and runbooks for the Orion Platform.");
+    expect(desc.getAttribute("title")).toBe("Specs, RFCs and runbooks for the Orion Platform.");
+    const edit = screen.getByRole("button", { name: "Edit knowledge base Product Docs" });
+    expect(edit.className).toContain("pointer-coarse:min-h-10");
+    expect(edit.parentElement!.className).toContain("[@media(hover:none)]:opacity-100");
+    await openProductDocs();
+    await screen.findByText("notes");
+    const view = screen.getAllByRole("button", { name: "View document" })[0];
+    expect(view.className).toContain("pointer-coarse:min-h-10");
+    expect(view.parentElement!.className).toContain("[@media(hover:none)]:opacity-100");
+    expect(screen.getByText("notes").getAttribute("title")).toBe("notes");
+    expect(container.querySelector("h3")!.getAttribute("title")).toBe("Product Docs");
+  });
+
+  it("puts focus on New knowledge base after a delete removes the trigger", async () => {
+    kbDeleteGroup.mockResolvedValue({ id: "g-legal", deleted: true });
+    kbGroups.mockResolvedValueOnce(GROUPS).mockResolvedValue(GROUPS.slice(1));
+    render(<KbPanel />);
+    const del = await screen.findByRole("button", { name: "Delete knowledge base Legal" });
+    fireEvent.click(del);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Delete$/ }));
+    await waitFor(() => expect(kbDeleteGroup).toHaveBeenCalledWith("g-legal"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Delete knowledge base Legal" })).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "New knowledge base" })),
+    );
+  });
+
+  it("puts focus on New knowledge base after deleting the base from its detail", async () => {
+    kbDeleteGroup.mockResolvedValue({ id: "g-product", deleted: true });
+    kbGroups.mockResolvedValueOnce(GROUPS).mockResolvedValue(GROUPS.slice(0, 2));
+    render(<KbPanel />);
+    await openProductDocs();
+    fireEvent.click(screen.getByRole("button", { name: "Delete knowledge base" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Delete$/ }));
+    await waitFor(() => expect(screen.queryByRole("heading", { level: 3 })).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "New knowledge base" })),
+    );
   });
 });

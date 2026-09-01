@@ -45,11 +45,16 @@ export function DocViewerDrawer({
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="border-b border-border/60 px-4 pt-3">
+            {/* First focus lands on the active tab (the Drawer honours
+                data-autofocus), not on the sheet's X. */}
             <TabsList>
-              <TabsTrigger value="preview">
+              <TabsTrigger value="preview" data-autofocus={initialTab === "preview" || undefined}>
                 <FileText className="size-3.5" /> Preview
               </TabsTrigger>
-              <TabsTrigger value="intelligence">
+              <TabsTrigger
+                value="intelligence"
+                data-autofocus={initialTab === "intelligence" || undefined}
+              >
                 <Sparkles className="size-3.5" /> Intelligence
               </TabsTrigger>
             </TabsList>

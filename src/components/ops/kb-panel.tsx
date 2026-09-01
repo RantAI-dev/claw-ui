@@ -34,6 +34,7 @@ import {
 } from "@/lib/attachments";
 import type { KbDocument, KbGroup } from "@/lib/types";
 import {
+  SUPPORTED_UPLOADS,
   countLine,
   deleteDocCopy,
   deleteGroupCopy,
@@ -51,7 +52,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
-import { EmptyState, PanelFrame, RefreshButton } from "./shared";
+import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { GraphLens } from "./graph-lens";
 import { KnowledgeSettingsCard, type KnowledgeStatusState } from "./knowledge-settings-card";
@@ -69,6 +70,8 @@ const PRESET_COLORS = [
 ];
 
 const DEFAULT_KB_COLOR = "var(--brand-sky)";
+/** Names for the swatches, by index; a hex is not a name a screen reader can say. */
+const PRESET_NAMES = ["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Violet", "Pink"];
 
 type SortOption = "newest" | "oldest" | "name" | "retrieved";
 type ViewMode = "grid" | "list";
@@ -110,6 +113,9 @@ function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
   const groups = useAsync(() => api.kbGroups(), []);
   const [selected, setSelected] = React.useState<KbGroup | null>(null);
   const [view, setView] = React.useState<LibraryView>("documents");
+  // Set when a delete removes the element that had focus (a card's Delete, or
+  // the detail's), so the list can put focus on something that still exists.
+  const focusListRef = React.useRef(false);
 
   // Keep the selected group's metadata fresh after the list refreshes.
   React.useEffect(() => {
@@ -154,9 +160,14 @@ function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
             group={selected}
             onBack={() => setSelected(null)}
             onChanged={() => groups.refresh()}
+            onDeleted={async () => {
+              await groups.refresh();
+              focusListRef.current = true;
+              setSelected(null);
+            }}
           />
         ) : (
-          <KbList groups={groups} onOpen={setSelected} />
+          <KbList groups={groups} onOpen={setSelected} focusOnMount={focusListRef} />
         )
       ) : (
         <GraphLens scope={selected ? { kind: "group", groupId: selected.id } : { kind: "all" }} />
@@ -170,14 +181,34 @@ function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
 function KbList({
   groups,
   onOpen,
+  focusOnMount,
 }: {
   groups: ReturnType<typeof useAsync<KbGroup[]>>;
   onOpen: (g: KbGroup) => void;
+  focusOnMount?: React.MutableRefObject<boolean>;
 }) {
+  const newButtonRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (focusOnMount?.current) {
+      focusOnMount.current = false;
+      newButtonRef.current?.focus();
+    }
+  }, [focusOnMount]);
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<KbGroup | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<KbGroup | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  // After a delete the confirm's opener is gone with the card. The Modal hands
+  // focus back in its own effect cleanup; this effect runs after it in the same
+  // flush (React cleans up children before it creates parent effects), so the
+  // one control still here ends up focused.
+  const focusNewAfterClose = React.useRef(false);
+  React.useEffect(() => {
+    if (focusNewAfterClose.current && !deleteTarget) {
+      focusNewAfterClose.current = false;
+      newButtonRef.current?.focus();
+    }
+  }, [deleteTarget]);
 
   const list = groups.data ?? [];
   const totalDocs = list.reduce((sum, g) => sum + (g.document_count ?? 0), 0);
@@ -198,8 +229,11 @@ function KbList({
     try {
       await api.kbDeleteGroup(deleteTarget.id);
       toast.success(`Deleted “${name}”`);
+      // Refresh before closing the confirm: its opener (the card's Delete) is
+      // gone by the time the Modal tries to hand focus back.
+      await groups.refresh();
+      focusNewAfterClose.current = true;
       setDeleteTarget(null);
-      groups.refresh();
     } catch (e) {
       toast.error(`Delete failed: ${errMsg(e)}`);
     } finally {
@@ -216,7 +250,7 @@ function KbList({
         <span className="eyebrow">{groups.loaded ? countLine(list.length, totalDocs) : ""}</span>
         <div className="flex items-center gap-2">
           <RefreshButton onClick={groups.refresh} spinning={groups.refreshing} />
-          <Button size="sm" onClick={openCreate}>
+          <Button ref={newButtonRef} size="sm" onClick={openCreate}>
             <Plus className="size-4" /> New knowledge base
           </Button>
         </div>
@@ -289,46 +323,12 @@ function KbCard({
   onDelete: () => void;
 }) {
   const docCount = group.document_count ?? 0;
+  // A card that is itself a button cannot hold buttons: Enter on its Edit used
+  // to open the base and cancel the editor. The name is the button, stretched
+  // over the card by its ::after; the actions are siblings layered above it,
+  // and they exist on every pointer (a phone has no hover).
   return (
-    <div
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={`Open knowledge base ${group.name}`}
-      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {/* Hover / focus actions */}
-      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          title="Edit"
-          aria-label={`Edit knowledge base ${group.name}`}
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Pencil className="size-3.5" />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          title="Delete"
-          aria-label={`Delete knowledge base ${group.name}`}
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Trash2 className="size-3.5" />
-        </button>
-      </div>
-
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-within:border-accent/40">
       <div className="flex items-start gap-3">
         <div
           className="flex size-11 shrink-0 items-center justify-center rounded-lg shadow-sm"
@@ -338,20 +338,51 @@ function KbCard({
           <FolderOpen className="size-5 text-white" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 pr-12">
-            <span className="truncate text-sm font-semibold">{group.name}</span>
+          <div className="flex items-center gap-2 pr-16">
+            <button
+              type="button"
+              onClick={onOpen}
+              title={group.name}
+              className="min-w-0 cursor-pointer truncate text-left text-sm font-semibold after:absolute after:inset-0 after:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {group.name}
+            </button>
             <Badge variant="secondary" className="shrink-0 text-[10px]">
               {docCount} doc{docCount === 1 ? "" : "s"}
             </Badge>
           </div>
           {group.description ? (
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+            <p
+              title={group.description}
+              className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground"
+            >
               {group.description}
             </p>
           ) : (
             <p className="mt-1 text-xs italic text-muted-foreground/60">No description</p>
           )}
         </div>
+      </div>
+
+      {/* After the content in the DOM so Tab reads name, then actions; the
+          absolute position keeps them at the top-right. */}
+      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+        <IconButton
+          onClick={onEdit}
+          title="Edit"
+          aria-label={`Edit knowledge base ${group.name}`}
+          className="bg-background/80 shadow-sm backdrop-blur-sm"
+        >
+          <Pencil className="size-3.5" />
+        </IconButton>
+        <IconButton
+          onClick={onDelete}
+          title="Delete"
+          aria-label={`Delete knowledge base ${group.name}`}
+          className="bg-background/80 shadow-sm backdrop-blur-sm hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
+        </IconButton>
       </div>
     </div>
   );
@@ -372,6 +403,32 @@ function KbEditorModal({
   const [description, setDescription] = React.useState("");
   const [color, setColor] = React.useState(PRESET_COLORS[5]);
   const [saving, setSaving] = React.useState(false);
+  const nameId = React.useId();
+  const descId = React.useId();
+  const colorId = React.useId();
+
+  // The swatches, plus the stored colour first when it is not one of them, so
+  // editing never silently recolours a base.
+  const swatches = React.useMemo(() => {
+    const list = PRESET_COLORS.map((hex, i) => ({ hex, name: PRESET_NAMES[i] ?? hex }));
+    if (group?.color && !PRESET_COLORS.includes(group.color)) {
+      list.unshift({ hex: group.color, name: "Current colour" });
+    }
+    return list;
+  }, [group?.color]);
+  const swatchRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
+  const checkedIndex = swatches.findIndex((c) => c.hex === color);
+  const onSwatchKey = (e: React.KeyboardEvent<HTMLButtonElement>, i: number) => {
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % swatches.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i - 1 + swatches.length) % swatches.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = swatches.length - 1;
+    if (next === null) return;
+    e.preventDefault();
+    setColor(swatches[next].hex);
+    swatchRefs.current[next]?.focus();
+  };
 
   // Sync form when the modal opens for a (new or existing) KB.
   React.useEffect(() => {
@@ -383,6 +440,13 @@ function KbEditorModal({
         PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)],
     );
   }, [open, group]);
+
+  // A stable close handler: the Modal re-runs its first-focus effect whenever
+  // `onClose` changes identity, and an inline arrow changed on every keystroke,
+  // which yanked focus back to the Name field while typing in Description.
+  const handleClose = React.useCallback(() => {
+    if (!saving) onClose();
+  }, [saving, onClose]);
 
   const save = async () => {
     const trimmed = name.trim();
@@ -415,7 +479,7 @@ function KbEditorModal({
   return (
     <Modal
       open={open}
-      onClose={() => !saving && onClose()}
+      onClose={handleClose}
       title={group ? "Edit knowledge base" : "New knowledge base"}
       description={
         group
@@ -440,11 +504,12 @@ function KbEditorModal({
     >
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <label htmlFor={nameId} className="eyebrow">
             Name
           </label>
           <Input
-            autoFocus
+            id={nameId}
+            data-autofocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Product Docs"
@@ -454,10 +519,11 @@ function KbEditorModal({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <label htmlFor={descId} className="eyebrow">
             Description
           </label>
           <Textarea
+            id={descId}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="What lives in this knowledge base? (optional)"
@@ -465,25 +531,34 @@ function KbEditorModal({
           />
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div id={colorId} className="eyebrow">
             Color
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {PRESET_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                aria-label={`Color ${c}`}
-                className={cn(
-                  "size-7 rounded-full transition-transform hover:scale-110 cursor-pointer",
-                  color === c
-                    ? "ring-2 ring-ring ring-offset-2 ring-offset-card"
-                    : "",
-                )}
-                style={{ backgroundColor: c }}
-              />
-            ))}
+          </div>
+          <div role="radiogroup" aria-labelledby={colorId} className="flex flex-wrap gap-2">
+            {swatches.map((c, i) => {
+              const checked = color === c.hex;
+              return (
+                <button
+                  key={c.hex}
+                  ref={(el) => {
+                    swatchRefs.current[i] = el;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={checked}
+                  aria-label={c.name}
+                  title={c.name}
+                  tabIndex={checked || (checkedIndex < 0 && i === 0) ? 0 : -1}
+                  onClick={() => setColor(c.hex)}
+                  onKeyDown={(e) => onSwatchKey(e, i)}
+                  className={cn(
+                    "size-7 cursor-pointer rounded-full pointer-coarse:size-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                    checked && "ring-2 ring-ring ring-offset-2 ring-offset-card",
+                  )}
+                  style={{ backgroundColor: c.hex }}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
@@ -508,10 +583,13 @@ function KbDetail({
   group,
   onBack,
   onChanged,
+  onDeleted,
 }: {
   group: KbGroup;
   onBack: () => void;
   onChanged: () => void;
+  /** The base was deleted: the host refreshes, leaves the detail and moves focus. */
+  onDeleted: () => void | Promise<void>;
 }) {
   const docs = useAsync(() => api.kbGroupDocuments(group.id), [group.id]);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -688,8 +766,7 @@ function KbDetail({
     try {
       await api.kbDeleteGroup(group.id);
       toast.success(`Deleted “${group.name}”`);
-      onChanged();
-      onBack();
+      await onDeleted();
     } catch (e) {
       toast.error(`Delete failed: ${errMsg(e)}`);
     } finally {
@@ -723,7 +800,9 @@ function KbDetail({
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-lg font-semibold tracking-tight">{group.name}</h3>
+              <h3 title={group.name} className="truncate text-lg font-semibold tracking-tight">
+                {group.name}
+              </h3>
               <Badge variant="secondary" className="text-[10px]">
                 {docCount} doc{docCount === 1 ? "" : "s"}
               </Badge>
@@ -776,17 +855,10 @@ function KbDetail({
           e.target.value = "";
         }}
       />
+      {/* Drop target. The outer div only catches drag and drop; the control is a
+          real button, so Enter and Space do exactly one thing and no wrapper key
+          handler can swallow the sibling "Upload images" button's activation. */}
       <div
-        onClick={() => fileRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            fileRef.current?.click();
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-label="Upload files to this knowledge base"
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);
@@ -798,40 +870,35 @@ function KbDetail({
           void upload(e.dataTransfer.files);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          dragOver
-            ? "border-accent bg-accent/5"
-            : "border-border bg-muted/30 hover:border-accent/50 hover:bg-muted/50",
+          "rounded-xl border-2 border-dashed px-4 py-4 text-center transition-colors sm:py-5",
+          dragOver ? "border-accent bg-accent/5" : "border-border bg-muted/30",
         )}
       >
-        <UploadCloud
-          className={cn(
-            "size-7",
-            dragOver ? "text-accent" : "text-muted-foreground",
-          )}
-        />
-        <div className="text-sm font-medium">
-          Drop files or <span className="text-accent">click to upload</span>
-        </div>
-        <div className="text-[11px] text-muted-foreground">
-          Documents &amp; images · ingested into this knowledge base · max 20 MB
-        </div>
-        <div className="mt-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-          >
-            <Upload className="size-3.5" /> Upload documents
-          </Button>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
+        >
+          <UploadCloud
+            className={cn("size-7 max-sm:hidden", dragOver ? "text-accent" : "text-muted-foreground")}
+            aria-hidden
+          />
+          <span className="text-sm font-medium">
+            Drop files here or <span className="text-accent">choose documents</span>
+          </span>
+          <span className="text-[11px] text-muted-foreground max-sm:hidden">
+            {SUPPORTED_UPLOADS} · max 20 MB · added to “{group.name}”
+          </span>
+        </button>
+        <div className="mt-2 flex justify-center">
           <Button
             size="sm"
             variant="outline"
             onClick={() => imageRef.current?.click()}
             disabled={uploading}
           >
-            <Upload className="size-3.5" /> Upload images
+            <Upload className="size-3.5" /> Upload images instead
           </Button>
         </div>
       </div>
@@ -1068,38 +1135,42 @@ function DocActions({
   onDelete: () => void;
   buttonClassName?: string;
 }) {
-  const btn = (hover: string) =>
-    cn(
-      "cursor-pointer rounded-md p-1.5 text-muted-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      buttonClassName,
-      hover,
-    );
   return (
     <>
-      <button onClick={onView} title="View document" aria-label="View document" className={btn("hover:bg-accent/10 hover:text-accent")}>
+      <IconButton
+        onClick={onView}
+        title="View document"
+        aria-label="View document"
+        className={cn(buttonClassName, "hover:bg-accent/10 hover:text-accent")}
+      >
         <Eye className="size-3.5" />
-      </button>
-      <button onClick={onIntel} title="Document intelligence" aria-label="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
+      </IconButton>
+      <IconButton
+        onClick={onIntel}
+        title="Document intelligence"
+        aria-label="Document intelligence"
+        className={cn(buttonClassName, "hover:bg-accent/10 hover:text-accent")}
+      >
         <Sparkles className="size-3.5" />
-      </button>
-      <button
+      </IconButton>
+      <IconButton
         onClick={onUnlink}
         disabled={busy}
         title="Remove from this knowledge base"
         aria-label="Remove from this knowledge base"
-        className={btn("hover:bg-secondary hover:text-foreground disabled:opacity-50")}
+        className={buttonClassName}
       >
         <FolderMinus className="size-3.5" />
-      </button>
-      <button
+      </IconButton>
+      <IconButton
         onClick={onDelete}
         disabled={busy}
-        title="Delete document from library"
-        aria-label="Delete document from library"
-        className={btn("hover:bg-destructive/10 hover:text-destructive disabled:opacity-50")}
+        title="Delete document"
+        aria-label="Delete document"
+        className={cn(buttonClassName, "hover:bg-destructive/10 hover:text-destructive")}
       >
         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-      </button>
+      </IconButton>
     </>
   );
 }
@@ -1127,7 +1198,7 @@ function DocCard({
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
-      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
         <DocActions
           busy={busy}
           onView={onView}
@@ -1142,7 +1213,10 @@ function DocCard({
         <div className={cn("rounded-xl p-3", bgColor)} aria-hidden>
           <Icon className={cn("size-8", iconColor)} />
         </div>
-        <p className="line-clamp-2 px-1 text-center text-sm font-medium leading-snug">
+        <p
+          title={doc.title || doc.id.slice(0, 8)}
+          className="line-clamp-2 px-1 text-center text-sm font-medium leading-snug"
+        >
           {doc.title || doc.id.slice(0, 8)}
         </p>
       </div>
@@ -1197,7 +1271,9 @@ function DocRow({
         <Icon className={cn("size-4", iconColor)} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{doc.title || doc.id.slice(0, 8)}</div>
+        <div title={doc.title || doc.id.slice(0, 8)} className="truncate text-sm font-medium">
+          {doc.title || doc.id.slice(0, 8)}
+        </div>
         {meta && (
           <div className="truncate font-mono text-[10px] text-muted-foreground">{meta}</div>
         )}
@@ -1213,7 +1289,7 @@ function DocRow({
         onIntel={onIntel}
         onUnlink={onUnlink}
         onDelete={onDelete}
-        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
       />
     </div>
   );

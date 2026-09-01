@@ -14,6 +14,7 @@ import { deriveGraphState, fromIntelligence, isSmallModel } from "./graph-lens-h
 
 const GRAPH_LIMIT = 200;
 const GRAPH_HEIGHT = 480;
+const ENTITY_LIST_LIMIT = 12;
 
 /** A knowledge graph can be scoped to one document, one knowledge base (group), or the whole corpus. */
 export type GraphScope =
@@ -82,6 +83,16 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [nodes]);
 
+  // The same facts as the canvas, reachable without a pointer: the busiest
+  // entities first, capped so the list stays a list.
+  const topNodes = React.useMemo(
+    () =>
+      [...nodes]
+        .sort((a, b) => b.degree - a.degree || a.name.localeCompare(b.name))
+        .slice(0, ENTITY_LIST_LIMIT),
+    [nodes],
+  );
+
   const selectedRelations = React.useMemo(() => {
     if (!selectedNode) return [] as KbGraphEdge[];
     return edges.filter((e) => e.source === selectedNode.id || e.target === selectedNode.id);
@@ -134,7 +145,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
       {/* Stats — only once the graph is actually populated, so they don't read
           "0 / 0 / 0" over the loading, error, disabled, or empty states. */}
       {graphState === "ready" && !error && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <StatTile
             label="entities"
             value={formatNumber(totalEntities)}
@@ -232,9 +243,45 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
                   ))}
                 </div>
               )}
+              <div className="rounded-lg border border-border bg-card/60 px-3 py-2">
+                <div className="eyebrow">Entities by links</div>
+                <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Entities by links">
+                  {topNodes.map((n) => {
+                    const on = selectedNode?.id === n.id;
+                    return (
+                      <li key={n.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedNode(n)}
+                          aria-pressed={on}
+                          className={cn(
+                            "inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10",
+                            on ? "border-accent/60 bg-accent/10" : "border-border hover:bg-secondary",
+                          )}
+                        >
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ background: entityVar(n.entity_type) }}
+                            aria-hidden
+                          />
+                          <span className="font-medium">{n.name}</span>
+                          <span className="text-muted-foreground">
+                            · {n.entity_type} · {formatNumber(n.degree)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {nodes.length > topNodes.length && (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    and {formatNumber(nodes.length - topNodes.length)} more in the graph
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Entity detail — grid stretch keeps this column at the graph row's height. */}
+            {/* Entity detail: grid stretch keeps this column at the graph row's height. */}
             <div>
               {selectedNode ? (
                 <EntityDetail
@@ -247,7 +294,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
                 <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-4 text-center">
                   <Network className="size-6 text-muted-foreground" />
                   <p className="text-xs text-muted-foreground">
-                    Click a node to inspect an entity and its relationships.
+                    Select an entity in the graph or in the list to see its relationships.
                   </p>
                 </div>
               )}
