@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Search, Trash2, X } from "lucide-react";
-import { api } from "@/lib/api";
+import { ChevronLeft, ChevronRight, Copy, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import { ApiError, api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { relativeTime } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -12,8 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
+import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
 import { MEMORY_CATEGORIES } from "@/lib/types";
+import {
+  NAME_SEPARATOR_MESSAGE,
+  forgetFromTerminal,
+  hasSeparator,
+  rememberToast,
+} from "@/lib/memory";
 import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
 /** Rows per page. The route caps a page at 500; 50 keeps one screen scannable. */
@@ -21,6 +28,8 @@ const PAGE_SIZE = 50;
 
 /** Content longer than this gets a "Show more" toggle instead of a silent clamp. */
 const CLAMP_CHARS = 180;
+
+type RememberBody = { content: string; category: string; key?: string };
 
 /** Keys the server generates when the caller supplied none. */
 function isGeneratedKey(key: string): boolean {
@@ -49,9 +58,18 @@ export function MemoryPanel() {
   const [busy, setBusy] = React.useState(false);
   const [working, setWorking] = React.useState<string | null>(null);
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
-  const [pendingForget, setPendingForget] = React.useState<{ key: string; content: string } | null>(
-    null,
-  );
+  const [pendingForget, setPendingForget] = React.useState<{
+    key: string;
+    content: string;
+    /** A key with a separator: the proxy refuses the delete, so explain instead. */
+    blocked: boolean;
+  } | null>(null);
+  const [pendingReplace, setPendingReplace] = React.useState<{
+    key: string;
+    oldContent: string;
+    body: RememberBody;
+  } | null>(null);
+  const nameErrId = React.useId();
 
   // Typing shouldn't fire a request per keystroke.
   React.useEffect(() => {
@@ -74,53 +92,78 @@ export function MemoryPanel() {
   const last = offset + (data?.count ?? 0);
   const narrowed = !!query.trim() || !!filter;
 
-  const remember = async () => {
-    if (!content.trim()) return;
+  const nameError = hasSeparator(name) ? NAME_SEPARATOR_MESSAGE : null;
+
+  const store = async (body: RememberBody, replaced: boolean) => {
     setBusy(true);
     try {
-      const stored = await api.addMemory({
-        content: content.trim(),
-        category,
-        ...(name.trim() ? { key: name.trim() } : {}),
-      });
+      const stored = await api.addMemory(body);
       toast.success(
-        stored.notes?.length
-          ? `Remembered as ${stored.key} — ${stored.notes.join("; ")}`
-          : `Remembered as ${stored.key}`,
+        rememberToast({ key: stored.key, named: !!body.key, replaced, notes: stored.notes ?? [] }),
       );
       setContent("");
       setName("");
+      setPendingReplace(null);
       refresh();
     } catch (e) {
-      toast.error(`Could not remember that: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Could not remember that: ${describeApiError(e)}`);
     } finally {
       setBusy(false);
     }
   };
 
-  const copyKey = async (key: string) => {
+  const remember = async () => {
+    if (!content.trim() || nameError) return;
+    const key = name.trim();
+    const body: RememberBody = { content: content.trim(), category, ...(key ? { key } : {}) };
+    if (!key) return store(body, false);
+    // The gateway upserts by key and keeps the old timestamp, so this is the
+    // only place a person can be warned before a named memory is overwritten.
+    setBusy(true);
     try {
-      await navigator.clipboard.writeText(key);
-      toast.success("Key copied");
+      const existing = await api.getMemory(key);
+      setPendingReplace({ key, oldContent: existing.content, body });
+      setBusy(false);
+      return;
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) {
+        toast.error(`Could not check whether “${key}” already exists: ${describeApiError(e)}`);
+        setBusy(false);
+        return;
+      }
+    }
+    await store(body, false);
+  };
+
+  const copyText = async (text: string, done: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(done);
     } catch {
-      // Clipboard is blocked outside a secure context; show the key so it can
+      // Clipboard is blocked outside a secure context; show the text so it can
       // still be selected by hand rather than failing silently.
-      toast.message(key);
+      toast.message(text);
     }
   };
+  const copyKey = (key: string) => copyText(key, "Key copied");
 
   const forget = async () => {
     const key = pendingForget?.key;
     if (!key) return;
     setWorking(key);
     try {
-      await api.deleteMemory(key);
-      toast.success("Forgotten");
-      setPendingForget(null);
+      const r = await api.deleteMemory(key);
+      // `removed: false` is a successful request about nothing: the entry was
+      // already gone. Say so instead of claiming this click forgot it.
+      if (r.removed) toast.success("Forgotten");
+      else toast.message("That memory was already gone.");
       refresh();
     } catch (e) {
-      toast.error(`Could not forget that: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Could not forget that: ${describeApiError(e)}`);
     } finally {
+      // Close on every outcome; a failure that keeps the confirm open only
+      // invites a retry that fails the same way.
+      setPendingForget(null);
       setWorking(null);
     }
   };
@@ -161,6 +204,8 @@ export function MemoryPanel() {
             onChange={(e) => setName(e.target.value)}
             placeholder="Name (optional)"
             aria-label="Name this memory (optional)"
+            aria-invalid={nameError ? true : undefined}
+            aria-describedby={nameError ? nameErrId : undefined}
             className="h-8 w-44 font-mono text-xs"
           />
           <Select
@@ -175,14 +220,19 @@ export function MemoryPanel() {
               </option>
             ))}
           </Select>
-          <Button size="sm" onClick={remember} disabled={busy || !content.trim()}>
+          <Button size="sm" onClick={remember} disabled={busy || !content.trim() || !!nameError}>
             <Plus className="size-4" /> Remember
           </Button>
         </div>
+        {nameError && (
+          <p id={nameErrId} role="alert" className="text-[11px] text-destructive">
+            {nameError}
+          </p>
+        )}
         {/* Naming is what makes an entry addressable from the CLI and the API
             afterwards; unnamed ones get a UUID that means nothing to a reader. */}
         <p className="text-[10px] text-muted-foreground">
-          Without a name the agent generates one.
+          Without a name the entry gets a generated key.
         </p>
       </Card>
 
@@ -248,7 +298,13 @@ export function MemoryPanel() {
                       {e.category}
                     </Badge>
                     <IconButton
-                      onClick={() => setPendingForget({ key: e.key, content: e.content })}
+                      onClick={() =>
+                        setPendingForget({
+                          key: e.key,
+                          content: e.content,
+                          blocked: hasSeparator(e.key),
+                        })
+                      }
                       disabled={w}
                       title={`Forget "${previewOf(e.content)}"`}
                       aria-label={`Forget "${previewOf(e.content)}"`}
@@ -318,7 +374,52 @@ export function MemoryPanel() {
       )}
 
       <ConfirmModal
-        open={!!pendingForget}
+        open={!!pendingReplace}
+        onClose={() => !busy && setPendingReplace(null)}
+        title={`Replace “${pendingReplace?.key ?? ""}”?`}
+        description={
+          pendingReplace ? (
+            <>
+              A memory with this name already exists and will be overwritten. It currently says:{" "}
+              <span className="italic">
+                “{pendingReplace.oldContent.slice(0, 140)}
+                {pendingReplace.oldContent.length > 140 ? "…" : ""}”
+              </span>
+            </>
+          ) : undefined
+        }
+        confirmLabel="Replace"
+        icon={null}
+        tone="default"
+        busy={busy}
+        onConfirm={() => pendingReplace && store(pendingReplace.body, true)}
+      />
+
+      {/* The proxy refuses a decoded separator in any path segment (a traversal
+          guard), so a key with one can only be removed from a terminal. */}
+      <Modal
+        open={!!pendingForget?.blocked}
+        onClose={() => setPendingForget(null)}
+        title="This memory can't be forgotten here"
+        description="Its name contains a slash, which this console cannot address. Remove it from a terminal:"
+        footer={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => pendingForget && copyText(forgetFromTerminal(pendingForget.key), "Command copied")}
+            data-autofocus
+          >
+            <Copy className="size-4" /> Copy command
+          </Button>
+        }
+      >
+        <code className="block select-all rounded-md bg-muted px-3 py-2 font-mono text-xs">
+          {pendingForget ? forgetFromTerminal(pendingForget.key) : ""}
+        </code>
+      </Modal>
+
+      <ConfirmModal
+        open={!!pendingForget && !pendingForget.blocked}
         onClose={() => setPendingForget(null)}
         title="Forget this memory?"
         description={

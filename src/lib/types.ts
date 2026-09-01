@@ -155,12 +155,6 @@ export interface MemoryEntry {
   score?: number | null;
 }
 
-export interface MemoryStats {
-  backend: string;
-  total_entries: number;
-  healthy: boolean;
-}
-
 export interface PersonaPreset {
   id: string;
   label: string;
