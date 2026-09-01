@@ -1,27 +1,45 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Copy, Loader2, Plus, Search, Trash2, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  Inbox,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { ApiError, api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
-import { relativeTime } from "@/lib/utils";
+import { cn, relativeTime } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
-import { MEMORY_CATEGORIES } from "@/lib/types";
+import { isGeneratedMemoryKey } from "@/lib/recalled-memories";
 import {
   NAME_SEPARATOR_MESSAGE,
+  categoryOptions,
+  emptyCopy,
   forgetFromTerminal,
   hasSeparator,
+  originWords,
   rememberToast,
 } from "@/lib/memory";
-import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import {
+  EmptyState,
+  IconButton,
+  PanelFrame,
+  RefreshButton,
+  SectionTitle,
+} from "./shared";
 
 /** Rows per page. The route caps a page at 500; 50 keeps one screen scannable. */
 const PAGE_SIZE = 50;
@@ -30,11 +48,6 @@ const PAGE_SIZE = 50;
 const CLAMP_CHARS = 180;
 
 type RememberBody = { content: string; category: string; key?: string };
-
-/** Keys the server generates when the caller supplied none. */
-function isGeneratedKey(key: string): boolean {
-  return /^memory_[0-9a-f-]{36}$/i.test(key);
-}
 
 /** Enough of a memory to tell one row from another in a label. */
 function previewOf(content: string): string {
@@ -49,6 +62,7 @@ function isClampable(content: string): boolean {
 export function MemoryPanel() {
   const [search, setSearch] = React.useState("");
   const [query, setQuery] = React.useState("");
+  const [filterText, setFilterText] = React.useState("");
   const [filter, setFilter] = React.useState("");
   const [offset, setOffset] = React.useState(0);
 
@@ -70,19 +84,24 @@ export function MemoryPanel() {
     body: RememberBody;
   } | null>(null);
   const nameErrId = React.useId();
+  const listId = React.useId();
 
   // Typing shouldn't fire a request per keystroke.
   React.useEffect(() => {
     const t = setTimeout(() => setQuery(search), 250);
     return () => clearTimeout(t);
   }, [search]);
+  React.useEffect(() => {
+    const t = setTimeout(() => setFilter(filterText.trim()), 250);
+    return () => clearTimeout(t);
+  }, [filterText]);
 
   // A narrower result set makes the current page number meaningless.
   React.useEffect(() => {
     setOffset(0);
   }, [query, filter]);
 
-  const { data, loading, error, refresh } = useAsync(
+  const { data, loading, error, refreshing, loaded, refresh } = useAsync(
     () => api.memory(PAGE_SIZE, offset, { q: query, category: filter }),
     [offset, query, filter],
   );
@@ -91,6 +110,13 @@ export function MemoryPanel() {
   const first = total === 0 ? 0 : offset + 1;
   const last = offset + (data?.count ?? 0);
   const narrowed = !!query.trim() || !!filter;
+  // The store accepts any category name, so the pickers offer the built-ins
+  // plus whatever is on screen and take a typed name as well.
+  const present = React.useMemo(
+    () => data?.entries.map((e) => e.category) ?? [],
+    [data],
+  );
+  const options = categoryOptions(present, filter || category);
 
   const nameError = hasSeparator(name) ? NAME_SEPARATOR_MESSAGE : null;
 
@@ -99,7 +125,12 @@ export function MemoryPanel() {
     try {
       const stored = await api.addMemory(body);
       toast.success(
-        rememberToast({ key: stored.key, named: !!body.key, replaced, notes: stored.notes ?? [] }),
+        rememberToast({
+          key: stored.key,
+          named: !!body.key,
+          replaced,
+          notes: stored.notes ?? [],
+        }),
       );
       setContent("");
       setName("");
@@ -115,7 +146,11 @@ export function MemoryPanel() {
   const remember = async () => {
     if (!content.trim() || nameError) return;
     const key = name.trim();
-    const body: RememberBody = { content: content.trim(), category, ...(key ? { key } : {}) };
+    const body: RememberBody = {
+      content: content.trim(),
+      category: category.trim() || "core",
+      ...(key ? { key } : {}),
+    };
     if (!key) return store(body, false);
     // The gateway upserts by key and keeps the old timestamp, so this is the
     // only place a person can be warned before a named memory is overwritten.
@@ -127,7 +162,9 @@ export function MemoryPanel() {
       return;
     } catch (e) {
       if (!(e instanceof ApiError && e.status === 404)) {
-        toast.error(`Could not check whether “${key}” already exists: ${describeApiError(e)}`);
+        toast.error(
+          `Could not check whether “${key}” already exists: ${describeApiError(e)}`,
+        );
         setBusy(false);
         return;
       }
@@ -177,9 +214,13 @@ export function MemoryPanel() {
 
   return (
     <div className="space-y-4">
-      <SectionTitle action={<RefreshButton onClick={refresh} />}>
+      <SectionTitle
+        action={<RefreshButton onClick={refresh} spinning={refreshing} />}
+      >
         Memories
-        {data && (
+        {/* No range beside an error: the strip under it explains, and a count
+            from before the failure would contradict it. */}
+        {data && !error && (
           <span className="text-muted-foreground">
             {" · "}
             {total === 0 ? "none" : `${first}–${last} of ${total}`}
@@ -208,24 +249,28 @@ export function MemoryPanel() {
             aria-describedby={nameError ? nameErrId : undefined}
             className="h-8 w-44 font-mono text-xs"
           />
-          <Select
+          <Input
+            list={listId}
             value={category}
             onChange={(e) => setCategory(e.target.value)}
             aria-label="Category"
-            className="h-8 font-mono text-xs"
+            placeholder="core"
+            className="h-8 w-36 text-xs"
+          />
+          <Button
+            size="sm"
+            onClick={remember}
+            disabled={busy || !content.trim() || !!nameError}
           >
-            {MEMORY_CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-          <Button size="sm" onClick={remember} disabled={busy || !content.trim() || !!nameError}>
             <Plus className="size-4" /> Remember
           </Button>
         </div>
         {nameError && (
-          <p id={nameErrId} role="alert" className="text-[11px] text-destructive">
+          <p
+            id={nameErrId}
+            role="alert"
+            className="text-[11px] text-destructive"
+          >
             {nameError}
           </p>
         )}
@@ -257,96 +302,146 @@ export function MemoryPanel() {
             </button>
           )}
         </div>
-        <Select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+        <Input
+          list={listId}
+          value={filterText}
+          onChange={(e) => setFilterText(e.target.value)}
           aria-label="Filter by category"
-          className="h-8 font-mono text-xs"
-        >
-          <option value="">All categories</option>
-          {MEMORY_CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
+          placeholder="All categories"
+          className="h-8 w-40 text-xs"
+        />
+        <datalist id={listId}>
+          {options.map((c) => (
+            <option key={c} value={c} />
           ))}
-        </Select>
+        </datalist>
       </div>
 
-      <PanelFrame loading={loading} error={error} empty={data?.count === 0} onRefresh={refresh}>
-        <div className="space-y-2">
-          {data?.entries.map((e) => {
-            const w = working === e.key;
-            const open = expanded.has(e.key);
-            const clampable = isClampable(e.content);
+      <PanelFrame
+        loading={loading && !loaded}
+        error={error}
+        loaded={loaded}
+        loadingLabel="Loading memories…"
+        onRefresh={refresh}
+      >
+        {!error && data && data.count === 0 ? (
+          (() => {
+            const copy = emptyCopy({ query, filter });
             return (
-              <Card key={e.key} className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <p
-                    className={`min-w-0 flex-1 whitespace-pre-wrap text-sm leading-snug ${
-                      clampable && !open ? "line-clamp-3" : ""
-                    }`}
-                  >
-                    {e.content}
-                  </p>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {typeof e.score === "number" && (
-                      <Badge variant="outline" className="text-[10px] tabular-nums">
-                        {Math.round(e.score * 100)}%
-                      </Badge>
-                    )}
-                    <Badge variant="secondary" className="text-[10px]">
-                      {e.category}
-                    </Badge>
-                    <IconButton
-                      onClick={() =>
-                        setPendingForget({
-                          key: e.key,
-                          content: e.content,
-                          blocked: hasSeparator(e.key),
-                        })
-                      }
-                      disabled={w}
-                      title={`Forget "${previewOf(e.content)}"`}
-                      aria-label={`Forget "${previewOf(e.content)}"`}
-                      className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+              <EmptyState
+                icon={<Inbox className="size-6" />}
+                title={copy.title}
+                hint={copy.hint}
+                action={
+                  copy.action === "clear-search" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSearch("")}
                     >
-                      {w ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                    </IconButton>
+                      Clear search
+                    </Button>
+                  ) : copy.action === "clear-filter" ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFilterText("")}
+                    >
+                      Show all categories
+                    </Button>
+                  ) : undefined
+                }
+              />
+            );
+          })()
+        ) : (
+          // A narrowed read dims the rows that are there instead of blanking them.
+          <div
+            className={cn("space-y-2", loading && loaded && "opacity-60")}
+            aria-busy={loading && loaded ? true : undefined}
+          >
+            {data?.entries.map((e) => {
+              const w = working === e.key;
+              const open = expanded.has(e.key);
+              const clampable = isClampable(e.content);
+              const origin = originWords(e);
+              return (
+                <Card key={e.key} data-slot="row" className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <p
+                      className={`min-w-0 flex-1 whitespace-pre-wrap text-sm leading-snug ${
+                        clampable && !open ? "line-clamp-3" : ""
+                      }`}
+                    >
+                      {e.content}
+                    </p>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {e.category}
+                      </Badge>
+                      <IconButton
+                        onClick={() =>
+                          setPendingForget({
+                            key: e.key,
+                            content: e.content,
+                            blocked: hasSeparator(e.key),
+                          })
+                        }
+                        disabled={w}
+                        title={`Forget "${previewOf(e.content)}"`}
+                        aria-label={`Forget "${previewOf(e.content)}"`}
+                        className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                      >
+                        {w ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </IconButton>
+                    </div>
                   </div>
-                </div>
-                <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                  <span className="shrink-0">{relativeTime(e.timestamp)}</span>
-                  <span>·</span>
-                  {/* A generated key is an address, not a name: it is 43
+                  <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
+                    <span className="shrink-0">
+                      {relativeTime(e.timestamp)}
+                    </span>
+                    {origin && (
+                      <>
+                        <span>·</span>
+                        <span className="shrink-0">{origin}</span>
+                      </>
+                    )}
+                    <span>·</span>
+                    {/* A generated key is an address, not a name: it is 43
                       characters of UUID that only matters when reaching this
                       entry from the API or CLI. Keep it available — clicking
                       copies it — without letting it outweigh the content. */}
-                  <button
-                    type="button"
-                    onClick={() => copyKey(e.key)}
-                    title={`Copy key: ${e.key}`}
-                    className="min-w-0 truncate rounded-sm font-mono transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    {isGeneratedKey(e.key) ? "copy key" : e.key}
-                  </button>
-                  {clampable && (
-                    <>
-                      <span>·</span>
-                      <button
-                        type="button"
-                        onClick={() => toggleExpanded(e.key)}
-                        aria-expanded={open}
-                        className="shrink-0 rounded-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        {open ? "Show less" : "Show more"}
-                      </button>
-                    </>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+                    <button
+                      type="button"
+                      onClick={() => copyKey(e.key)}
+                      title={`Copy key: ${e.key}`}
+                      className="min-w-0 truncate rounded-sm font-mono transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      {isGeneratedMemoryKey(e.key) ? "copy key" : e.key}
+                    </button>
+                    {clampable && (
+                      <>
+                        <span>·</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(e.key)}
+                          aria-expanded={open}
+                          className="shrink-0 rounded-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        >
+                          {open ? "Show less" : "Show more"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </PanelFrame>
 
       {total > PAGE_SIZE && (
@@ -360,7 +455,8 @@ export function MemoryPanel() {
             <ChevronLeft className="size-4" /> Previous
           </Button>
           <span className="text-[10px] tabular-nums text-muted-foreground">
-            {first}–{last} of {total}
+            Page {Math.floor(offset / PAGE_SIZE) + 1} of{" "}
+            {Math.ceil(total / PAGE_SIZE)}
           </span>
           <Button
             size="sm"
@@ -380,7 +476,8 @@ export function MemoryPanel() {
         description={
           pendingReplace ? (
             <>
-              A memory with this name already exists and will be overwritten. It currently says:{" "}
+              A memory with this name already exists and will be overwritten. It
+              currently says:{" "}
               <span className="italic">
                 “{pendingReplace.oldContent.slice(0, 140)}
                 {pendingReplace.oldContent.length > 140 ? "…" : ""}”
@@ -406,7 +503,10 @@ export function MemoryPanel() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => pendingForget && copyText(forgetFromTerminal(pendingForget.key), "Command copied")}
+            onClick={() =>
+              pendingForget &&
+              copyText(forgetFromTerminal(pendingForget.key), "Command copied")
+            }
             data-autofocus
           >
             <Copy className="size-4" /> Copy command

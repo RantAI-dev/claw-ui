@@ -218,3 +218,109 @@ describe("MemoryPanel: Forget", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
+
+describe("MemoryPanel: list state", () => {
+  it("keeps the rows and drops the range when a refresh fails", async () => {
+    memory.mockResolvedValueOnce(page(ROWS)).mockRejectedValueOnce(new ApiError("boom", 502, {}));
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    expect(screen.getByRole("heading", { level: 3 }).textContent).toContain("of 3");
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText(/The gateway is unreachable/);
+    expect(screen.getByText(/Deploys go out on Tuesdays/)).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3 }).textContent).toBe("Memories");
+  });
+
+  it("describes a fresh store with the next step", async () => {
+    memory.mockResolvedValue(page([]));
+    render(<MemoryPanel />);
+    await screen.findByText("No memories yet.");
+    expect(screen.getByText(/Conversations are saved here too/)).toBeTruthy();
+  });
+
+  it("names a search that found nothing and clears it on request", async () => {
+    memory.mockResolvedValue(page([]));
+    render(<MemoryPanel />);
+    await screen.findByText("No memories yet.");
+    const search = screen.getByLabelText("Search memories") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "zzzz" } });
+    await waitFor(() =>
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "zzzz", category: "" }),
+    );
+    await screen.findByText("No memories match “zzzz”.");
+    // The field's X carries the same name; the empty state's button is the one with the text.
+    fireEvent.click(screen.getByText("Clear search"));
+    expect(search.value).toBe("");
+    await screen.findByText("No memories yet.");
+  });
+
+  it("names an empty category and offers to show all", async () => {
+    memory.mockResolvedValue(page([]));
+    render(<MemoryPanel />);
+    await screen.findByText("No memories yet.");
+    const filter = screen.getByLabelText("Filter by category") as HTMLInputElement;
+    fireEvent.change(filter, { target: { value: "daily" } });
+    await waitFor(() =>
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "daily" }),
+    );
+    await screen.findByText("No daily memories.");
+    fireEvent.click(screen.getByRole("button", { name: "Show all categories" }));
+    expect(filter.value).toBe("");
+  });
+
+  it("offers the built-ins plus every category on screen, and filters by a typed one", async () => {
+    memory.mockResolvedValue(page([entry(), entry({ key: "atlas", category: "project", content: "Atlas wants OCR first." })]));
+    const { container } = render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    const options = [...container.querySelectorAll("datalist option")].map((o) =>
+      (o as HTMLOptionElement).value,
+    );
+    expect(options).toEqual(["core", "daily", "conversation", "project"]);
+    const filter = screen.getByLabelText("Filter by category");
+    fireEvent.change(filter, { target: { value: "ops" } });
+    await waitFor(() =>
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "ops" }),
+    );
+  });
+
+  it("says where a row came from and what it is scoped to", async () => {
+    memory.mockResolvedValue(
+      page([
+        entry({ key: `user_msg_${UUID}`, category: "conversation", content: "Please remember the sprint review.", session_id: "4735d9b0" }),
+        entry({ key: "scoped-note", content: "Scoped to one conversation only.", session_id: "sess-1" }),
+        entry({ key: `memory_${UUID}`, content: "Unnamed fact." }),
+      ]),
+    );
+    render(<MemoryPanel />);
+    const auto = (await screen.findByText("Please remember the sprint review.")).closest("[data-slot=row]")!;
+    expect(auto.textContent).toContain("saved from this conversation");
+    expect(within(auto as HTMLElement).getByText("copy key")).toBeTruthy();
+    const scoped = screen.getByText("Scoped to one conversation only.").closest("[data-slot=row]")!;
+    expect(scoped.textContent).toContain("this conversation only");
+    const unnamed = screen.getByText("Unnamed fact.").closest("[data-slot=row]")!;
+    expect(unnamed.textContent).not.toContain("conversation");
+    expect(within(unnamed as HTMLElement).getByText("copy key")).toBeTruthy();
+  });
+
+  it("shows no percent for a ranked hit", async () => {
+    memory.mockResolvedValue(page([entry({ score: 0.5 })]));
+    render(<MemoryPanel />);
+    const row = (await screen.findByText(/Deploys go out on Tuesdays/)).closest("[data-slot=row]")!;
+    expect(row.textContent).not.toContain("%");
+  });
+
+  it("disables Refresh while a refresh is in flight", async () => {
+    let release: (v: unknown) => void = () => {};
+    memory.mockResolvedValueOnce(page(ROWS)).mockImplementationOnce(
+      () => new Promise((r) => { release = r; }),
+    );
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    const refresh = screen.getByRole("button", { name: "Refresh" }) as HTMLButtonElement;
+    fireEvent.click(refresh);
+    await waitFor(() => expect(refresh.disabled).toBe(true));
+    release(page(ROWS));
+    await waitFor(() => expect(refresh.disabled).toBe(false));
+  });
+});
