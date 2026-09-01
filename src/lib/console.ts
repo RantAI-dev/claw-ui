@@ -135,7 +135,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   providers: {
     title: "Providers",
     eyebrow: "Models & keys",
-    blurb: "Pick the active model provider and store its API key. It is encrypted at rest and never shown back.",
+    blurb: "Pick the provider and model the agent talks to, and store the provider's API key. The key is write-only: it is never shown back.",
   },
   cron: {
     title: "Schedules",

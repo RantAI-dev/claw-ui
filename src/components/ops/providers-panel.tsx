@@ -6,7 +6,6 @@ import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { ModelPicker } from "@/components/ui/model-picker";
 import { Combobox } from "@/components/ui/combobox";
-import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,6 +61,13 @@ export function ProvidersPanel() {
   const needsModel = c.provider && !model;
   const canSave = dirty && !busy && !needsModel && !!provider;
   const slot = needsModel ? `Choose a model for ${nextLabel}` : dirty ? "Unsaved changes" : null;
+  // The gateway reports whether the key is encrypted on disk; the page says
+  // which one it is instead of promising encryption in static copy.
+  const storage = secrets.data
+    ? secrets.data.encrypt_at_rest
+      ? "Stored encrypted in config.toml."
+      : "Stored in plain text in config.toml (secrets.encrypt is off)."
+    : null;
 
   // The picker's catalog callback checks it is still the catalog for the
   // provider on screen before it fills an empty model.
@@ -169,7 +175,7 @@ export function ProvidersPanel() {
           />
         }
       >
-        Providers {catalog.data && <span className="text-muted-foreground">· {catalog.data.count}</span>}
+        Active provider
       </SectionTitle>
 
       {/* All three reads gate the card: a failed or pending secrets/status read
@@ -180,118 +186,138 @@ export function ProvidersPanel() {
         error={catalog.error || secrets.error || info.error}
         loaded={catalog.loaded && secrets.loaded && info.loaded}
       >
-        <Card className="space-y-3 p-4">
-          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Active provider & key
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span>Currently:</span>
-            <Badge variant="accent">{providerLabel(server.provider, providers)}</Badge>
-            <Badge variant={keyBadge.variant}>{keyBadge.label}</Badge>
-            {secrets.data?.encrypt_at_rest && <span className="text-[10px]">· encrypted at rest</span>}
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <Combobox
-              id="provider-picker"
-              items={(providers ?? []).map((p) => ({
-                value: p.id,
-                label: p.display_name,
-                hint: p.local ? "local" : undefined,
-              }))}
-              value={provider}
-              onChange={changeProvider}
-              placeholder="Choose provider…"
-              searchPlaceholder="Search provider…"
-              emptyText="No providers"
-            />
-            <ModelPicker
-              provider={provider}
-              value={model}
-              onChange={setModel}
-              // The saved model is "default" only under the provider it belongs
-              // to; under a newly picked one the list says "Choose model…".
-              defaultModel={provider === server.provider ? (server.model ?? undefined) : undefined}
-              onCatalog={onCatalog}
-            />
-          </div>
-          {/* Labelled, not placeholder-only: these two fields sit next to each
-              other, one takes a URL and one takes a credential, and a placeholder
-              disappears the moment either is focused. Pasting a key into the base
-              URL field put it in config.toml in plaintext. */}
-          <div className="space-y-1">
-            <label htmlFor="provider-api-url" className="text-xs text-muted-foreground">
-              API base URL — optional, not your API key
-            </label>
-            <Input
-              id="provider-api-url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://api.example.com/v1"
-            />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="provider-api-key" className="text-xs text-muted-foreground">
-              API key for this provider
-            </label>
-            <Input
-              id="provider-api-key"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              type="password"
-              placeholder="Leave blank to keep the current key"
-            />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={save} disabled={!canSave}>
-              <KeyRound className="size-4" /> Save provider &amp; key
-            </Button>
-            {server.keyPresent && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPendingClear("key")}
-                disabled={busy || clearing}
-              >
-                <Trash2 className="size-4" /> Remove key
+        <Card className="p-4">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              save();
+            }}
+            className="space-y-3"
+          >
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>Currently:</span>
+              <Badge variant="accent">{providerLabel(server.provider, providers)}</Badge>
+              <Badge variant={keyBadge.variant}>{keyBadge.label}</Badge>
+              {storage && <span className="text-[11px]">{storage}</span>}
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label id="provider-label" className="text-xs text-muted-foreground">
+                  Provider
+                </label>
+                <Combobox
+                  id="provider-picker"
+                  ariaLabelledBy="provider-label"
+                  items={(providers ?? []).map((p) => ({
+                    value: p.id,
+                    label: p.display_name,
+                    hint: p.local ? "local" : undefined,
+                  }))}
+                  value={provider}
+                  onChange={changeProvider}
+                  placeholder="Choose provider…"
+                  searchPlaceholder="Search provider…"
+                  emptyText="No providers"
+                />
+              </div>
+              <div className="space-y-1">
+                <label id="model-label" className="text-xs text-muted-foreground">
+                  Model
+                </label>
+                <ModelPicker
+                  ariaLabelledBy="model-label"
+                  provider={provider}
+                  value={model}
+                  onChange={setModel}
+                  // The saved model is "default" only under the provider it belongs
+                  // to; under a newly picked one the list says "Choose model…".
+                  defaultModel={provider === server.provider ? (server.model ?? undefined) : undefined}
+                  onCatalog={onCatalog}
+                />
+              </div>
+            </div>
+            {/* Labelled, not placeholder-only: these two fields sit next to each
+                other, one takes a URL and one takes a credential, and a placeholder
+                disappears the moment either is focused. Pasting a key into the base
+                URL field put it in config.toml in plaintext. */}
+            <div className="space-y-1">
+              <label htmlFor="provider-api-url" className="text-xs text-muted-foreground">
+                API base URL override (optional)
+              </label>
+              <Input
+                id="provider-api-url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://api.example.com/v1"
+                autoComplete="off"
+              />
+              {/* The gateway stores one base URL, not one per provider; the copy
+                  says so rather than implying a switch leaves it behind. */}
+              <p className="text-xs text-muted-foreground">
+                One value, used by whichever provider is active. Not your API key.
+              </p>
+              {url.trim() === "" && server.url && (
+                <p className="text-xs text-muted-foreground">
+                  Blank keeps the stored URL (<code className="font-mono">{server.url}</code>). Reset base
+                  URL clears it.
+                </p>
+              )}
+              {c.provider && server.url && (
+                <p className="text-xs text-muted-foreground">This URL will be used for {nextLabel} too.</p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label htmlFor="provider-api-key" className="text-xs text-muted-foreground">
+                {provider ? `API key for ${nextLabel}` : "API key"}
+              </label>
+              <Input
+                id="provider-api-key"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                type="password"
+                autoComplete="new-password"
+                placeholder={
+                  server.keyPresent ? "Leave blank to keep the stored key" : `Paste the key for ${nextLabel}`
+                }
+              />
+              {server.keyPresent && (
+                <p className="text-xs text-muted-foreground">
+                  Leave the key blank to keep it; Remove key clears it.
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" size="sm" disabled={!canSave}>
+                <KeyRound className="size-4" /> Save provider &amp; key
               </Button>
-            )}
-            {server.url && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setPendingClear("url")}
-                disabled={busy || clearing}
-              >
-                <RotateCcw className="size-4" /> Reset base URL
-              </Button>
-            )}
-            <span className="text-xs text-muted-foreground" aria-live="polite">
-              {slot}
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              Sets the active provider; key stored encrypted, never shown back.
-              Leave the key blank to keep it — use Remove key to clear it.
-            </span>
-          </div>
+              {server.keyPresent && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPendingClear("key")}
+                  disabled={busy || clearing}
+                >
+                  <Trash2 className="size-4" /> Remove key
+                </Button>
+              )}
+              {server.url && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setPendingClear("url")}
+                  disabled={busy || clearing}
+                >
+                  <RotateCcw className="size-4" /> Reset base URL
+                </Button>
+              )}
+              <span className="text-xs text-muted-foreground" aria-live="polite">
+                {slot}
+              </span>
+            </div>
+          </form>
         </Card>
-
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {providers?.map((p) => (
-            <Card
-              key={p.id}
-              className={cn("flex items-center justify-between p-3", p.id === server.provider && "border-accent/50")}
-            >
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{p.display_name}</div>
-                <div className="truncate font-mono text-[11px] text-muted-foreground">{p.id}</div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {p.id === server.provider && <Badge variant="accent">active</Badge>}
-                {p.local && <Badge variant="success">local</Badge>}
-              </div>
-            </Card>
-          ))}
-        </div>
       </PanelFrame>
 
       <ConfirmModal
@@ -300,10 +326,12 @@ export function ProvidersPanel() {
         title={pendingClear === "url" ? "Reset base URL?" : "Remove API key?"}
         description={
           pendingClear === "url"
-            ? "The stored base URL for this provider will be cleared and the provider default used. This does not touch the API key."
-            : "The stored API key for this provider will be cleared. The provider will have no credential until you save a new one. This does not touch the base URL."
+            ? "The stored base URL override is cleared and the provider's own endpoint is used. This does not touch the API key."
+            : "The stored API key is cleared. The provider has no credential until you save a new one. This does not touch the base URL."
         }
-        confirmLabel={pendingClear === "url" ? "Reset URL" : "Remove key"}
+        confirmLabel={pendingClear === "url" ? "Reset base URL" : "Remove key"}
+        icon={pendingClear === "url" ? <RotateCcw className="size-4" /> : undefined}
+        tone={pendingClear === "url" ? "default" : "destructive"}
         busy={clearing}
         onConfirm={clearSecret}
       />

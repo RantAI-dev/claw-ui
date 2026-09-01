@@ -91,7 +91,7 @@ afterEach(cleanup);
 
 const saveButton = () => screen.getByRole("button", { name: /Save provider/ }) as HTMLButtonElement;
 const providerTrigger = () => document.getElementById("provider-picker") as HTMLButtonElement;
-const modelTrigger = () => providerTrigger().parentElement!.parentElement!.querySelectorAll("button[aria-haspopup=listbox]")[1] as HTMLButtonElement;
+const modelTrigger = () => document.querySelectorAll("button[aria-haspopup=listbox]")[1] as HTMLButtonElement;
 
 async function pickProvider(name: string) {
   fireEvent.click(providerTrigger());
@@ -219,6 +219,52 @@ describe("ProvidersPanel", () => {
     expect(providers).toHaveBeenCalledTimes(2);
     expect(secrets).toHaveBeenCalledTimes(2);
     expect(status).toHaveBeenCalledTimes(2);
+  });
+
+  it("says how the key is stored from the gateway's flag, never from static copy", async () => {
+    render(<ProvidersPanel />);
+    expect(await screen.findByText(/Stored encrypted in config.toml/)).toBeTruthy();
+    cleanup();
+    secrets.mockResolvedValue(secretsWith("ollama", { encrypt_at_rest: false }));
+    render(<ProvidersPanel />);
+    expect(await screen.findByText(/Stored in plain text in config.toml/)).toBeTruthy();
+    expect(screen.queryByText(/Stored encrypted/)).toBeNull();
+  });
+
+  it("a blank URL over a stored one says it keeps it and is not dirty", async () => {
+    secrets.mockResolvedValue(secretsWith("ollama", { api_url: "https://api.example.com/v1" }));
+    render(<ProvidersPanel />);
+    const urlInput = (await screen.findByLabelText(/API base URL override/)) as HTMLInputElement;
+    await waitFor(() => expect(urlInput.value).toBe("https://api.example.com/v1"));
+    expect(screen.queryByText(/Blank keeps the stored URL/)).toBeNull();
+    fireEvent.change(urlInput, { target: { value: "" } });
+    expect(await screen.findByText(/Blank keeps the stored URL/)).toBeTruthy();
+    expect(saveButton().disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /Reset base URL/ })).toBeTruthy();
+  });
+
+  it("a provider switch with a stored URL says the URL follows", async () => {
+    secrets.mockResolvedValue(secretsWith("ollama", { api_url: "https://api.example.com/v1" }));
+    render(<ProvidersPanel />);
+    await waitFor(() => expect(providerTrigger()).toBeTruthy());
+    await pickProvider("OpenAI");
+    expect(await screen.findByText("This URL will be used for OpenAI too.")).toBeTruthy();
+  });
+
+  it("is a form with named pickers and a write-only key field", async () => {
+    render(<ProvidersPanel />);
+    await waitFor(() => expect(providerTrigger()).toBeTruthy());
+    expect(screen.getByLabelText("Provider").getAttribute("aria-haspopup")).toBe("listbox");
+    expect(screen.getByLabelText("Model").getAttribute("aria-haspopup")).toBe("listbox");
+    const keyInput = screen.getByLabelText("API key for Ollama") as HTMLInputElement;
+    expect(keyInput.getAttribute("autocomplete")).toBe("new-password");
+    expect(keyInput.getAttribute("placeholder")).toBe("Paste the key for Ollama");
+    expect((screen.getByLabelText(/API base URL override/) as HTMLInputElement).getAttribute("autocomplete")).toBe("off");
+    expect(screen.queryByText(/Providers · /)).toBeNull();
+    expect(screen.getByRole("heading", { name: "Active provider" })).toBeTruthy();
+    fireEvent.change(keyInput, { target: { value: "sk-2" } });
+    fireEvent.submit(keyInput.closest("form")!);
+    await waitFor(() => expect(setSecrets).toHaveBeenCalledWith({ api_key: "sk-2", api_url: undefined }));
   });
 
   it("Refresh is held while any of the three reads is in flight", async () => {
