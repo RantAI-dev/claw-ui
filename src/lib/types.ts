@@ -448,8 +448,14 @@ export interface Attachment {
 export interface GatewayAutonomy {
   level?: string;
   always_ask?: string[];
+  auto_approve?: string[];
+  allowed_commands?: string[];
+  forbidden_paths?: string[];
   max_actions_per_hour?: number;
   max_cost_per_day_cents?: number;
+  workspace_only?: boolean;
+  block_high_risk_commands?: boolean;
+  require_approval_for_medium_risk?: boolean;
   [key: string]: unknown;
 }
 

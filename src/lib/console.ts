@@ -87,10 +87,12 @@ export const PERSONA_CHANGED = "rantaiclaw:persona-changed";
 export const CONFIG_CHANGED = "rantaiclaw:config-changed";
 
 /**
- * Broadcast by the console shell once the gateway has confirmed an autonomy
- * rung write from the rail. The Status panel's "Autonomy" row is a snapshot it
- * took at load, so without this it kept the old rung until a manual refresh.
- * Listeners must only re-read (never re-dispatch) or they loop.
+ * Broadcast once the gateway has confirmed an autonomy rung write, by the
+ * chat rail and by the Tools panel. The rail, the Status panel and the Tools
+ * panel each hold their own snapshot of the rung; without this a rung written
+ * on one of them stayed stale on the others until a poll or a manual refresh
+ * (the panel had neither). Listeners must only re-read (never re-dispatch) or
+ * they loop.
  */
 export const AUTONOMY_CHANGED = "rantaiclaw:autonomy-changed";
 
@@ -317,51 +319,6 @@ const TOOL_ICON: Record<string, LucideIcon> = {
 
 export function toolIcon(name: string): LucideIcon {
   return TOOL_ICON[name.toLowerCase()] || Wrench;
-}
-
-/** The built-in tool names the agent can be granted/denied. */
-export const BUILTIN_TOOLS = [
-  "shell",
-  "file_read",
-  "file_write",
-  "web_search",
-  "memory_store",
-  "memory_recall",
-  "send_message",
-  "cron_schedule",
-  "browser",
-];
-
-/** Map a design autonomy rung → a gateway `/config/autonomy` PATCH payload.
- * The gateway has 3 real levels (readonly/supervised/full); the 4-rung ladder
- * distinguishes Manual vs Smart by whether every tool is forced to always-ask. */
-export function rungToAutonomyPayload(rung: string): {
-  level: string;
-  always_ask?: string[];
-} {
-  switch (rung) {
-    case "manual":
-      return { level: "supervised", always_ask: BUILTIN_TOOLS };
-    // Always send an explicit `always_ask` (even empty) so each rung writes a
-    // complete, self-consistent state. Omitting it left `always_ask` residue
-    // from a prior Manual/Smart rung under Readonly/Full, which the Tools panel
-    // then mislabeled as "always prompts".
-    case "strict":
-      return { level: "readonly", always_ask: [] };
-    case "off":
-      return { level: "full", always_ask: [] };
-    case "smart":
-    default:
-      return { level: "supervised", always_ask: [] };
-  }
-}
-
-/** Infer the design rung from the gateway level + how many tools are always-ask. */
-export function levelToRung(level: string | null | undefined, alwaysAskCount = 0): string {
-  const l = (level || "").toLowerCase().replace(/[_\-\s]/g, "");
-  if (l === "readonly") return "strict";
-  if (l === "full") return "off";
-  return alwaysAskCount > 0 ? "manual" : "smart";
 }
 
 /** Two-letter avatar initials from a name. */

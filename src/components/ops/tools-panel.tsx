@@ -5,7 +5,15 @@ import { Plus, X } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { GatewayAutonomy } from "@/lib/types";
-import { AUTONOMY, BUILTIN_TOOLS, autonomyPreset, levelToRung, rungToAutonomyPayload } from "@/lib/console";
+import { AUTONOMY, AUTONOMY_CHANGED, autonomyPreset } from "@/lib/console";
+import {
+  autoApproveEffective,
+  hasWildcard,
+  rungFromAutonomy,
+  rungToAutonomyPayload,
+  toolOutcome,
+  toolRows,
+} from "@/lib/autonomy";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,18 +29,24 @@ export function ToolsPanel() {
   const bool = (k: string): boolean => a[k] === true;
   const num = (k: string): number | null => (typeof a[k] === "number" ? (a[k] as number) : null);
 
-  const level = (a.level as string) || "supervised";
   const maxActions = num("max_actions_per_hour");
   const maxCostCents = num("max_cost_per_day_cents");
   const autoApprove = arr("auto_approve");
-  const alwaysAsk = arr("always_ask");
   const allowed = arr("allowed_commands");
   const forbidden = arr("forbidden_paths");
 
-  // Map the gateway's real level (+always_ask count) onto the shared 4-rung
-  // ladder so this panel and the chat-shell control speak the same vocabulary.
-  const rung = levelToRung(level, alwaysAsk.length);
+  // The rung through the classifier the rail and Status also use, so the
+  // three surfaces cannot disagree on one config.
+  const rung = rungFromAutonomy(a);
   const preset = autonomyPreset(rung);
+
+  // A rung written on the rail broadcasts; re-read so this panel follows it
+  // (it used to keep the old rung until a manual Refresh).
+  const refresh = cfg.refresh;
+  React.useEffect(() => {
+    window.addEventListener(AUTONOMY_CHANGED, refresh);
+    return () => window.removeEventListener(AUTONOMY_CHANGED, refresh);
+  }, [refresh]);
 
   const [busy, setBusy] = React.useState(false);
   const [cmd, setCmd] = React.useState("");
@@ -48,12 +62,19 @@ export function ToolsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.data]);
 
-  const patch = async (body: Parameters<typeof api.setAutonomy>[0], msg?: string) => {
+  const patch = async (
+    body: Parameters<typeof api.setAutonomy>[0],
+    msg?: string,
+    opts?: { broadcast?: boolean },
+  ) => {
     setBusy(true);
     try {
       await api.setAutonomy(body);
       if (msg) toast.success(msg);
-      cfg.refresh();
+      // A rung write is shared state: tell the rail and Status (the listener
+      // above re-reads this panel too, so no direct refresh is needed).
+      if (opts?.broadcast) window.dispatchEvent(new Event(AUTONOMY_CHANGED));
+      else cfg.refresh();
     } catch (e) {
       toast.error(`Update failed: ${describeApiError(e)}`);
     } finally {
@@ -115,7 +136,11 @@ export function ToolsPanel() {
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() => patch(rungToAutonomyPayload(p.id), `Autonomy → ${p.label}`)}
+                    onClick={() =>
+                      patch(rungToAutonomyPayload(p.id, a), `Autonomy set to ${p.label}`, {
+                        broadcast: true,
+                      })
+                    }
                     style={on ? { borderColor: p.dot, color: p.dot } : undefined}
                   >
                     <span
@@ -183,24 +208,33 @@ export function ToolsPanel() {
               Tool policy · auto-approve runs without asking
             </div>
             <Card className="divide-y divide-border">
-              {BUILTIN_TOOLS.map((tool) => {
+              {hasWildcard(a) && (
+                <div className="px-3 py-2.5 text-[11px] text-muted-foreground">
+                  Every tool prompts (Manual): the always-ask list is the wildcard.
+                </div>
+              )}
+              {toolRows(a).map((tool) => {
                 const auto = autoApprove.includes(tool);
-                const ask = alwaysAsk.includes(tool);
+                // The word is the runtime's decision for this tool in this
+                // config (level, then always-ask, then auto-approve); the
+                // switch is disabled when it would not change that.
+                const outcome = toolOutcome(tool, a);
+                const effective = autoApproveEffective(tool, a);
                 return (
                   <div key={tool} className="flex items-center gap-3 px-3 py-2.5">
                     <span className="font-mono text-[13px]">{tool}</span>
                     <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
-                      {ask ? "always prompts (Manual)" : auto ? "runs without asking" : "follows level default"}
+                      {outcome}
                     </span>
                     <button
                       type="button"
                       className={"switch" + (auto ? " on" : "")}
                       onClick={() => toggleTool(tool)}
-                      disabled={busy}
+                      disabled={busy || !effective}
                       role="switch"
                       aria-checked={auto}
                       aria-label={`Auto-approve ${tool}`}
-                      title={auto ? "Auto-approved" : "Requires approval"}
+                      title={outcome}
                     >
                       <i />
                     </button>

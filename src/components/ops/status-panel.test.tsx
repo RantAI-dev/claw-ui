@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen, waitFor, cleanup } from "@testing-libra
 import { AUTONOMY_CHANGED } from "@/lib/console";
 
 const status = vi.fn();
+const config = vi.fn();
 const doctor = vi.fn();
 const insights = vi.fn();
 
@@ -13,6 +14,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   api: {
     status: () => status(),
+    config: () => config(),
     doctor: () => doctor(),
     insights: () => insights(),
   },
@@ -30,6 +32,11 @@ beforeEach(() => {
     workspace_dir: "/w",
     paired: true,
     runtime: {},
+  });
+  // The fresh-install shape: supervised with the default `ssh`/`pty` always-ask
+  // entries. The gateway's own `/status` calls this "manual".
+  config.mockResolvedValue({
+    autonomy: { level: "supervised", always_ask: ["ssh", "pty"], auto_approve: ["file_read"] },
   });
   doctor.mockResolvedValue({ results: [], skipped: [] });
   insights.mockResolvedValue({
@@ -119,15 +126,44 @@ describe("StatusPanel health", () => {
   });
 });
 
+describe("StatusPanel autonomy row", () => {
+  it("reads the rung from /config through the shared classifier, not from autonomy_preset", async () => {
+    status.mockResolvedValue({ ...(await status()), autonomy_preset: "manual" });
+    render(<StatusPanel />);
+    // A fresh install is Smart: two tools run without asking. The gateway's
+    // "manual" would contradict the rail and the Tools panel.
+    expect(await screen.findByText("Smart")).toBeTruthy();
+    expect(screen.queryByText("Manual")).toBeNull();
+  });
+
+  it("reads the wildcard as Manual and readonly as Strict", async () => {
+    config.mockResolvedValue({ autonomy: { level: "supervised", always_ask: ["*"] } });
+    render(<StatusPanel />);
+    expect(await screen.findByText("Manual")).toBeTruthy();
+    cleanup();
+    config.mockResolvedValue({ autonomy: { level: "readonly" } });
+    render(<StatusPanel />);
+    expect(await screen.findByText("Strict")).toBeTruthy();
+  });
+
+  it("says unknown when the config read failed", async () => {
+    config.mockRejectedValue(new Error("nope"));
+    render(<StatusPanel />);
+    expect(await screen.findByText("unknown")).toBeTruthy();
+  });
+});
+
 describe("StatusPanel behaviour", () => {
-  it("re-reads status when the rail broadcasts a rung change", async () => {
+  it("re-reads status and config when a rung change is broadcast", async () => {
     render(<StatusPanel />);
     await waitFor(() => expect(status).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(config).toHaveBeenCalledTimes(1));
     act(() => {
       window.dispatchEvent(new Event(AUTONOMY_CHANGED));
     });
     await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
-    // Only /status is re-read; the doctor and usage requests stay on their buttons.
+    await waitFor(() => expect(config).toHaveBeenCalledTimes(2));
+    // The doctor and usage requests stay on their buttons.
     expect(doctor).toHaveBeenCalledTimes(1);
     expect(insights).toHaveBeenCalledTimes(1);
   });
