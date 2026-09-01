@@ -16,7 +16,7 @@ OpenClaw-style ops panels.
   history with resume / full-text search / rename / delete, inline tool-call cards, syntax-highlighted
   code blocks, regenerate, model/provider switching, Stop, and a context/details side panel.
 - **Ops** — live metric bar + panels, most now **interactive**:
-  - status & doctor, sessions, usage, providers, memory (read-only views)
+  - status & doctor, sessions, usage, providers, memory (browse, search, add, forget)
   - **Channels** — connect a Telegram bot and edit its sender allowlist
   - **Cron** — create agent jobs, enable/disable, run-now, delete
   - **Skills** — enable/disable toggles

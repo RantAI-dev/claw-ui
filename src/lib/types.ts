@@ -151,14 +151,9 @@ export interface MemoryEntry {
   content: string;
   timestamp: number | string | null;
   session_id: string | null;
-  /** Relevance, 0–1, relative to the best hit. Only a search ranks. */
+  /** Search rank only: on sqlite the fraction of the query's words the row
+   *  contains. Not shown; the order carries it. Absent on a plain list. */
   score?: number | null;
-}
-
-export interface MemoryStats {
-  backend: string;
-  total_entries: number;
-  healthy: boolean;
 }
 
 export interface PersonaPreset {

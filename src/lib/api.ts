@@ -17,7 +17,6 @@ import type {
   KbReExtractResult,
   KnowledgeStatus,
   MemoryEntry,
-  MemoryStats,
   ModelCatalog,
   Personality,
   PersonaPreset,
@@ -169,7 +168,6 @@ export const api = {
       offset: number;
     }>(`memory?${params}`);
   },
-  memoryStats: () => rc<MemoryStats>("memory/stats"),
   personality: () => rc<Personality>("personality"),
   personalityPresets: () =>
     rc<{ presets: PersonaPreset[] }>("personality/presets"),
@@ -410,6 +408,15 @@ export const api = {
     rc<{ key: string; removed: boolean }>(`memory/${encodeURIComponent(key)}`, {
       method: "DELETE",
     }),
+  /** One entry by key: 200 with the entry, or a 404 `not_found` `ApiError`. */
+  getMemory: (key: string) =>
+    rc<{
+      key: string;
+      content: string;
+      category: string;
+      timestamp: number | string | null;
+      session_id: string | null;
+    }>(`memory/${encodeURIComponent(key)}`),
   secrets: () => rc<SecretsInfo>("secrets"),
   setSecrets: (body: { api_key?: string; api_url?: string }) =>
     rc<{ ok: boolean; api_key_present: boolean }>("secrets", {
