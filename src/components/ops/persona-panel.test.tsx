@@ -221,4 +221,22 @@ describe("PersonaPanel", () => {
     expect(kbGroups).toHaveBeenCalledTimes(2);
     r3.unmount();
   });
+
+  it("labels every control, is titled Persona, and names what it loads", async () => {
+    let resolve: (v: unknown) => void = () => {};
+    personality.mockReturnValue(new Promise((r) => (resolve = r)));
+    const { container } = render(<PersonaPanel />);
+    expect(screen.getByText("Loading persona…")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^refresh$/i })).toBeNull();
+    resolve({ ...SAVED });
+    await screen.findByDisplayValue("RantaiClaw");
+    expect(screen.getByRole("button", { name: /^refresh$/i })).toBeTruthy();
+    for (const l of ["Preset", "Name", "Timezone", "Tone", "Role", "Avoid"]) {
+      expect(screen.getByLabelText(l)).toBeTruthy();
+    }
+    expect(screen.getByRole("heading", { level: 3, name: "Persona" })).toBeTruthy();
+    expect(screen.queryByText(/Personality/)).toBeNull();
+    expect(container.querySelector(".tracking-wider")).toBeNull();
+    expect(container.querySelectorAll("label.eyebrow").length).toBe(6);
+  });
 });

@@ -40,8 +40,6 @@ const FALLBACK_PRESETS = [
   { id: "executive_assistant", label: "Executive Assistant", description: "" },
 ];
 
-const LABEL = "text-[10px] font-medium uppercase tracking-wider text-muted-foreground";
-
 /** One labelled field: label row (with a counter near the cap), the control, an error line. */
 function Field({
   id,
@@ -61,7 +59,7 @@ function Field({
   const counter = value !== undefined && max !== undefined ? nearCap(value, max) : null;
   return (
     <div>
-      <label htmlFor={id} className={cn(LABEL, "flex items-baseline justify-between")}>
+      <label htmlFor={id} className="eyebrow flex items-baseline justify-between">
         {label}
         {counter && (
           <span className="ml-auto font-normal normal-case tracking-normal" aria-hidden="true">
@@ -80,7 +78,7 @@ function Field({
 }
 
 export function PersonaPanel() {
-  const { data, loading, error, refresh } = useAsync(() => api.personality(), []);
+  const { data, loading, error, loaded, refreshing, refresh } = useAsync(() => api.personality(), []);
   // A Knowledge Base that is off or has no embedding key answers with a code;
   // keep it as data so the block can say which, instead of a generic failure.
   const groups = useAsync(
@@ -134,6 +132,13 @@ export function PersonaPanel() {
   const hasErrors = Object.keys(errors).length > 0;
   const selectedPreset = presetOptions.find((p) => p.id === form?.preset);
   const kb = kbBlockState({ loading: groups.loading, error: groups.error, data: groups.data });
+  // Refresh and the frame's Retry re-run all three reads, so a recovered gateway
+  // does not leave the presets or the knowledge-base block on a stale failure.
+  const refreshAll = () => {
+    refresh();
+    groups.refresh();
+    presets.refresh();
+  };
   const kbLink = (
     <a href="#kb" className="underline underline-offset-2 hover:text-foreground">
       Knowledge Bases
@@ -181,18 +186,21 @@ export function PersonaPanel() {
     <div>
       <SectionTitle
         action={
-          <RefreshButton
-            onClick={() => {
-              refresh();
-              groups.refresh();
-              presets.refresh();
-            }}
-          />
+          // The frame carries its own Retry until something has loaded; one control per action.
+          data ? (
+            <RefreshButton spinning={refreshing} onClick={refreshAll} />
+          ) : undefined
         }
       >
-        Personality
+        Persona
       </SectionTitle>
-      <PanelFrame loading={loading} error={error} loaded={!!data} empty={!loading && !error && !data} onRefresh={refresh}>
+      <PanelFrame
+        loading={loading}
+        loadingLabel="Loading persona…"
+        error={error}
+        loaded={loaded}
+        onRefresh={refreshAll}
+      >
         {data && form && (
           <Card className="space-y-3 p-4">
             <div className="text-[11px] text-muted-foreground">Profile: {data.profile}</div>
@@ -307,9 +315,9 @@ export function PersonaPanel() {
 
             {/* Always-on knowledge bases: form state like every other field; they go with Save. */}
             <div className="border-t border-border/60 pt-3">
-              <div id={ids.kbHeading} className={LABEL}>
+              <h4 id={ids.kbHeading} className="eyebrow">
                 Always-on knowledge bases
-              </div>
+              </h4>
               <p className="mt-1 text-[11px] text-muted-foreground">
                 Searched on every chat sent from this console, on top of the bases picked for that
                 chat. Channels and the terminal do not read this list.
