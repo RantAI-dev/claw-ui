@@ -344,6 +344,10 @@ export interface ModelCatalog {
   source: string;
   age_secs: number | null;
   count: number;
+  /** Present on the refresh route: false when the live fetch failed and the
+   *  list is still the cached or curated one; `detail` says why. */
+  refreshed?: boolean;
+  detail?: string | null;
 }
 
 export interface CronJob {

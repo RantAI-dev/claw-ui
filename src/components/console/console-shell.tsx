@@ -77,7 +77,7 @@ export function ConsoleShell({
   initialRoute?: Route;
   initialSessionId?: string;
 }) {
-  const { status, connection, error, needsAuth } = useGatewayStatus();
+  const { status, connection, error, needsAuth, refresh: refreshStatus } = useGatewayStatus();
 
   const [route, setRoute] = React.useState<Route>(initialRoute);
   const [sessions, setSessions] = React.useState<SessionSummary[]>([]);
@@ -356,10 +356,13 @@ export function ConsoleShell({
 
   // Temperature (right rail) and the MCP nav badge are load-time snapshots. The
   // Config and MCP panels write them out-of-band, so re-read on their broadcast
-  // instead of showing the pre-edit value until reload. Autonomy is intentionally
-  // left to its own interval poll below; this only re-seeds temp + MCP count and
-  // never re-dispatches, so it cannot loop.
+  // instead of showing the pre-edit value until reload. The Providers panel
+  // broadcasts too: its provider/model land in the rail and the composer through
+  // the status poll, which is up to 15 s late, so status is re-read here as well.
+  // Autonomy is intentionally left to its own interval poll below; this only
+  // re-seeds temp + MCP count + status and never re-dispatches, so it cannot loop.
   const refreshConfig = React.useCallback(() => {
+    refreshStatus();
     api
       .config()
       .then((c) => {
@@ -369,7 +372,7 @@ export function ConsoleShell({
         setMcpCount(mcp && typeof mcp === "object" ? Object.keys(mcp).length : 0);
       })
       .catch(() => {});
-  }, []);
+  }, [refreshStatus]);
 
   React.useEffect(() => {
     window.addEventListener(CONFIG_CHANGED, refreshConfig);

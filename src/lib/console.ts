@@ -75,11 +75,14 @@ export const SKILLS_CHANGED = "rantaiclaw:skills-changed";
 export const PERSONA_CHANGED = "rantaiclaw:persona-changed";
 
 /**
- * Broadcast by the Config panel after a temperature save and by the MCP panel
- * after it adds or removes a server. The right-rail temperature readout and the
- * MCP nav badge are snapshots the console shell takes once at load, so without
- * this they keep showing the value from before the user's own edit until a full
- * reload. Listeners must only re-read (never re-dispatch) or they loop.
+ * Broadcast by the Config panel after a temperature save, by the MCP panel
+ * after it adds or removes a server, and by the Providers panel after a
+ * provider / model / key / URL write. The right-rail temperature readout and the
+ * MCP nav badge are snapshots the console shell takes once at load, and the
+ * rail's provider and model come from a 15 s status poll, so without this they
+ * keep showing the value from before the user's own edit. The shell re-reads
+ * config and status on it. Listeners must only re-read (never re-dispatch) or
+ * they loop.
  */
 export const CONFIG_CHANGED = "rantaiclaw:config-changed";
 
@@ -132,7 +135,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   providers: {
     title: "Providers",
     eyebrow: "Models & keys",
-    blurb: "Pick the active model provider and store its API key. It is encrypted at rest and never shown back.",
+    blurb: "Pick the provider and model the agent talks to, and store the provider's API key. The key is write-only: it is never shown back.",
   },
   cron: {
     title: "Schedules",
