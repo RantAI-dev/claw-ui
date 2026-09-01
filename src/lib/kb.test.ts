@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_KB_PRESET,
+  INK_HEX,
+  KB_PRESETS,
+  contrastRatio,
   countLine,
+  isPreset,
+  presetName,
+  tileInk,
   deleteDocCopy,
   deleteGroupCopy,
   describeIngestError,
@@ -108,5 +115,38 @@ describe("duplicates and counts", () => {
     expect(countLine(1, 1)).toBe("1 knowledge base · 1 document");
     expect(countLine(3, 1200)).toBe("3 knowledge bases · 1,200 documents");
     expect(countLine(0, 0)).toBe("0 knowledge bases · 0 documents");
+  });
+});
+
+describe("colours", () => {
+  const legacy = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899"];
+  const inkHex = (ink: string) => (ink === "#ffffff" ? "#ffffff" : INK_HEX);
+
+  it("ships eight named hex presets and a deterministic default", () => {
+    expect(KB_PRESETS).toHaveLength(8);
+    for (const p of KB_PRESETS) expect(p.hex).toMatch(/^#[0-9a-f]{6}$/);
+    expect(new Set(KB_PRESETS.map((p) => p.name)).size).toBe(8);
+    expect(DEFAULT_KB_PRESET).toBe("#0d63d0");
+    expect(presetName("#0d63d0")).toBe("Blue");
+    expect(presetName("#0D63D0")).toBe("Blue");
+    expect(isPreset("#eab308")).toBe(false);
+    expect(isPreset(null)).toBe(false);
+  });
+
+  it("gives every preset and every legacy colour a glyph that passes 3:1", () => {
+    for (const hex of [...KB_PRESETS.map((p) => p.hex), ...legacy]) {
+      const ratio = contrastRatio(inkHex(tileInk(hex)), hex);
+      expect(ratio, `${hex} with ${tileInk(hex)} = ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("uses ink on light colours and on the non-hex sky default, white on dark ones", () => {
+    expect(tileInk("#80cb87")).toBe("var(--brand-ink)");
+    expect(tileInk("#eab308")).toBe("var(--brand-ink)");
+    expect(tileInk("var(--brand-sky)")).toBe("var(--brand-ink)");
+    expect(tileInk(null)).toBe("var(--brand-ink)");
+    expect(tileInk("#574399")).toBe("#ffffff");
+    expect(tileInk("#0d63d0")).toBe("#ffffff");
+    expect(contrastRatio("#ffffff", "#574399")).toBeCloseTo(7.87, 1);
   });
 });

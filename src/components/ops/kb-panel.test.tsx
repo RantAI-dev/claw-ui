@@ -52,6 +52,7 @@ vi.mock("./doc-viewer-drawer", () => ({
 }));
 
 import { ApiError } from "@/lib/api";
+import { getFileTypeIcon } from "@/lib/file-type";
 import { KbPanel } from "./kb-panel";
 
 const ON: KnowledgeStatus = {
@@ -335,7 +336,7 @@ describe("KbPanel keyboard, touch and semantics", () => {
   });
 
   it("a stored colour outside the presets is kept as 'Current colour'", async () => {
-    kbGroups.mockResolvedValue([group({ id: "g-x", name: "Odd", color: "#123456" })]);
+    kbGroups.mockResolvedValue([group({ id: "g-x", name: "Odd", color: "#eab308" })]);
     render(<KbPanel />);
     fireEvent.click(await screen.findByRole("button", { name: "Edit knowledge base Odd" }));
     const dialog = await screen.findByRole("dialog");
@@ -388,5 +389,57 @@ describe("KbPanel keyboard, touch and semantics", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "New knowledge base" })),
     );
+  });
+});
+
+describe("KbPanel colour, contrast, motion and icons", () => {
+  it("colours the tile glyph by luminance: ink on light, white on dark, never text-white", async () => {
+    kbGroups.mockResolvedValue([
+      group({ id: "g-light", name: "Light", color: "#80cb87" }),
+      group({ id: "g-dark", name: "Dark", color: "#574399" }),
+      group({ id: "g-none", name: "None", color: null }),
+    ]);
+    const { container } = render(<KbPanel />);
+    await screen.findByRole("button", { name: "Light" });
+    const tiles = Array.from(container.querySelectorAll<HTMLElement>("[aria-hidden].size-11"));
+    expect(tiles).toHaveLength(3);
+    expect(tiles[0].style.color).toBe("var(--brand-ink)");
+    expect(tiles[1].style.color).toBe("#ffffff");
+    expect(tiles[2].style.color).toBe("var(--brand-ink)");
+    expect(container.querySelector(".text-white")).toBeNull();
+  });
+
+  it("offers the token presets, defaults a new base to Blue, and never lifts or glows a card", async () => {
+    const { container } = render(<KbPanel />);
+    await screen.findByRole("button", { name: "Product Docs" });
+    expect(container.querySelector(".hover\\:-translate-y-0\\.5")).toBeNull();
+    expect(container.querySelector(".hover\\:shadow-md")).toBeNull();
+    expect(container.querySelector(".backdrop-blur-sm")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "New knowledge base" }));
+    const dialog = await screen.findByRole("dialog");
+    const radios = within(dialog).getAllByRole("radio");
+    expect(radios.map((r) => r.getAttribute("aria-label"))).toEqual([
+      "Orange", "Blue", "Green", "Teal", "Sea green", "Purple", "Red", "Cornflower",
+    ]);
+    expect(within(dialog).getByRole("radio", { name: "Blue" }).getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("marks intelligence with FileScan, not Sparkles, and prints the meta in normal case", async () => {
+    const { container } = render(<KbPanel />);
+    await openProductDocs();
+    await screen.findByText("notes");
+    const intel = screen.getAllByRole("button", { name: "Document intelligence" })[0];
+    expect(intel.querySelector("svg")!.getAttribute("class")).toContain("lucide-file-scan");
+    expect(container.querySelector(".lucide-sparkles")).toBeNull();
+    expect(screen.getByText("405 B · markdown")).toBeTruthy();
+    expect(container.querySelector(".font-mono")).toBeNull();
+  });
+
+  it("resolves only the five gateway file types", () => {
+    expect(getFileTypeIcon("csv").Icon).toBe(getFileTypeIcon(undefined).Icon);
+    expect(getFileTypeIcon("csv").iconColor).toBe(getFileTypeIcon(undefined).iconColor);
+    expect(getFileTypeIcon("markdown").iconColor).toBe("text-chart-1");
+    expect(getFileTypeIcon("TEXT").iconColor).toBe("text-muted-foreground");
+    expect(getFileTypeIcon("pdf").iconColor).toBe("text-destructive");
   });
 });

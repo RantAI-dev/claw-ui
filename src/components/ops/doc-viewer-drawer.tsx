@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, FileText, Network, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, FileScan, FileText, Network, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { formatNumber, relativeTime } from "@/lib/utils";
@@ -55,7 +55,7 @@ export function DocViewerDrawer({
                 value="intelligence"
                 data-autofocus={initialTab === "intelligence" || undefined}
               >
-                <Sparkles className="size-3.5" /> Intelligence
+                <FileScan className="size-3.5" /> Intelligence
               </TabsTrigger>
             </TabsList>
           </div>
@@ -127,7 +127,7 @@ function DocPreview({ documentId }: { documentId: string }) {
       {/* Metadata row */}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {meta && (
-          <span className="font-mono uppercase tracking-wide">{meta}</span>
+          <span>{meta}</span>
         )}
         {d.created_at != null && (
           <>

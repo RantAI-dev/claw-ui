@@ -20,9 +20,9 @@ import {
   Network,
   UploadCloud,
   Upload,
-  Sparkles,
   Eye,
   AlertTriangle,
+  FileScan,
 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
@@ -34,12 +34,17 @@ import {
 } from "@/lib/attachments";
 import type { KbDocument, KbGroup } from "@/lib/types";
 import {
+  DEFAULT_KB_COLOR,
+  DEFAULT_KB_PRESET,
+  KB_PRESETS,
   SUPPORTED_UPLOADS,
   countLine,
   deleteDocCopy,
   deleteGroupCopy,
   duplicateTitles,
   ingestNote,
+  isPreset,
+  tileInk,
   unlinkDocCopy,
 } from "@/lib/kb";
 import { cn, relativeTime, formatNumber } from "@/lib/utils";
@@ -58,20 +63,6 @@ import { GraphLens } from "./graph-lens";
 import { KnowledgeSettingsCard, type KnowledgeStatusState } from "./knowledge-settings-card";
 import { toast } from "sonner";
 
-const PRESET_COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-  "#06b6d4",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-];
-
-const DEFAULT_KB_COLOR = "var(--brand-sky)";
-/** Names for the swatches, by index; a hex is not a name a screen reader can say. */
-const PRESET_NAMES = ["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Violet", "Pink"];
 
 type SortOption = "newest" | "oldest" | "name" | "retrieved";
 type ViewMode = "grid" | "list";
@@ -328,14 +319,14 @@ function KbCard({
   // over the card by its ::after; the actions are siblings layered above it,
   // and they exist on every pointer (a phone has no hover).
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-within:border-accent/40">
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors hover:border-accent/40 focus-within:border-accent/40">
       <div className="flex items-start gap-3">
         <div
-          className="flex size-11 shrink-0 items-center justify-center rounded-lg shadow-sm"
-          style={{ backgroundColor: group.color || DEFAULT_KB_COLOR }}
+          className="flex size-11 shrink-0 items-center justify-center rounded-lg"
+          style={{ backgroundColor: group.color || DEFAULT_KB_COLOR, color: tileInk(group.color) }}
           aria-hidden
         >
-          <FolderOpen className="size-5 text-white" />
+          <FolderOpen className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 pr-16">
@@ -359,7 +350,7 @@ function KbCard({
               {group.description}
             </p>
           ) : (
-            <p className="mt-1 text-xs italic text-muted-foreground/60">No description</p>
+            <p className="mt-1 text-xs italic text-muted-foreground">No description</p>
           )}
         </div>
       </div>
@@ -371,7 +362,7 @@ function KbCard({
           onClick={onEdit}
           title="Edit"
           aria-label={`Edit knowledge base ${group.name}`}
-          className="bg-background/80 shadow-sm backdrop-blur-sm"
+          className="bg-background/90"
         >
           <Pencil className="size-3.5" />
         </IconButton>
@@ -379,7 +370,7 @@ function KbCard({
           onClick={onDelete}
           title="Delete"
           aria-label={`Delete knowledge base ${group.name}`}
-          className="bg-background/80 shadow-sm backdrop-blur-sm hover:bg-destructive/10 hover:text-destructive"
+          className="bg-background/90 hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="size-3.5" />
         </IconButton>
@@ -401,7 +392,7 @@ function KbEditorModal({
 }) {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [color, setColor] = React.useState(PRESET_COLORS[5]);
+  const [color, setColor] = React.useState(DEFAULT_KB_PRESET);
   const [saving, setSaving] = React.useState(false);
   const nameId = React.useId();
   const descId = React.useId();
@@ -410,8 +401,8 @@ function KbEditorModal({
   // The swatches, plus the stored colour first when it is not one of them, so
   // editing never silently recolours a base.
   const swatches = React.useMemo(() => {
-    const list = PRESET_COLORS.map((hex, i) => ({ hex, name: PRESET_NAMES[i] ?? hex }));
-    if (group?.color && !PRESET_COLORS.includes(group.color)) {
+    const list = KB_PRESETS.map((p) => ({ hex: p.hex, name: p.name }));
+    if (group?.color && !isPreset(group.color)) {
       list.unshift({ hex: group.color, name: "Current colour" });
     }
     return list;
@@ -435,10 +426,7 @@ function KbEditorModal({
     if (!open) return;
     setName(group?.name ?? "");
     setDescription(group?.description ?? "");
-    setColor(
-      group?.color ??
-        PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)],
-    );
+    setColor(group?.color ?? DEFAULT_KB_PRESET);
   }, [open, group]);
 
   // A stable close handler: the Modal re-runs its first-focus effect whenever
@@ -792,11 +780,11 @@ function KbDetail({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg shadow-sm"
-            style={{ backgroundColor: group.color || DEFAULT_KB_COLOR }}
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg"
+            style={{ backgroundColor: group.color || DEFAULT_KB_COLOR, color: tileInk(group.color) }}
             aria-hidden
           >
-            <FolderOpen className="size-5 text-white" />
+            <FolderOpen className="size-5" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -1151,7 +1139,7 @@ function DocActions({
         aria-label="Document intelligence"
         className={cn(buttonClassName, "hover:bg-accent/10 hover:text-accent")}
       >
-        <Sparkles className="size-3.5" />
+        <FileScan className="size-3.5" />
       </IconButton>
       <IconButton
         onClick={onUnlink}
@@ -1197,7 +1185,7 @@ function DocCard({
     .join(" · ");
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 transition-colors hover:border-accent/40 focus-within:border-accent/40">
       <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
         <DocActions
           busy={busy}
@@ -1205,7 +1193,7 @@ function DocCard({
           onIntel={onIntel}
           onUnlink={onUnlink}
           onDelete={onDelete}
-          buttonClassName="bg-background/80 shadow-sm backdrop-blur-sm"
+          buttonClassName="bg-background/90"
         />
       </div>
 
@@ -1223,7 +1211,7 @@ function DocCard({
 
       <div className="mt-1 flex flex-col items-center gap-1.5 border-t border-border/50 pt-2.5">
         {meta && (
-          <p className="truncate font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+          <p title={meta} className="truncate text-[11px] text-muted-foreground">
             {meta}
           </p>
         )}
@@ -1275,7 +1263,7 @@ function DocRow({
           {doc.title || doc.id.slice(0, 8)}
         </div>
         {meta && (
-          <div className="truncate font-mono text-[10px] text-muted-foreground">{meta}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{meta}</div>
         )}
       </div>
       {retrievals > 0 && (

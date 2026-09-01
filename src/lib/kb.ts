@@ -123,3 +123,70 @@ export function duplicateTitles(
 export function countLine(groups: number, docs: number): string {
   return `${formatNumber(groups)} knowledge base${groups === 1 ? "" : "s"} · ${formatNumber(docs)} document${docs === 1 ? "" : "s"}`;
 }
+
+// ── Colours ──────────────────────────────────────────────────────────────────
+
+/**
+ * The knowledge-base colour presets: the console's accent tokens. The hex is
+ * mirrored from `globals.css` because the value is persisted by the gateway
+ * and read back by the chat picker's dot, which cannot resolve a `var()`.
+ */
+export const KB_PRESETS: { name: string; hex: string }[] = [
+  { name: "Orange", hex: "#bb7851" },
+  { name: "Blue", hex: "#0d63d0" },
+  { name: "Green", hex: "#80cb87" },
+  { name: "Teal", hex: "#388ca1" },
+  { name: "Sea green", hex: "#32836a" },
+  { name: "Purple", hex: "#574399" },
+  { name: "Red", hex: "#bb5153" },
+  { name: "Cornflower", hex: "#517fbb" },
+];
+/** A new base starts blue (the brand family); the same one every time. */
+export const DEFAULT_KB_PRESET = KB_PRESETS[1].hex;
+/** The tile colour when the gateway stored none. */
+export const DEFAULT_KB_COLOR = "var(--brand-sky)";
+/** `--brand-ink`, as a hex for contrast maths. */
+export const INK_HEX = "#050a30";
+
+export function isPreset(hex: string | null | undefined): boolean {
+  return !!hex && KB_PRESETS.some((p) => p.hex.toLowerCase() === hex.toLowerCase());
+}
+
+export function presetName(hex: string): string | null {
+  return KB_PRESETS.find((p) => p.hex.toLowerCase() === hex.toLowerCase())?.name ?? null;
+}
+
+const HEX6 = /^#([0-9a-f]{6})$/i;
+
+/** WCAG relative luminance of a `#rrggbb` colour; `null` for anything else. */
+export function relativeLuminance(hex: string): number | null {
+  const m = HEX6.exec(hex.trim());
+  if (!m) return null;
+  const n = parseInt(m[1], 16);
+  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+}
+
+/** WCAG contrast ratio between two `#rrggbb` colours (1 when either is not hex). */
+export function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  if (la === null || lb === null) return 1;
+  const [hi, lo] = la > lb ? [la, lb] : [lb, la];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The glyph colour for a colour tile: ink on light colours, white on dark
+ * ones. The threshold (luminance 0.2) puts every preset and every colour the
+ * old picker could have stored on the passing side of 3:1; a non-hex value
+ * (the sky default) is light, so it gets ink.
+ */
+export function tileInk(color: string | null | undefined): string {
+  const lum = color ? relativeLuminance(color) : null;
+  if (lum === null) return "var(--brand-ink)";
+  return lum >= 0.2 ? "var(--brand-ink)" : "#ffffff";
+}

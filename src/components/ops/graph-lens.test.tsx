@@ -19,7 +19,7 @@ vi.mock("./knowledge-graph", () => ({
   entityToken: (t: string) => `--entity-${t}`,
 }));
 
-import { GraphLens } from "./graph-lens";
+import { EntityTypeBadge, GraphLens } from "./graph-lens";
 
 function graph(nodeCount: number): KbGraph {
   const types = ["person", "organization", "technology", "concept"];
@@ -84,5 +84,18 @@ describe("GraphLens", () => {
     expect(
       screen.getByText("Select an entity in the graph or in the list to see its relationships."),
     ).toBeTruthy();
+  });
+});
+
+describe("EntityTypeBadge", () => {
+  it("puts the tone on a dot and keeps the word in the foreground", () => {
+    const { container } = render(<EntityTypeBadge type="person" />);
+    const badge = container.firstElementChild as HTMLElement;
+    expect(badge.textContent).toBe("person");
+    expect(badge.style.color).toBe("");
+    expect(badge.style.background).toBe("");
+    expect(badge.className).toContain("border-border");
+    const dot = badge.querySelector<HTMLElement>("[aria-hidden]")!;
+    expect(dot.style.background).toContain("var(--entity-person)");
   });
 });
