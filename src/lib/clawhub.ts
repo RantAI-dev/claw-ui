@@ -150,3 +150,41 @@ export function candidatesFromError(error: unknown): SkillCandidate[] | null {
   );
   return candidates.length > 0 ? candidates : null;
 }
+
+/**
+ * An operator-facing sentence for a failed ClawHub read. The console's own
+ * proxy (`/api/clawhub`) answers 502 with `clawhub_unreachable` (plus a
+ * detail) when clawhub.ai cannot be reached from the server, or `clawhub NNN`
+ * when it answered with an error; a fetch that never left the browser is a
+ * `TypeError`. None of these involve the gateway, so `describeApiError`
+ * (whose 502 branch says the gateway is restarting) is the wrong reader.
+ * Duck-typed like `candidatesFromError`, so this module does not import the
+ * API client.
+ */
+export function describeHubError(error: unknown): string {
+  if (error instanceof TypeError) {
+    return `The console could not be reached (${error.message}). Check your connection, then retry.`;
+  }
+  const status = (error as { status?: unknown } | null)?.status;
+  const body = (error as { body?: unknown } | null)?.body as
+    | { error?: unknown; detail?: unknown }
+    | undefined;
+  const code = typeof body?.error === "string" ? body.error : "";
+  if (typeof status === "number" && code === "clawhub_unreachable") {
+    const detail =
+      typeof body?.detail === "string" && body.detail.trim() ? ` (${body.detail.trim()})` : "";
+    return `ClawHub could not be reached from the console's server${detail}. Check its network access, then retry.`;
+  }
+  const answered = /^clawhub (\d{3})$/.exec(code);
+  if (typeof status === "number" && answered) {
+    return `ClawHub answered ${answered[1]}. Retry in a moment.`;
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof (error as { message?: unknown } | null)?.message === "string"
+        ? (error as { message: string }).message
+        : String(error);
+  return `ClawHub error: ${message}`;
+}
+

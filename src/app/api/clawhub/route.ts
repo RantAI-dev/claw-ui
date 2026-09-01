@@ -54,6 +54,9 @@ const BROWSE_TTL_MS = 10 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q")?.trim();
+  // An explicit Refresh in the console. Without it the button re-read this
+  // cache for ten minutes and visibly did nothing.
+  const fresh = req.nextUrl.searchParams.get("fresh") === "1";
 
   try {
     if (q) {
@@ -68,7 +71,7 @@ export async function GET(req: NextRequest) {
       return Response.json({ items: raw.map(norm).filter((s) => s.slug) });
     }
 
-    if (browseCache && Date.now() - browseCache.at < BROWSE_TTL_MS) {
+    if (!fresh && browseCache && Date.now() - browseCache.at < BROWSE_TTL_MS) {
       return Response.json({ items: browseCache.items, cached: true });
     }
     const res = await fetch(`${BASE}/skills?sort=stars`, {

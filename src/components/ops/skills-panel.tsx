@@ -19,6 +19,7 @@ import type { ClawHubSkill, Skill } from "@/lib/types";
 import {
   candidateAnnotation,
   candidatesFromError,
+  describeHubError,
   indexInstalledSkills,
   installStateFor,
   skillReference,
@@ -74,18 +75,28 @@ export function SkillsPanel() {
     [installed.data],
   );
 
+  // Set by Refresh, consumed by the next fetch: the browse list is cached in
+  // the console's own proxy for ten minutes, so a Refresh that did not say
+  // "fresh" came back with the same list and looked like it did nothing.
+  const hubFresh = React.useRef(false);
   React.useEffect(() => {
     if (view !== "browse") return;
     setHubLoading(true);
     setHubError(null);
+    const fresh = hubFresh.current;
+    hubFresh.current = false;
     const t = setTimeout(
       async () => {
         try {
-          const { items } = await api.clawhub(hubQuery.trim() || undefined);
+          const { items } = await api.clawhub(hubQuery.trim() || undefined, { fresh });
           setHub(items);
         } catch (e) {
-          setHubError(describeApiError(e));
-          setHub([]);
+          // Not `describeApiError`: its 502 branch blames the gateway, and the
+          // gateway is not on this path.
+          setHubError(describeHubError(e));
+          // `null`, not `[]`: Retry shows the loading line again instead of a
+          // blank grid with only the spinner in the search box.
+          setHub(null);
         } finally {
           setHubLoading(false);
         }
@@ -163,7 +174,7 @@ export function SkillsPanel() {
         toast.dismiss(t);
         setAmbiguous({ reference, candidates });
       } else {
-        toast.error(`Install failed: ${e instanceof Error ? e.message : e}`, { id: t });
+        toast.error(`Install failed: ${describeApiError(e)}`, { id: t });
       }
     } finally {
       setWorking(null);
@@ -185,15 +196,19 @@ export function SkillsPanel() {
       window.dispatchEvent(new CustomEvent(SKILLS_CHANGED));
       writeRef.current?.focus();
     } catch (e) {
-      toast.error(`${copy.confirm} failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`${copy.confirm} failed: ${describeApiError(e)}`);
     } finally {
       setWorking(null);
     }
   };
 
   const refreshActive = () => {
-    if (view === "installed") installed.refresh();
-    else setHubNonce((n) => n + 1);
+    if (view === "installed") {
+      installed.refresh();
+    } else {
+      hubFresh.current = true;
+      setHubNonce((n) => n + 1);
+    }
   };
 
   return (
@@ -243,7 +258,10 @@ export function SkillsPanel() {
         >
           <Plus className="size-3.5" /> Write
         </Button>
-        <RefreshButton onClick={refreshActive} />
+        <RefreshButton
+          onClick={refreshActive}
+          spinning={view === "installed" ? installed.refreshing : hubLoading}
+        />
       </div>
 
       {view === "installed" ? (
@@ -251,26 +269,18 @@ export function SkillsPanel() {
           loading={installed.loading}
           error={installed.error}
           loaded={installed.loaded}
+          loadingLabel="Loading skills…"
           onRefresh={installed.refresh}
         >
           {skills.length === 0 ? (
-            // Replaces an auto-jump to the marketplace. Sending the user to
-            // Browse answered "install one" before they had been asked, and it
-            // took the Write button off screen on the way.
+            // The toolbar right above already carries Write and Browse
+            // ClawHub; repeating them here was two CTAs 90 px apart. Nothing
+            // auto-jumps to the marketplace either: that answered "install
+            // one" before anyone had been asked.
             <EmptyState
               icon={<Blocks className="size-6" />}
               title="No skills installed yet."
-              hint="A skill is a set of standing instructions the agent follows. Write one, or install someone else's."
-              action={
-                <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={() => setEditor({ mode: "create" })}>
-                    <Plus className="size-3.5" /> Write a skill
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => setView("browse")}>
-                    Browse ClawHub
-                  </Button>
-                </div>
-              }
+              hint="A skill is a set of standing instructions the agent follows. Write one with the Write button, or open Browse ClawHub."
             />
           ) : matching.length === 0 ? (
             <EmptyState
@@ -327,8 +337,9 @@ export function SkillsPanel() {
           }
         />
       ) : hubLoading && !hub ? (
-        <div className="flex items-center justify-center gap-2 py-14 font-mono text-xs text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" /> Searching ClawHub…
+        <div className="flex items-center justify-center gap-2 py-14 text-xs text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" />{" "}
+          {hubQuery.trim() ? "Searching ClawHub…" : "Loading the ClawHub list…"}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
@@ -339,6 +350,16 @@ export function SkillsPanel() {
             // share popular slugs, so `working === s.slug` put every
             // same-slug card into the spinner on a single click.
             const busy = working === reference;
+            // As text under the reference, not a tooltip: a tooltip is
+            // invisible on touch and to a keyboard. "Uninstall, then install
+            // again" because `install_one` leaves a slug that is already
+            // present alone; a plain reinstall records nothing.
+            const note =
+              state.kind === "installed-unattributed"
+                ? "Installed, publisher not recorded. Uninstall it, then install it again to record one."
+                : state.kind === "other-publisher"
+                  ? `Installed from @${state.owner}. Uninstall it first to switch publishers.`
+                  : null;
             return (
               <Card key={reference} className="flex flex-col gap-2 p-3">
                 <div className="flex items-start gap-2">
@@ -361,26 +382,14 @@ export function SkillsPanel() {
                   </div>
                   {state.kind === "installed" ||
                   state.kind === "installed-unattributed" ? (
-                    <Badge
-                      variant="success"
-                      className="shrink-0"
-                      title={
-                        state.kind === "installed-unattributed"
-                          ? "This slug is installed, but the publisher was not recorded — reinstall to attribute it."
-                          : undefined
-                      }
-                    >
+                    <Badge variant="success" className="shrink-0">
                       installed
                     </Badge>
                   ) : state.kind === "other-publisher" ? (
                     // The slug's directory holds someone else's copy. The
                     // gateway refuses to overwrite it, so offering Install
                     // here would promise something that cannot happen.
-                    <Badge
-                      variant="warning"
-                      className="shrink-0"
-                      title={`Installed from @${state.owner}. Uninstall it first to switch publishers.`}
-                    >
+                    <Badge variant="warning" className="shrink-0">
                       @{state.owner} installed
                     </Badge>
                   ) : (
@@ -396,7 +405,12 @@ export function SkillsPanel() {
                     </Button>
                   )}
                 </div>
-                {s.summary && <p className="line-clamp-2 text-xs text-muted-foreground">{s.summary}</p>}
+                {note && <p className="text-[11px] text-muted-foreground">{note}</p>}
+                {s.summary && (
+                  <p className="line-clamp-2 text-xs text-muted-foreground" title={s.summary}>
+                    {s.summary}
+                  </p>
+                )}
                 <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                   {s.stars != null && (
                     <span className="flex items-center gap-0.5">
@@ -413,7 +427,15 @@ export function SkillsPanel() {
             );
           })}
           {!hubLoading && hub && hub.length === 0 && (
-            <EmptyState className="col-span-full" title="No skills found." />
+            <EmptyState
+              className="col-span-full"
+              title={
+                hubQuery.trim()
+                  ? `No ClawHub skills match “${hubQuery.trim()}”.`
+                  : "ClawHub returned no skills."
+              }
+              hint={hubQuery.trim() ? "Try another word, or write one." : undefined}
+            />
           )}
         </div>
       )}
@@ -613,7 +635,11 @@ function InstalledCard({
         </div>
       </div>
       {skill.description && (
-        <p className="line-clamp-2 text-xs text-muted-foreground">{skill.description}</p>
+        // Clamped to two lines; the title keeps the whole sentence reachable,
+        // and it is the sentence the model uses to pick the skill.
+        <p className="line-clamp-2 text-xs text-muted-foreground" title={skill.description}>
+          {skill.description}
+        </p>
       )}
       {state.reasons.length > 0 && (
         <p className="text-[11px] text-muted-foreground">

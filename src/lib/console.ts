@@ -148,7 +148,8 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   skills: {
     title: "Skills",
     eyebrow: "Capabilities",
-    blurb: "Skills the agent can use. Write your own, or install them from the ClawHub marketplace.",
+    blurb:
+      "Standing instructions the agent follows. Write your own, install one from ClawHub, switch one off, or remove it.",
   },
   kb: {
     title: "Knowledge Bases",

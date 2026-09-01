@@ -311,15 +311,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name, content }),
     }),
-  // ClawHub registry — browse top-by-stars, or search with q. Goes via the Next
-  // /api/clawhub proxy (not the gateway).
-  clawhub: async (q?: string): Promise<{ items: ClawHubSkill[] }> => {
-    const res = await fetch(
-      `/api/clawhub${q ? `?q=${encodeURIComponent(q)}` : ""}`,
-    );
-    const d = await res.json();
-    if (!res.ok) throw new Error(d.detail || d.error || "ClawHub error");
-    return d;
+  // ClawHub registry: browse top-by-stars, or search with q. Goes via the Next
+  // /api/clawhub proxy (not the gateway). `fresh` bypasses the proxy's
+  // ten-minute browse cache, so an explicit Refresh refreshes. Failures throw
+  // an `ApiError` carrying the status and the proxy's body for
+  // `describeHubError`; they must not be read by `describeApiError`, whose
+  // 502 branch blames a gateway that is not on this path.
+  clawhub: async (
+    q?: string,
+    opts: { fresh?: boolean } = {},
+  ): Promise<{ items: ClawHubSkill[] }> => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (opts.fresh) params.set("fresh", "1");
+    const qs = params.toString();
+    const res = await fetch(`/api/clawhub${qs ? `?${qs}` : ""}`);
+    const text = await res.text();
+    let d: { items?: ClawHubSkill[]; detail?: string; error?: string } = {};
+    try {
+      d = text ? JSON.parse(text) : {};
+    } catch {
+      d = {};
+    }
+    if (!res.ok) {
+      throw new ApiError(d.detail || d.error || res.statusText || "ClawHub error", res.status, d);
+    }
+    return { items: d.items ?? [] };
   },
   // `reference` is a bare slug or the publisher-qualified `@owner/slug`.
   // A bare slug that several publishers share comes back as `409

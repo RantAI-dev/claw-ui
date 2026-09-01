@@ -184,6 +184,8 @@ describe("SkillsPanel: one query per view", () => {
       timeout: 2000,
     });
     expect((searchBox() as HTMLInputElement).value).toBe("zzz");
+    expect(await screen.findByText("No ClawHub skills match “zzz”.")).toBeTruthy();
+    expect(screen.getByText("Try another word, or write one.")).toBeTruthy();
   });
 });
 
@@ -226,6 +228,65 @@ describe("SkillsPanel: chrome", () => {
     expect(screen.getByText("2 active").className).toContain("eyebrow");
     expect(installedTab().className).toContain("focus-visible:outline-2");
     expect(browseTab().className).toContain("pointer-coarse:min-h-10");
+  });
+});
+
+describe("SkillsPanel: ClawHub and feedback", () => {
+  it("says who could not be reached and refreshes for real on Retry", async () => {
+    clawhub.mockImplementation(() =>
+      Promise.reject(
+        new ApiError("fetch failed", 502, { error: "clawhub_unreachable", detail: "fetch failed" }),
+      ),
+    );
+    render(<SkillsPanel />);
+    await screen.findByText("Kopi Pagi");
+    fireEvent.click(browseTab());
+    await screen.findByText(
+      "ClawHub could not be reached from the console's server (fetch failed). Check its network access, then retry.",
+    );
+    expect(clawhub.mock.calls[0][1]).toEqual({ fresh: false });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(clawhub).toHaveBeenCalledTimes(2));
+    expect(clawhub.mock.calls[1][1]).toEqual({ fresh: true });
+  });
+
+  it("puts an install failure through the shared error words", async () => {
+    clawhub.mockImplementation(() =>
+      Promise.resolve({ items: [hubSkill({ slug: "gog", displayName: "Gog", ownerHandle: undefined })] }),
+    );
+    installSkill.mockImplementation(() => Promise.reject(new ApiError("x", 502, {})));
+    render(<SkillsPanel />);
+    await screen.findByText("Kopi Pagi");
+    fireEvent.click(browseTab());
+    fireEvent.click(await screen.findByRole("button", { name: "Install" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(String(toastError.mock.calls[0][0])).toMatch(/Install failed: The gateway is unreachable/);
+  });
+
+  it("writes the other-publisher note as text, not a tooltip", async () => {
+    clawhub.mockImplementation(() =>
+      Promise.resolve({ items: [hubSkill({ ownerHandle: "paudyyin" })] }),
+    );
+    render(<SkillsPanel />);
+    await screen.findByText("Kopi Pagi");
+    fireEvent.click(browseTab());
+    await screen.findByText("Installed from @steipete. Uninstall it first to switch publishers.");
+    expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
+  });
+
+  it("does not repeat the toolbar in the empty state", async () => {
+    skills.mockImplementation(() => Promise.resolve(list([])));
+    render(<SkillsPanel />);
+    await screen.findByText("No skills installed yet.");
+    expect(screen.queryByRole("button", { name: "Write a skill" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Browse ClawHub" })).toHaveLength(1);
+    expect(screen.getByText(/Write one with the Write button, or open Browse ClawHub\./)).toBeTruthy();
+  });
+
+  it("keeps the full description reachable", async () => {
+    render(<SkillsPanel />);
+    const p = await screen.findByText("How to brew V60 pour-over.");
+    expect(p.getAttribute("title")).toBe("How to brew V60 pour-over.");
   });
 });
 
