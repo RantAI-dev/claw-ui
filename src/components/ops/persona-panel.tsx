@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import { Check, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { cn } from "@/lib/utils";
 import { PERSONA_CHANGED } from "@/lib/console";
 import { describeApiError } from "@/lib/api";
+import type { Personality } from "@/lib/types";
 import {
   browserTimeZone,
   fieldErrors,
@@ -13,6 +15,8 @@ import {
   freshForm,
   isDirty,
   isFresh,
+  kbBlockState,
+  kbUnavailableCode,
   nearCap,
   timeZoneOptions,
   trimForm,
@@ -77,14 +81,23 @@ function Field({
 
 export function PersonaPanel() {
   const { data, loading, error, refresh } = useAsync(() => api.personality(), []);
-  const groups = useAsync(() => api.kbGroups(), []);
+  // A Knowledge Base that is off or has no embedding key answers with a code;
+  // keep it as data so the block can say which, instead of a generic failure.
+  const groups = useAsync(
+    () =>
+      api.kbGroups().catch((e) => {
+        const code = kbUnavailableCode(e);
+        if (code) return { unavailable: code } as const;
+        throw e;
+      }),
+    [],
+  );
   const presets = useAsync(() => api.personalityPresets(), []);
   const presetOptions = presets.data?.presets ?? FALLBACK_PRESETS;
 
   const [form, setForm] = React.useState<PersonaForm | null>(null);
   const set = (patch: Partial<PersonaForm>) => setForm((f) => (f ? { ...f, ...patch } : f));
   const [saving, setSaving] = React.useState(false);
-  const [savingKbs, setSavingKbs] = React.useState(false);
 
   const ids = {
     preset: React.useId(),
@@ -94,15 +107,23 @@ export function PersonaPanel() {
     role: React.useId(),
     avoid: React.useId(),
     tzList: React.useId(),
+    kbHeading: React.useId(),
   };
   const browserTz = React.useMemo(browserTimeZone, []);
   const tzOptions = React.useMemo(timeZoneOptions, []);
 
   // Seed the form from the saved persona; a fresh profile gets the runtime's
-  // own defaults so Save writes what is on screen, not "" over them.
+  // own defaults so Save writes what is on screen, not "" over them. Only a
+  // clean form is re-seeded: Refresh reloads the saved snapshot, it does not
+  // overwrite work in progress (the form is read on purpose; `data` drives it).
+  const seededRef = React.useRef<Personality | null>(null);
   React.useEffect(() => {
-    if (!data) return;
-    setForm(isFresh(data) ? freshForm(browserTimeZone()) : formFromPersonality(data));
+    if (!data || data === seededRef.current) return;
+    const prev = seededRef.current;
+    seededRef.current = data;
+    const clean = !form || !prev || isFresh(prev) || !isDirty(form, formFromPersonality(prev));
+    if (clean) setForm(isFresh(data) ? freshForm(browserTimeZone()) : formFromPersonality(data));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
   const fresh = !!data && isFresh(data);
@@ -112,6 +133,12 @@ export function PersonaPanel() {
   const errors = form ? fieldErrors(form) : {};
   const hasErrors = Object.keys(errors).length > 0;
   const selectedPreset = presetOptions.find((p) => p.id === form?.preset);
+  const kb = kbBlockState({ loading: groups.loading, error: groups.error, data: groups.data });
+  const kbLink = (
+    <a href="#kb" className="underline underline-offset-2 hover:text-foreground">
+      Knowledge Bases
+    </a>
+  );
 
   const fieldProps = (key: FieldKey) => ({
     "aria-invalid": errors[key] ? true : undefined,
@@ -144,24 +171,10 @@ export function PersonaPanel() {
     }
   };
 
-  // Toggle a KB in the always-on set and persist immediately.
-  const toggleKb = async (id: string) => {
+  const toggleKb = (id: string) => {
     if (!form) return;
-    const prev = form.alwaysOn;
-    const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
-    set({ alwaysOn: next });
-    setSavingKbs(true);
-    try {
-      await api.setPersonality({ preset: data?.preset || form.preset || undefined, always_on_kbs: next });
-      toast.success("Always-on knowledge bases updated", { id: "persona-always-on" });
-      window.dispatchEvent(new CustomEvent(PERSONA_CHANGED));
-      refresh();
-    } catch (e) {
-      set({ alwaysOn: prev });
-      toast.error(`Failed to update: ${describeApiError(e)}`);
-    } finally {
-      setSavingKbs(false);
-    }
+    const on = form.alwaysOn.includes(id);
+    set({ alwaysOn: on ? form.alwaysOn.filter((x) => x !== id) : [...form.alwaysOn, id] });
   };
 
   return (
@@ -240,18 +253,18 @@ export function PersonaPanel() {
                   <option key={tz} value={tz} />
                 ))}
               </datalist>
-              {form.timezone.trim() !== browserTz && (
-                <Button
-                  type="button"
-                  variant="link"
-                  size="sm"
-                  className="h-auto px-0 text-[11px]"
-                  onClick={() => set({ timezone: browserTz })}
-                >
-                  Use this browser&apos;s timezone ({browserTz})
-                </Button>
-              )}
             </Field>
+            {form.timezone.trim() !== browserTz && (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="-mt-2 h-auto px-0 text-[11px]"
+                onClick={() => set({ timezone: browserTz })}
+              >
+                Use this browser&apos;s timezone ({browserTz})
+              </Button>
+            )}
             <Field id={ids.tone} label="Tone" value={form.tone} max={80} error={errors.tone}>
               <Input
                 id={ids.tone}
@@ -292,38 +305,56 @@ export function PersonaPanel() {
               </Button>
             </div>
 
-            {/* Always-on knowledge bases: retrieved on every chat regardless of per-chat selection. */}
+            {/* Always-on knowledge bases: form state like every other field; they go with Save. */}
             <div className="border-t border-border/60 pt-3">
-              <div className={LABEL}>Always-on knowledge bases</div>
+              <div id={ids.kbHeading} className={LABEL}>
+                Always-on knowledge bases
+              </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                Selected bases are searched on every conversation for this persona. Create or edit
-                the bases themselves in the Knowledge Bases tab.
+                Searched on every chat sent from this console, on top of the bases picked for that
+                chat. Channels and the terminal do not read this list.
               </p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {(groups.data || []).length === 0 ? (
-                  <span className="text-[11px] text-muted-foreground">
-                    {groups.loading ? "Loading…" : "No knowledge bases yet."}
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                {kb.kind === "loading" && <span>Loading knowledge bases…</span>}
+                {kb.kind === "off" && (
+                  <span>The Knowledge Base is turned off. Turn it on under {kbLink}.</span>
+                )}
+                {kb.kind === "no-key" && (
+                  <span>The Knowledge Base needs an embedding key. Add one under {kbLink}.</span>
+                )}
+                {kb.kind === "error" && (
+                  <span className="inline-flex flex-wrap items-center gap-2 text-destructive">
+                    Couldn&apos;t load knowledge bases: {kb.message}
+                    <Button variant="ghost" size="sm" onClick={groups.refresh}>
+                      <RefreshCw /> Retry
+                    </Button>
                   </span>
-                ) : (
-                  (groups.data || []).map((g) => {
-                    const on = form.alwaysOn.includes(g.id);
-                    return (
-                      <button
-                        key={g.id}
-                        onClick={() => toggleKb(g.id)}
-                        disabled={savingKbs}
-                        className={cn(
-                          "rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-50",
-                          on
-                            ? "border-accent/60 bg-accent/10 text-accent"
-                            : "border-border text-muted-foreground hover:text-foreground",
-                        )}
-                        title={g.description || g.name}
-                      >
-                        {g.name}
-                      </button>
-                    );
-                  })
+                )}
+                {kb.kind === "empty" && <span>No knowledge bases yet. Create one under {kbLink}.</span>}
+                {kb.kind === "list" && (
+                  <div role="group" aria-labelledby={ids.kbHeading} className="flex flex-wrap gap-2">
+                    {kb.groups.map((g) => {
+                      const on = form.alwaysOn.includes(g.id);
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => toggleKb(g.id)}
+                          title={g.description || undefined}
+                          className={cn(
+                            "inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10",
+                            on
+                              ? "border-accent/60 bg-accent/10 text-accent"
+                              : "border-border text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          {on && <Check className="size-3.5" aria-hidden="true" />}
+                          {g.name}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>

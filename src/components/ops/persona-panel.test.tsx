@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { PERSONA_CHANGED } from "@/lib/console";
+import { ApiError } from "@/lib/api";
 
 // ---- mock the gateway client ----
 const personality = vi.fn();
@@ -155,5 +156,69 @@ describe("PersonaPanel", () => {
     fireEvent.change(screen.getByLabelText("Preset"), { target: { value: "concise_pro" } });
     expect(screen.getByText("Short, formal, lead-with-the-answer.")).toBeTruthy();
     expect(screen.queryByText("Balanced general-purpose helper.")).toBeNull();
+  });
+
+  const GROUPS = [
+    { id: "g1", name: "Product docs", description: "Manuals", color: null },
+    { id: "g2", name: "Support runbook", description: null, color: null },
+  ];
+
+  it("keeps a base toggle in the form and saves it with the fields", async () => {
+    kbGroups.mockResolvedValue(GROUPS);
+    render(<PersonaPanel />);
+    const chip = (await screen.findByRole("button", { name: "Product docs" })) as HTMLButtonElement;
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(chip);
+    expect(setPersonality).not.toHaveBeenCalled();
+    expect(chip.getAttribute("aria-pressed")).toBe("true");
+    const save = screen.getByRole("button", { name: /save persona/i }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(setPersonality).toHaveBeenCalledTimes(1));
+    expect(setPersonality.mock.calls[0][0]).toMatchObject({ name: "RantaiClaw", always_on_kbs: ["g1"] });
+  });
+
+  it("keeps an unsaved edit through Refresh and through a base toggle", async () => {
+    kbGroups.mockResolvedValue(GROUPS);
+    render(<PersonaPanel />);
+    const name = (await screen.findByDisplayValue("RantaiClaw")) as HTMLInputElement;
+    await screen.findByRole("button", { name: "Product docs" });
+    fireEvent.change(name, { target: { value: "Nova" } });
+    fireEvent.click(screen.getByRole("button", { name: /^refresh$/i }));
+    await waitFor(() => expect(personality).toHaveBeenCalledTimes(2));
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Nova");
+    fireEvent.click(screen.getByRole("button", { name: "Support runbook" }));
+    expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Nova");
+    expect((screen.getByRole("button", { name: /save persona/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("re-seeds a clean form when the saved persona changes on the gateway", async () => {
+    render(<PersonaPanel />);
+    await screen.findByDisplayValue("RantaiClaw");
+    personality.mockResolvedValue({ ...SAVED, name: "Atlas" });
+    fireEvent.click(screen.getByRole("button", { name: /^refresh$/i }));
+    expect(await screen.findByDisplayValue("Atlas")).toBeTruthy();
+  });
+
+  it("names why the knowledge bases cannot be listed, and links the route", async () => {
+    kbGroups.mockRejectedValue(new ApiError("The Knowledge Base is turned off.", 403, { error: "kb_disabled" }));
+    const { unmount } = render(<PersonaPanel />);
+    expect(await screen.findByText(/turned off/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Knowledge Bases" }).getAttribute("href")).toBe("#kb");
+    unmount();
+
+    kbGroups.mockRejectedValue(new ApiError("no key", 503, { error: "kb_not_configured" }));
+    const r2 = render(<PersonaPanel />);
+    expect(await screen.findByText(/embedding key/)).toBeTruthy();
+    r2.unmount();
+
+    kbGroups.mockClear();
+    kbGroups.mockRejectedValueOnce(new ApiError("boom", 502, null)).mockResolvedValue([]);
+    const r3 = render(<PersonaPanel />);
+    expect(await screen.findByText(/Couldn't load knowledge bases/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(await screen.findByText(/No knowledge bases yet/)).toBeTruthy();
+    expect(kbGroups).toHaveBeenCalledTimes(2);
+    r3.unmount();
   });
 });
