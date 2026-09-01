@@ -324,3 +324,51 @@ describe("MemoryPanel: list state", () => {
     await waitFor(() => expect(refresh.disabled).toBe(false));
   });
 });
+
+describe("MemoryPanel: labels, names and time", () => {
+  it("labels the content field so its name survives typing", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    const box = screen.getByLabelText("Remember something") as HTMLTextAreaElement;
+    expect(box.tagName).toBe("TEXTAREA");
+  });
+
+  it("names the key button by what it does and Show more by what it opens", async () => {
+    memory.mockResolvedValue(
+      page([entry({ content: "Checklist before a release:\n1. tag\n2. bump\n3. docs\n4. cut" })]),
+    );
+    render(<MemoryPanel />);
+    await screen.findByText(/Checklist before a release/);
+    expect(screen.getByRole("button", { name: "Copy key deploy-window" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Show more of Checklist before a release/ })).toBeTruthy();
+  });
+
+  it("carries the absolute time on a <time> element", async () => {
+    const { container } = render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    const t = container.querySelector("[data-slot=row] time") as HTMLTimeElement;
+    expect(t.getAttribute("datetime")).toBe("2026-09-01T09:22:14.499Z");
+    expect(t.getAttribute("title")).toBeTruthy();
+  });
+
+  it("uses the shared focus outline, never a 1px ring, and a coarse-pointer floor on the text buttons", async () => {
+    const { container } = render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    expect(container.querySelector(".focus-visible\\:ring-1")).toBeNull();
+    const key = screen.getByRole("button", { name: "Copy key deploy-window" });
+    expect(key.className).toContain("pointer-coarse:min-h-10");
+    expect(key.className).toContain("focus-visible:outline-2");
+  });
+
+  it("shows the clear button once the search has text and clears it", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+    const search = screen.getByLabelText("Search memories") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "dep" } });
+    const clear = screen.getByRole("button", { name: "Clear search" });
+    expect(clear.className).toContain("pointer-coarse:min-h-10");
+    fireEvent.click(clear);
+    expect(search.value).toBe("");
+  });
+});

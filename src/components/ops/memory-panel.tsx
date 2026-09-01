@@ -26,10 +26,12 @@ import { toast } from "sonner";
 import { isGeneratedMemoryKey } from "@/lib/recalled-memories";
 import {
   NAME_SEPARATOR_MESSAGE,
+  absoluteTime,
   categoryOptions,
   emptyCopy,
   forgetFromTerminal,
   hasSeparator,
+  isoTime,
   originWords,
   rememberToast,
 } from "@/lib/memory";
@@ -48,6 +50,10 @@ const PAGE_SIZE = 50;
 const CLAMP_CHARS = 180;
 
 type RememberBody = { content: string; category: string; key?: string };
+
+/** The two text buttons on the meta line: the shared outline and a coarse-pointer floor. */
+const META_BUTTON =
+  "-mx-1 rounded-sm px-1 py-1 transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10";
 
 /** Enough of a memory to tell one row from another in a label. */
 function previewOf(content: string): string {
@@ -85,6 +91,7 @@ export function MemoryPanel() {
   } | null>(null);
   const nameErrId = React.useId();
   const listId = React.useId();
+  const contentId = React.useId();
 
   // Typing shouldn't fire a request per keystroke.
   React.useEffect(() => {
@@ -230,10 +237,11 @@ export function MemoryPanel() {
       </SectionTitle>
 
       <Card className="space-y-2 p-3">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+        <label htmlFor={contentId} className="eyebrow">
           Remember something
-        </div>
+        </label>
         <Textarea
+          id={contentId}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="A durable fact or preference the agent should remember…"
@@ -276,7 +284,7 @@ export function MemoryPanel() {
         )}
         {/* Naming is what makes an entry addressable from the CLI and the API
             afterwards; unnamed ones get a UUID that means nothing to a reader. */}
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground">
           Without a name the entry gets a generated key.
         </p>
       </Card>
@@ -289,17 +297,16 @@ export function MemoryPanel() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search memories…"
             aria-label="Search memories"
-            className="h-8 pl-7 pr-7 text-xs"
+            className="h-8 pl-7 pr-9 text-xs"
           />
           {search && (
-            <button
-              type="button"
+            <IconButton
               onClick={() => setSearch("")}
               aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-1"
             >
               <X className="size-3.5" />
-            </button>
+            </IconButton>
           )}
         </div>
         <Input
@@ -376,7 +383,7 @@ export function MemoryPanel() {
                       {e.content}
                     </p>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      <Badge variant="secondary" className="text-[10px]">
+                      <Badge variant="secondary" className="text-[11px]">
                         {e.category}
                       </Badge>
                       <IconButton
@@ -400,10 +407,14 @@ export function MemoryPanel() {
                       </IconButton>
                     </div>
                   </div>
-                  <div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-                    <span className="shrink-0">
+                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <time
+                      className="shrink-0"
+                      dateTime={isoTime(e.timestamp) ?? undefined}
+                      title={absoluteTime(e.timestamp) ?? undefined}
+                    >
                       {relativeTime(e.timestamp)}
-                    </span>
+                    </time>
                     {origin && (
                       <>
                         <span>·</span>
@@ -419,7 +430,8 @@ export function MemoryPanel() {
                       type="button"
                       onClick={() => copyKey(e.key)}
                       title={`Copy key: ${e.key}`}
-                      className="min-w-0 truncate rounded-sm font-mono transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      aria-label={`Copy key ${e.key}`}
+                      className={cn("min-w-0 truncate font-mono", META_BUTTON)}
                     >
                       {isGeneratedMemoryKey(e.key) ? "copy key" : e.key}
                     </button>
@@ -430,7 +442,8 @@ export function MemoryPanel() {
                           type="button"
                           onClick={() => toggleExpanded(e.key)}
                           aria-expanded={open}
-                          className="shrink-0 rounded-sm transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                          aria-label={`${open ? "Show less" : "Show more"} of ${previewOf(e.content)}`}
+                          className={cn("shrink-0", META_BUTTON)}
                         >
                           {open ? "Show less" : "Show more"}
                         </button>
@@ -454,7 +467,7 @@ export function MemoryPanel() {
           >
             <ChevronLeft className="size-4" /> Previous
           </Button>
-          <span className="text-[10px] tabular-nums text-muted-foreground">
+          <span className="text-[11px] tabular-nums text-muted-foreground">
             Page {Math.floor(offset / PAGE_SIZE) + 1} of{" "}
             {Math.ceil(total / PAGE_SIZE)}
           </span>
