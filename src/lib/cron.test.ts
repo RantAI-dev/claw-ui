@@ -1,16 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   PAST_ONE_OFF,
+  buildSchedule,
   createWarningReason,
+  describeCron,
+  firstLine,
   fmtWhen,
   formatEvery,
   formatSchedule,
   isPastOneOffRefusal,
   jobState,
+  previewSchedule,
   refusalReason,
+  sameSchedule,
+  scheduleDraftError,
   statusTone,
   statusWord,
+  toLocalInput,
+  validateAt,
   validateCron,
+  validateEveryMinutes,
 } from "./cron";
 
 describe("validateCron", () => {
@@ -106,5 +115,90 @@ describe("schedule words", () => {
     expect(fmtWhen(null)).toBe("not yet");
     expect(fmtWhen(undefined)).toBe("not yet");
     expect(fmtWhen("garbage")).toBe("garbage");
+  });
+});
+
+describe("describeCron", () => {
+  it("reads step expressions and the plain hourly one", () => {
+    expect(describeCron("*/15 * * * *")).toBe("every 15 minutes");
+    expect(describeCron("0 */2 * * *")).toBe("every 2 hours");
+    expect(describeCron("0 * * * *")).toBe("every hour");
+    expect(describeCron("*/15 * * * 1")).toBeNull();
+  });
+  it("keeps the shapes it already knew", () => {
+    expect(describeCron("0 9 * * *")).toBe("at 09:00, every day");
+    expect(describeCron("0 9 * * 1-5")).toBe("at 09:00, on weekdays");
+    expect(describeCron("0 9 * * 1")).toBe("at 09:00, every Monday");
+    expect(describeCron("0 0 1 * *")).toBe("at 00:00, on day 1 of the month");
+    expect(describeCron("5 * * * *")).toBe("at :05 every hour, every day");
+    expect(describeCron("* * * * *")).toBe("every minute");
+  });
+});
+
+describe("schedule draft", () => {
+  const draft = (over: Partial<Parameters<typeof scheduleDraftError>[0]>) => ({
+    kind: "cron" as const,
+    expr: "0 9 * * *",
+    tz: "",
+    everyMin: "60",
+    at: "",
+    ...over,
+  });
+  it("validates whole minutes", () => {
+    expect(validateEveryMinutes("1.5")).toBe("Whole minutes only");
+    expect(validateEveryMinutes("0")).toBe("At least 1 minute");
+    expect(validateEveryMinutes("")).toBe("Enter an interval in whole minutes");
+    expect(validateEveryMinutes("5")).toBeNull();
+  });
+  it("validates a one-off time", () => {
+    expect(validateAt("", NOW)).toBe("Pick a date and time");
+    expect(validateAt("2020-01-01T00:00", NOW)).toBe("Pick a time in the future");
+    expect(validateAt(toLocalInput(NOW + 120_000), NOW)).toBeNull();
+  });
+  it("applies one rule per kind", () => {
+    expect(scheduleDraftError(draft({ expr: "" }), NOW)).toBe("Enter a cron expression");
+    expect(scheduleDraftError(draft({ expr: "0 9 * * 8" }), NOW)).toMatch(/out of range/);
+    expect(scheduleDraftError(draft({ kind: "every", everyMin: "1.5" }), NOW)).toBe("Whole minutes only");
+    expect(scheduleDraftError(draft({ kind: "at", at: "" }), NOW)).toBe("Pick a date and time");
+    expect(scheduleDraftError(draft({}), NOW)).toBeNull();
+  });
+  it("builds the schedule without rounding", () => {
+    expect(buildSchedule(draft({ kind: "every", everyMin: "5" }))).toEqual({ kind: "every", every_ms: 300_000 });
+    expect(buildSchedule(draft({ tz: " Asia/Jakarta " }))).toEqual({ kind: "cron", expr: "0 9 * * *", tz: "Asia/Jakarta" });
+    expect(buildSchedule(draft({ tz: "" }))).toEqual({ kind: "cron", expr: "0 9 * * *", tz: undefined });
+    const at = buildSchedule(draft({ kind: "at", at: toLocalInput(NOW + 120_000) }));
+    expect(at.kind).toBe("at");
+    if (at.kind === "at") expect(Date.parse(at.at)).toBe(NOW + 120_000);
+  });
+  it("previews in the operator's words", () => {
+    expect(previewSchedule(draft({}))).toBe("Runs at 09:00, every day · UTC");
+    expect(previewSchedule(draft({ tz: "Asia/Jakarta" }))).toBe("Runs at 09:00, every day · Asia/Jakarta");
+    expect(previewSchedule(draft({ expr: "1 2 3 4 5" }))).toBe("Runs on the expression · UTC");
+    expect(previewSchedule(draft({ kind: "every", everyMin: "5" }))).toBe("Runs every 5 minutes");
+    expect(previewSchedule(draft({ kind: "at", at: toLocalInput(NOW + 120_000) }))).toMatch(
+      /^Runs once at .*, then the job is removed$/,
+    );
+  });
+  it("compares schedules by what they do", () => {
+    expect(sameSchedule({ kind: "cron", expr: "0 9 * * *", tz: null }, { kind: "cron", expr: "0 9 * * *" })).toBe(true);
+    expect(sameSchedule({ kind: "cron", expr: "0 9 * * *", tz: "UTC" }, { kind: "cron", expr: "0 9 * * *" })).toBe(false);
+    expect(sameSchedule({ kind: "every", every_ms: 60_000 }, { kind: "every", every_ms: 60_000 })).toBe(true);
+    expect(sameSchedule({ kind: "every", every_ms: 60_000 }, { kind: "cron", expr: "* * * * *" })).toBe(false);
+  });
+  it("round-trips a datetime-local value", () => {
+    const local = toLocalInput(NOW);
+    expect(local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(Date.parse(local)).toBe(Math.floor(NOW / 60_000) * 60_000);
+    expect(toLocalInput(null)).toBe("");
+  });
+});
+
+describe("firstLine", () => {
+  it("takes the first line as plain text", () => {
+    expect(firstLine("**bold**\n\n## h\ncode")).toBe("bold");
+    expect(firstLine("You said: **hi**\n\n## Stub reply")).toBe("You said: hi");
+    expect(firstLine("\n\n")).toBe("");
+    expect(firstLine("x".repeat(200))).toHaveLength(120);
+    expect(firstLine("x".repeat(200)).endsWith("…")).toBe(true);
   });
 });

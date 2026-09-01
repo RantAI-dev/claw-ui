@@ -23,6 +23,18 @@ export function describeCron(expr: string): string | null {
   const num = (s: string) => (/^\d+$/.test(s) ? Number(s) : null);
   const h = num(hour);
   const m = num(min);
+  const step = (s: string) => {
+    const r = /^\*\/(\d+)$/.exec(s);
+    return r ? Number(r[1]) : null;
+  };
+
+  if (dom === "*" && mon === "*" && dow === "*") {
+    const ms = step(min);
+    const hs = step(hour);
+    if (ms != null && hour === "*") return `every ${ms} minutes`;
+    if (hs != null && min === "0") return `every ${hs} hours`;
+    if (min === "0" && hour === "*") return "every hour";
+  }
 
   let time: string;
   if (min === "*" && hour === "*") return "every minute";
@@ -111,6 +123,16 @@ export function browserTimeZone(): string {
   }
 }
 
+/** A gateway timestamp as the value of a `datetime-local` input (local
+ *  wall-clock, minute precision); "" when unreadable. */
+export function toLocalInput(ts: string | number | null | undefined): string {
+  const ms = whenMs(ts);
+  if (ms == null) return "";
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // ---- Schedules ----
 
 /** "every 5 min" / "every 30 s" / "every 1500 ms"; `long` spells the unit out. */
@@ -137,6 +159,108 @@ export function formatSchedule(s: CronSchedule): string {
     case "every":
       return formatEvery(s.every_ms);
   }
+}
+
+/** Two schedules that would run the same way (a blank zone equals no zone). */
+export function sameSchedule(a: CronSchedule, b: CronSchedule): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "cron" && b.kind === "cron")
+    return a.expr.trim() === b.expr.trim() && (a.tz || "") === (b.tz || "");
+  if (a.kind === "every" && b.kind === "every") return a.every_ms === b.every_ms;
+  if (a.kind === "at" && b.kind === "at") return whenMs(a.at) === whenMs(b.at);
+  return false;
+}
+
+// ---- The create / edit draft: one rule for the three kinds ----
+
+export interface ScheduleDraft {
+  kind: CronSchedule["kind"];
+  expr: string;
+  tz: string;
+  everyMin: string;
+  at: string;
+}
+
+export function validateEveryMinutes(s: string): string | null {
+  const t = s.trim();
+  if (!t) return "Enter an interval in whole minutes";
+  if (!/^\d+$/.test(t)) return "Whole minutes only";
+  if (Number(t) < 1) return "At least 1 minute";
+  return null;
+}
+
+export function validateAt(s: string, now: number): string | null {
+  const ms = s.trim() ? Date.parse(s) : NaN;
+  if (!Number.isFinite(ms)) return "Pick a date and time";
+  if (ms <= now) return "Pick a time in the future";
+  return null;
+}
+
+/** The inline sentence for a draft that does not build yet, or null. */
+export function scheduleDraftError(d: ScheduleDraft, now: number): string | null {
+  switch (d.kind) {
+    case "cron":
+      return d.expr.trim() ? validateCron(d.expr) : "Enter a cron expression";
+    case "every":
+      return validateEveryMinutes(d.everyMin);
+    case "at":
+      return validateAt(d.at, now);
+  }
+}
+
+/** True while the kind's own field is still empty: the sentence is guidance,
+ *  not a mistake. */
+export function scheduleDraftEmpty(d: ScheduleDraft): boolean {
+  switch (d.kind) {
+    case "cron":
+      return !d.expr.trim();
+    case "every":
+      return !d.everyMin.trim();
+    case "at":
+      return !d.at.trim();
+  }
+}
+
+/** The schedule a valid draft builds (call after `scheduleDraftError` is null). */
+export function buildSchedule(d: ScheduleDraft): CronSchedule {
+  switch (d.kind) {
+    case "cron":
+      return { kind: "cron", expr: d.expr.trim(), tz: d.tz.trim() || undefined };
+    case "every":
+      return { kind: "every", every_ms: Number(d.everyMin.trim()) * 60_000 };
+    case "at":
+      return { kind: "at", at: new Date(Date.parse(d.at)).toISOString() };
+  }
+}
+
+/** What a valid draft will do, in the operator's words. */
+export function previewSchedule(d: ScheduleDraft): string {
+  switch (d.kind) {
+    case "cron": {
+      const words = describeCron(d.expr);
+      return `Runs ${words ?? "on the expression"} · ${d.tz.trim() || "UTC"}`;
+    }
+    case "every":
+      return `Runs ${formatEvery(Number(d.everyMin.trim()) * 60_000, true)}`;
+    case "at":
+      return `Runs once at ${fmtWhen(Date.parse(d.at))}, then the job is removed`;
+  }
+}
+
+/** The first line of a run's output as plain text (markdown marks stripped),
+ *  trimmed to `max` characters: the toast's receipt; the history has the rest. */
+export function firstLine(output: string, max = 120): string {
+  const line =
+    output
+      .split(/\r?\n/)
+      .map((l) =>
+        l
+          .replace(/^[#>*\-`\s]+/, "")
+          .replace(/[*`_]+/g, "")
+          .trim(),
+      )
+      .find((l) => l.length > 0) ?? "";
+  return line.length > max ? `${line.slice(0, max - 1)}…` : line;
 }
 
 // ---- Job and run state ----

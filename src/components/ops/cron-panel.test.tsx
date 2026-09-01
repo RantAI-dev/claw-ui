@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { CronJob, CronList, CronRun } from "@/lib/types";
-import { PAST_ONE_OFF } from "@/lib/cron";
+import { PAST_ONE_OFF, toLocalInput } from "@/lib/cron";
 
 const cron = vi.fn();
 const createCron = vi.fn();
@@ -295,5 +295,174 @@ describe("CronPanel run history", () => {
     expect(screen.getByText("refused")).toBeTruthy();
     expect(screen.getByText("attempt 2")).toBeTruthy();
     expect(screen.queryByText("error")).toBeNull();
+  });
+});
+
+const select = (label: string, value: string) =>
+  fireEvent.change(screen.getByLabelText(label), { target: { value } });
+const type = (label: string | RegExp, value: string) =>
+  fireEvent.change(
+    typeof label === "string" ? screen.getByLabelText(label) : screen.getByPlaceholderText(label),
+    { target: { value } },
+  );
+
+describe("CronPanel draft validation", () => {
+  it("applies one rule to the interval kind and never rounds", async () => {
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    type(/Prompt the agent/, "hi");
+    select("Schedule type", "every");
+    type("Interval in minutes", "1.5");
+    expect(screen.getByText("Whole minutes only")).toBeTruthy();
+    expect(button("Create").disabled).toBe(true);
+    type("Interval in minutes", "0");
+    expect(screen.getByText("At least 1 minute")).toBeTruthy();
+    expect(button("Create").disabled).toBe(true);
+    type("Interval in minutes", "5");
+    expect(screen.getByText("Runs every 5 minutes")).toBeTruthy();
+    expect(button("Create").disabled).toBe(false);
+    fireEvent.click(button("Create"));
+    await waitFor(() => expect(createCron).toHaveBeenCalled());
+    expect(createCron.mock.calls[0][0]).toMatchObject({
+      schedule: { kind: "every", every_ms: 300_000 },
+      job_type: "agent",
+      prompt: "hi",
+    });
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Job created"));
+  });
+
+  it("asks for a future time on the one-off kind", async () => {
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    type(/Prompt the agent/, "hi");
+    select("Schedule type", "at");
+    expect(screen.getByText("Pick a date and time")).toBeTruthy();
+    expect(button("Create").disabled).toBe(true);
+    type("Run once at", "2020-01-01T00:00");
+    expect(screen.getByText("Pick a time in the future")).toBeTruthy();
+    expect(button("Create").disabled).toBe(true);
+    type("Run once at", toLocalInput(NOW + 3_600_000));
+    expect(screen.getByText(/then the job is removed/)).toBeTruthy();
+    expect(button("Create").disabled).toBe(false);
+  });
+});
+
+describe("CronPanel rows show the API's hidden fields", () => {
+  it("names a self-removing one-off, the main session and a delivery", async () => {
+    cron.mockImplementation(() =>
+      Promise.resolve(
+        list([
+          job({
+            id: "one",
+            name: "one-off",
+            schedule: { kind: "at", at: iso(3_600_000) },
+            delete_after_run: true,
+            session_target: "main",
+            delivery: { mode: "announce", channel: "telegram", to: "ops", best_effort: true },
+          }),
+        ]),
+      ),
+    );
+    render(<CronPanel />);
+    expect(await screen.findByText(/then removed/)).toBeTruthy();
+    expect(screen.getByText(/main session/)).toBeTruthy();
+    expect(screen.getByText(/announces to telegram ops/)).toBeTruthy();
+  });
+});
+
+describe("CronPanel edit", () => {
+  it("edits an interval job's interval and sends only the schedule", async () => {
+    cron.mockImplementation(() =>
+      Promise.resolve(list([job({ id: "e1", name: "every-30s", schedule: { kind: "every", every_ms: 30_000 } })])),
+    );
+    render(<CronPanel />);
+    await screen.findByText("every-30s");
+    fireEvent.click(button("Edit job every-30s"));
+    const interval = (await screen.findByLabelText("Interval in minutes")) as HTMLInputElement;
+    expect(interval.value).toBe("0.5");
+    expect(screen.queryByText("Whole minutes only")).toBeNull(); // untouched: not re-validated
+    fireEvent.change(interval, { target: { value: "1.5" } });
+    expect(screen.getByText("Whole minutes only")).toBeTruthy();
+    expect(button("Save").disabled).toBe(true);
+    fireEvent.change(interval, { target: { value: "1" } });
+    expect(screen.getByText("Runs every minute")).toBeTruthy();
+    fireEvent.click(button("Save"));
+    await waitFor(() => expect(updateCron).toHaveBeenCalledWith("e1", { schedule: { kind: "every", every_ms: 60_000 } }));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Job updated"));
+  });
+
+  it("sends no schedule when only the name changed", async () => {
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    fireEvent.click(button("Edit job Morning hello"));
+    const name = (await screen.findByLabelText("Name")) as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "Evening hello" } });
+    fireEvent.click(button("Save"));
+    await waitFor(() => expect(updateCron).toHaveBeenCalledWith("j1", { name: "Evening hello" }));
+  });
+
+  it("edits a one-off's time and explains a past one", async () => {
+    const past = iso(-5 * 60_000);
+    cron.mockImplementation(() =>
+      Promise.resolve(
+        list([job({ id: "p1", name: "past", enabled: false, schedule: { kind: "at", at: past }, next_run: past })]),
+      ),
+    );
+    render(<CronPanel />);
+    await screen.findByText("past");
+    fireEvent.click(button("Edit job past"));
+    expect(await screen.findByText(/time has passed\. Give it a new time/)).toBeTruthy();
+    expect(button("Save").disabled).toBe(false); // a rename is still allowed
+    const when = screen.getByLabelText("Run once at") as HTMLInputElement;
+    expect(when.value).toBe(toLocalInput(past));
+    fireEvent.change(when, { target: { value: toLocalInput(NOW + 7_200_000) } });
+    fireEvent.click(button("Save"));
+    await waitFor(() => expect(updateCron).toHaveBeenCalled());
+    const [, body] = updateCron.mock.calls[0] as [string, { schedule?: { kind: string; at: string } }];
+    expect(body.schedule?.kind).toBe("at");
+    expect(Math.abs(Date.parse(body.schedule!.at) - (NOW + 7_200_000))).toBeLessThan(60_000);
+  });
+});
+
+describe("CronPanel copy, empty state and feedback", () => {
+  it("names the command in a shell job's delete confirm", async () => {
+    cron.mockImplementation(() =>
+      Promise.resolve(list([job({ id: "s1", name: "sh", job_type: "shell", command: "echo hi", prompt: null })])),
+    );
+    render(<CronPanel />);
+    await screen.findByText("sh");
+    fireEvent.click(button("Delete job sh"));
+    expect(await screen.findByText(/and its command will be removed/)).toBeTruthy();
+  });
+
+  it("says what an empty list means and keeps the form", async () => {
+    cron.mockImplementation(() => Promise.resolve(list([])));
+    render(<CronPanel />);
+    expect(await screen.findByText("No scheduled jobs yet.")).toBeTruthy();
+    expect(screen.getByText(/Jobs fire from the RantaiClaw daemon while it is running/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
+    expect(screen.queryByText("Nothing here yet.")).toBeNull();
+  });
+
+  it("toasts a pause and maps an outage on the toggle", async () => {
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    fireEvent.click(button("Disable job"));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Paused Morning hello"));
+    updateCron.mockImplementation(() => Promise.reject(new ApiError("upstream", 502, null)));
+    fireEvent.click(button("Disable job"));
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(String(toastError.mock.calls[0][0])).toMatch(/gateway is unreachable/);
+  });
+
+  it("receipts a run with one plain line", async () => {
+    runCron.mockImplementation(() =>
+      Promise.resolve({ id: "j1", success: true, output: "You said: **hi**\n\n## Stub reply" }),
+    );
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    fireEvent.click(button("Run job now"));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+    expect(toastSuccess).toHaveBeenCalledWith("Ran Morning hello", { id: "t1", description: "You said: hi" });
   });
 });

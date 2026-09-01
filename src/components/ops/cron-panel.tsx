@@ -1,23 +1,30 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, History, Pencil, Play, Plus, Power, Trash2 } from "lucide-react";
 import { api, ApiError, describeApiError } from "@/lib/api";
 import type { CronJob, CronRun, CronSchedule } from "@/lib/types";
 import {
   CRON_PRESETS,
   PAST_ONE_OFF,
+  type ScheduleDraft,
   browserTimeZone,
+  buildSchedule,
   createWarningReason,
-  describeCron,
+  firstLine,
   fmtWhen,
   formatSchedule,
   isPastOneOffRefusal,
   jobState,
+  previewSchedule,
   refusalReason,
+  sameSchedule,
+  scheduleDraftEmpty,
+  scheduleDraftError,
   statusTone,
   statusWord,
-  validateCron,
+  toLocalInput,
+  whenMs,
 } from "@/lib/cron";
 import { useAsync } from "@/hooks/use-async";
 import { cn } from "@/lib/utils";
@@ -30,7 +37,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
-import { IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
 const POLL_MS = 15000;
 const CRON_OFF = "Cron is off (cron.enabled=false)";
@@ -53,30 +60,117 @@ function Notice({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** The schedule fields of a draft, by kind; shared by the create card and Edit. */
+function ScheduleFields({
+  draft,
+  onChange,
+  now,
+  idPrefix,
+}: {
+  draft: ScheduleDraft;
+  onChange: (next: Partial<ScheduleDraft>) => void;
+  now: number;
+  idPrefix: string;
+}) {
+  return (
+    <>
+      {draft.kind === "cron" && (
+        <>
+          <Input
+            value={draft.expr}
+            onChange={(e) => onChange({ expr: e.target.value })}
+            placeholder="0 9 * * *"
+            aria-label="Cron expression"
+            className="h-8 w-32 font-mono text-xs"
+          />
+          <Input
+            value={draft.tz}
+            onChange={(e) => onChange({ tz: e.target.value })}
+            placeholder="zone (blank = UTC)"
+            aria-label="Timezone (IANA)"
+            className="h-8 w-40 text-xs"
+          />
+        </>
+      )}
+      {draft.kind === "every" && (
+        <div className="flex items-center gap-1.5">
+          <Input
+            id={`${idPrefix}-every`}
+            type="number"
+            min="1"
+            step="1"
+            value={draft.everyMin}
+            onChange={(e) => onChange({ everyMin: e.target.value })}
+            aria-label="Interval in minutes"
+            className="h-8 w-20 text-xs"
+          />
+          <span className="text-xs text-muted-foreground">min</span>
+        </div>
+      )}
+      {draft.kind === "at" && (
+        <Input
+          type="datetime-local"
+          min={toLocalInput(now)}
+          value={draft.at}
+          onChange={(e) => onChange({ at: e.target.value })}
+          aria-label="Run once at"
+          className="h-8 w-52 text-xs"
+        />
+      )}
+    </>
+  );
+}
+
+/** The one line under a draft: the reason it does not build yet (red once the
+ *  field has something in it), or what it will do. */
+function DraftLine({ draft, now }: { draft: ScheduleDraft; now: number }) {
+  const err = scheduleDraftError(draft, now);
+  if (err) {
+    return (
+      <p className={cn("text-[11px]", scheduleDraftEmpty(draft) ? "text-muted-foreground" : "text-destructive")}>
+        {err}
+      </p>
+    );
+  }
+  return <p className="text-[11px] text-muted-foreground">{previewSchedule(draft)}</p>;
+}
+
+/** What the row says beside the schedule: hidden API fields made visible. */
+function scheduleExtras(j: CronJob): string {
+  let s = "";
+  if (j.schedule.kind === "at" && j.delete_after_run) s += ", then removed";
+  if (j.session_target === "main") s += " · main session";
+  if (j.delivery && j.delivery.mode && j.delivery.mode !== "none") {
+    s += ` · announces to ${j.delivery.channel ?? j.delivery.mode}${j.delivery.to ? ` ${j.delivery.to}` : ""}`;
+  }
+  return s;
+}
+
 export function CronPanel() {
   const { data, loading, error, refresh, refreshing, loaded } = useAsync(() => api.cron(), []);
   const [jobKind, setJobKind] = React.useState<"agent" | "shell">("agent");
   const [prompt, setPrompt] = React.useState("");
   const [command, setCommand] = React.useState("");
-  const [expr, setExpr] = React.useState("0 9 * * *");
+  const [name, setName] = React.useState("");
+  const [model, setModel] = React.useState("");
   // The zone the operator sees is the honest default: a blank zone means UTC
   // on the gateway, not the server's clock.
-  const [tz, setTz] = React.useState(browserTimeZone);
-  const [name, setName] = React.useState("");
-  const [kind, setKind] = React.useState<CronSchedule["kind"]>("cron");
-  const [everyMin, setEveryMin] = React.useState("60");
-  const [at, setAt] = React.useState("");
-  const [model, setModel] = React.useState("");
+  const [draft, setDraft] = React.useState<ScheduleDraft>(() => ({
+    kind: "cron",
+    expr: "0 9 * * *",
+    tz: browserTimeZone(),
+    everyMin: "60",
+    at: "",
+  }));
   const [busy, setBusy] = React.useState(false);
-  const [pendingDelete, setPendingDelete] = React.useState<{ id: string; name: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<CronJob | null>(null);
   const [deleting, setDeleting] = React.useState(false);
   const [editing, setEditing] = React.useState<CronJob | null>(null);
   const [history, setHistory] = React.useState<CronJob | null>(null);
   // Re-read with every poll so an "overdue" row flips without a reload.
   const [now, setNow] = React.useState(() => Date.now());
 
-  const schedulePreview = describeCron(expr);
-  const cronError = kind === "cron" ? validateCron(expr) : null;
+  const patchDraft = (next: Partial<ScheduleDraft>) => setDraft((d) => ({ ...d, ...next }));
 
   // Live refresh: a job firing in the background surfaces without a manual click.
   // `useAsync` keeps stale content mounted during a refresh, so this doesn't flash.
@@ -92,38 +186,12 @@ export function CronPanel() {
   const cronOff = data?.cron_enabled === false;
   const schedulerOff = data?.scheduler_enabled === false;
 
-  const buildSchedule = (): CronSchedule | null => {
-    if (kind === "every") {
-      const mins = Number(everyMin);
-      if (!Number.isFinite(mins) || mins < 1) {
-        toast.error("Interval must be at least 1 minute");
-        return null;
-      }
-      return { kind: "every", every_ms: Math.round(mins) * 60000 };
-    }
-    if (kind === "at") {
-      const ms = at ? Date.parse(at) : NaN;
-      if (!Number.isFinite(ms)) {
-        toast.error("Pick a valid date and time");
-        return null;
-      }
-      return { kind: "at", at: new Date(ms).toISOString() };
-    }
-    if (!expr.trim()) return null;
-    const err = validateCron(expr);
-    if (err) {
-      toast.error(err);
-      return null;
-    }
-    return { kind: "cron", expr: expr.trim(), tz: tz.trim() || undefined };
-  };
+  const primaryEmpty = jobKind === "shell" ? !command.trim() : !prompt.trim();
+  const draftError = scheduleDraftError(draft, now);
 
   const create = async () => {
-    const primaryEmpty = jobKind === "shell" ? !command.trim() : !prompt.trim();
-    if (primaryEmpty) return;
-    const schedule = buildSchedule();
-    if (!schedule) return;
-
+    if (primaryEmpty || draftError) return;
+    const schedule = buildSchedule(draft);
     const payload =
       jobKind === "shell"
         ? {
@@ -151,24 +219,25 @@ export function CronPanel() {
           description: `${createWarningReason(created.warning)}. Use an allowlisted low-risk command.`,
         });
       } else {
-        toast.success("Cron job created");
+        toast.success("Job created");
       }
       setPrompt("");
       setCommand("");
       setName("");
       setModel("");
-      setAt("");
+      patchDraft({ at: "" });
       refresh();
     } catch (e) {
-      toast.error(`Create failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Create failed: ${describeApiError(e)}`);
     } finally {
       setBusy(false);
     }
   };
 
-  const toggle = async (id: string, enabled: boolean) => {
+  const toggle = async (j: CronJob, enabled: boolean) => {
     try {
-      await api.updateCron(id, { enabled });
+      await api.updateCron(j.id, { enabled });
+      toast.success(`${enabled ? "Resumed" : "Paused"} ${jobLabel(j)}`);
       refresh();
     } catch (e) {
       const msg = describeApiError(e);
@@ -176,12 +245,14 @@ export function CronPanel() {
     }
   };
   const run = async (j: CronJob) => {
-    const t = toast.loading(`Running ${jobLabel(j)}…`);
+    const label = jobLabel(j);
+    const t = toast.loading(`Running ${label}…`);
     try {
       const r = await api.runCron(j.id);
       const output = r.output || "";
       if (r.success) {
-        toast.success("Job ran", { id: t, description: output.slice(0, 200) });
+        // The receipt; the full output is in Run history.
+        toast.success(`Ran ${label}`, { id: t, description: firstLine(output) });
         refresh();
         return;
       }
@@ -195,7 +266,7 @@ export function CronPanel() {
           description: `${reason}. It will not run on its schedule either.`,
         });
       } else {
-        toast.error("Job failed", { id: t, description: output.slice(0, 200) });
+        toast.error(`${label} failed`, { id: t, description: firstLine(output) });
       }
       refresh();
     } catch (e) {
@@ -214,17 +285,13 @@ export function CronPanel() {
       setPendingDelete(null);
       refresh();
     } catch (e) {
-      toast.error(String(e instanceof Error ? e.message : e));
+      toast.error(`Delete failed: ${describeApiError(e)}`);
     } finally {
       setDeleting(false);
     }
   };
 
-  const createDisabled =
-    busy ||
-    cronOff ||
-    (jobKind === "shell" ? !command.trim() : !prompt.trim()) ||
-    (kind === "cron" && (!expr.trim() || cronError != null));
+  const createDisabled = busy || cronOff || primaryEmpty || draftError != null;
 
   return (
     <div className="space-y-4">
@@ -273,13 +340,13 @@ export function CronPanel() {
           />
         )}
 
-        {kind === "cron" && (
+        {draft.kind === "cron" && (
           <div className="flex flex-wrap gap-1">
             {CRON_PRESETS.map((p) => (
               <button
                 key={p.expr}
                 type="button"
-                onClick={() => setExpr(p.expr)}
+                onClick={() => patchDraft({ expr: p.expr })}
                 className="rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted"
               >
                 {p.label}
@@ -290,8 +357,8 @@ export function CronPanel() {
 
         <div className="flex flex-wrap items-center gap-2">
           <Select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as CronSchedule["kind"])}
+            value={draft.kind}
+            onChange={(e) => patchDraft({ kind: e.target.value as CronSchedule["kind"] })}
             aria-label="Schedule type"
             className="h-8 w-36 text-xs"
           >
@@ -300,46 +367,7 @@ export function CronPanel() {
             <option value="at">Once at…</option>
           </Select>
 
-          {kind === "cron" && (
-            <>
-              <Input
-                value={expr}
-                onChange={(e) => setExpr(e.target.value)}
-                placeholder="0 9 * * *"
-                aria-label="Cron expression"
-                className="h-8 w-32 font-mono text-xs"
-              />
-              <Input
-                value={tz}
-                onChange={(e) => setTz(e.target.value)}
-                placeholder="zone (blank = UTC)"
-                aria-label="Timezone (IANA)"
-                className="h-8 w-40 text-xs"
-              />
-            </>
-          )}
-          {kind === "every" && (
-            <div className="flex items-center gap-1.5">
-              <Input
-                type="number"
-                min="1"
-                value={everyMin}
-                onChange={(e) => setEveryMin(e.target.value)}
-                aria-label="Interval in minutes"
-                className="h-8 w-20 text-xs"
-              />
-              <span className="text-xs text-muted-foreground">min</span>
-            </div>
-          )}
-          {kind === "at" && (
-            <Input
-              type="datetime-local"
-              value={at}
-              onChange={(e) => setAt(e.target.value)}
-              aria-label="Run once at"
-              className="h-8 w-52 text-xs"
-            />
-          )}
+          <ScheduleFields draft={draft} onChange={patchDraft} now={now} idPrefix="new" />
 
           <Input
             value={name}
@@ -366,20 +394,7 @@ export function CronPanel() {
           />
         )}
 
-        {kind === "cron" && expr.trim() && cronError && (
-          <p className="text-[11px] text-destructive">{cronError}</p>
-        )}
-        {kind === "cron" && expr.trim() && !cronError && (
-          <p className="text-[11px] text-muted-foreground">
-            {schedulePreview ? `Runs ${schedulePreview}` : "Custom cron schedule"} ·{" "}
-            {tz.trim() ? tz.trim() : "UTC"}
-          </p>
-        )}
-        {kind === "every" && everyMin.trim() && (
-          <p className="text-[11px] text-muted-foreground">
-            Runs every {everyMin} minute{everyMin === "1" ? "" : "s"}
-          </p>
-        )}
+        <DraftLine draft={draft} now={now} />
       </Card>
 
       <PanelFrame
@@ -387,121 +402,132 @@ export function CronPanel() {
         error={error}
         loaded={loaded}
         loadingLabel="Loading jobs…"
-        empty={data?.count === 0}
         onRefresh={refresh}
       >
-        <Card className="divide-y divide-border">
-          {data?.jobs.map((j) => {
-            const label = jobLabel(j);
-            const state = jobState(j, now);
-            const pastOneOff = state === "ran-once" || state === "missed";
-            const when =
-              state === "scheduled"
-                ? `next ${fmtWhen(j.next_run)}`
-                : state === "overdue"
-                  ? `due since ${fmtWhen(j.next_run)}`
-                  : state === "paused"
-                    ? "paused"
-                    : state === "ran-once"
-                      ? `ran once at ${fmtWhen(j.last_run)}`
-                      : `missed at ${fmtWhen(j.schedule.kind === "at" ? j.schedule.at : j.next_run)}`;
-            return (
-              <div key={j.id} className="flex items-center gap-1.5 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">{label}</span>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {j.job_type}
-                    </Badge>
-                    {state === "overdue" && (
-                      <Badge variant="warning" className="text-[10px]">
-                        overdue
-                      </Badge>
-                    )}
-                    {state === "paused" && (
-                      <Badge variant="warning" className="text-[10px]">
-                        paused
-                      </Badge>
-                    )}
-                    {state === "ran-once" && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        ran once
-                      </Badge>
-                    )}
-                    {state === "missed" && (
-                      <Badge variant="warning" className="text-[10px]">
-                        missed
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="truncate font-mono text-[11px] text-muted-foreground">
-                    {formatSchedule(j.schedule)} · {when}
-                    {j.last_status
-                      ? ` · last ${statusWord(j.last_status)} ${fmtWhen(j.last_run)}`
-                      : ""}
-                  </div>
-                  {(j.prompt || j.command) && (
-                    <div className="truncate text-[11px] text-muted-foreground/80">
-                      {j.job_type === "shell" ? j.command : j.prompt}
+        {data && data.count === 0 ? (
+          <EmptyState
+            icon={<CalendarClock className="size-6" />}
+            title="No scheduled jobs yet."
+            hint="Create one above. Jobs fire from the RantaiClaw daemon while it is running."
+          />
+        ) : (
+          <>
+            <Card className="divide-y divide-border">
+              {data?.jobs.map((j) => {
+                const label = jobLabel(j);
+                const state = jobState(j, now);
+                const pastOneOff = state === "ran-once" || state === "missed";
+                const when =
+                  state === "scheduled"
+                    ? `next ${fmtWhen(j.next_run)}`
+                    : state === "overdue"
+                      ? `due since ${fmtWhen(j.next_run)}`
+                      : state === "paused"
+                        ? "paused"
+                        : state === "ran-once"
+                          ? `ran once at ${fmtWhen(j.last_run)}`
+                          : `missed at ${fmtWhen(j.schedule.kind === "at" ? j.schedule.at : j.next_run)}`;
+                return (
+                  <div key={j.id} className="flex items-center gap-1.5 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium">{label}</span>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {j.job_type}
+                        </Badge>
+                        {state === "overdue" && (
+                          <Badge variant="warning" className="text-[10px]">
+                            overdue
+                          </Badge>
+                        )}
+                        {state === "paused" && (
+                          <Badge variant="warning" className="text-[10px]">
+                            paused
+                          </Badge>
+                        )}
+                        {state === "ran-once" && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            ran once
+                          </Badge>
+                        )}
+                        {state === "missed" && (
+                          <Badge variant="warning" className="text-[10px]">
+                            missed
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="truncate font-mono text-[11px] text-muted-foreground">
+                        {formatSchedule(j.schedule)}
+                        {scheduleExtras(j)} · {when}
+                        {j.last_status
+                          ? ` · last ${statusWord(j.last_status)} ${fmtWhen(j.last_run)}`
+                          : ""}
+                      </div>
+                      {(j.prompt || j.command) && (
+                        <div className="truncate text-[11px] text-muted-foreground/80">
+                          {j.job_type === "shell" ? j.command : j.prompt}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <IconButton
-                  onClick={() => toggle(j.id, !j.enabled)}
-                  disabled={cronOff || pastOneOff}
-                  title={
-                    cronOff ? CRON_OFF : pastOneOff ? PAST_ONE_OFF : j.enabled ? "Disable" : "Enable"
-                  }
-                  aria-label={j.enabled ? "Disable job" : "Enable job"}
-                  className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
-                >
-                  <Power className="size-3.5" />
-                </IconButton>
-                <IconButton
-                  onClick={() => run(j)}
-                  disabled={cronOff}
-                  title={cronOff ? CRON_OFF : "Run now"}
-                  aria-label="Run job now"
-                >
-                  <Play className="size-3.5" />
-                </IconButton>
-                <IconButton
-                  onClick={() => setHistory(j)}
-                  title="Run history"
-                  aria-label={`Run history for ${label}`}
-                >
-                  <History className="size-3.5" />
-                </IconButton>
-                <IconButton
-                  onClick={() => setEditing(j)}
-                  disabled={cronOff}
-                  title={cronOff ? CRON_OFF : "Edit"}
-                  aria-label={`Edit job ${label}`}
-                >
-                  <Pencil className="size-3.5" />
-                </IconButton>
-                <IconButton
-                  onClick={() => setPendingDelete({ id: j.id, name: label })}
-                  disabled={cronOff}
-                  title={cronOff ? CRON_OFF : "Delete"}
-                  aria-label={`Delete job ${label}`}
-                  className="hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Trash2 className="size-3.5" />
-                </IconButton>
-              </div>
-            );
-          })}
-        </Card>
-        <p className="mt-2 px-1 text-[11px] text-muted-foreground">
-          Jobs fire from the RantaiClaw daemon (<code>rantaiclaw daemon</code>), not from this
-          console. Times are shown in your local zone; a cron expression without a zone runs in
-          UTC.
-        </p>
+                    <IconButton
+                      onClick={() => toggle(j, !j.enabled)}
+                      disabled={cronOff || pastOneOff}
+                      title={
+                        cronOff ? CRON_OFF : pastOneOff ? PAST_ONE_OFF : j.enabled ? "Disable" : "Enable"
+                      }
+                      aria-label={j.enabled ? "Disable job" : "Enable job"}
+                      className={cn(j.enabled && "text-success hover:bg-success/10 hover:text-success")}
+                    >
+                      <Power className="size-3.5" />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => run(j)}
+                      disabled={cronOff}
+                      title={cronOff ? CRON_OFF : "Run now"}
+                      aria-label="Run job now"
+                    >
+                      <Play className="size-3.5" />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => setHistory(j)}
+                      title="Run history"
+                      aria-label={`Run history for ${label}`}
+                    >
+                      <History className="size-3.5" />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => setEditing(j)}
+                      disabled={cronOff}
+                      title={cronOff ? CRON_OFF : "Edit"}
+                      aria-label={`Edit job ${label}`}
+                    >
+                      <Pencil className="size-3.5" />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => setPendingDelete(j)}
+                      disabled={cronOff}
+                      title={cronOff ? CRON_OFF : "Delete"}
+                      aria-label={`Delete job ${label}`}
+                      className="hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </IconButton>
+                  </div>
+                );
+              })}
+            </Card>
+            <p className="mt-2 px-1 text-[11px] text-muted-foreground">
+              Jobs fire from the RantaiClaw daemon (<code>rantaiclaw daemon</code>), not from this
+              console. Times are shown in your local zone; a cron expression without a zone runs in
+              UTC.
+            </p>
+          </>
+        )}
       </PanelFrame>
 
       <EditCronModal
         job={editing}
+        now={now}
         onClose={() => setEditing(null)}
         onSaved={refresh}
         disabledReason={cronOff ? CRON_OFF : null}
@@ -514,7 +540,7 @@ export function CronPanel() {
         title="Delete scheduled job?"
         description={
           pendingDelete
-            ? `“${pendingDelete.name}” and its prompt will be removed. This can't be undone.`
+            ? `“${jobLabel(pendingDelete)}” and its ${pendingDelete.job_type === "shell" ? "command" : "prompt"} will be removed. This can't be undone.`
             : undefined
         }
         confirmLabel="Delete job"
@@ -525,15 +551,29 @@ export function CronPanel() {
   );
 }
 
-/** Edit an existing job's name, prompt/command, model, and (for cron jobs) the
- *  expression + timezone. Only changed fields are sent. */
+function draftFromJob(job: CronJob): ScheduleDraft {
+  const s = job.schedule;
+  return {
+    kind: s.kind,
+    expr: s.kind === "cron" ? s.expr : "",
+    tz: s.kind === "cron" ? (s.tz ?? "") : "",
+    everyMin: s.kind === "every" ? String(s.every_ms / 60_000) : "60",
+    at: s.kind === "at" ? toLocalInput(s.at) : "",
+  };
+}
+
+/** Edit an existing job's name, prompt/command, model and its schedule (the
+ *  expression + zone, the interval, or the one-off time). Only changed fields
+ *  are sent. */
 function EditCronModal({
   job,
+  now,
   onClose,
   onSaved,
   disabledReason,
 }: {
   job: CronJob | null;
+  now: number;
   onClose: () => void;
   onSaved: () => void;
   /** Why Save is unavailable (cron switched off), or null. */
@@ -543,8 +583,14 @@ function EditCronModal({
   const [prompt, setPrompt] = React.useState("");
   const [command, setCommand] = React.useState("");
   const [model, setModel] = React.useState("");
-  const [expr, setExpr] = React.useState("");
-  const [tz, setTz] = React.useState("");
+  const [draft, setDraft] = React.useState<ScheduleDraft>({
+    kind: "cron",
+    expr: "",
+    tz: "",
+    everyMin: "60",
+    at: "",
+  });
+  const [seed, setSeed] = React.useState<ScheduleDraft | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
@@ -553,14 +599,24 @@ function EditCronModal({
     setPrompt(job.prompt ?? "");
     setCommand(job.command ?? "");
     setModel(job.model ?? "");
-    setExpr(job.schedule.kind === "cron" ? job.schedule.expr : "");
-    setTz(job.schedule.kind === "cron" ? job.schedule.tz ?? "" : "");
+    const d = draftFromJob(job);
+    setDraft(d);
+    setSeed(d);
   }, [job]);
 
   if (!job) return null;
-  const isCron = job.schedule.kind === "cron";
   const isShell = job.job_type === "shell";
-  const cronError = isCron ? validateCron(expr) : null;
+  const patchDraft = (next: Partial<ScheduleDraft>) => setDraft((d) => ({ ...d, ...next }));
+  // An untouched schedule is never re-validated (a past one-off may still be
+  // renamed); a touched one must build.
+  const untouched =
+    seed != null &&
+    draft.expr === seed.expr &&
+    draft.tz === seed.tz &&
+    draft.everyMin === seed.everyMin &&
+    draft.at === seed.at;
+  const draftError = untouched ? null : scheduleDraftError(draft, now);
+  const pastOneOff = job.schedule.kind === "at" && (whenMs(job.schedule.at) ?? Infinity) <= now;
 
   const save = async () => {
     const body: Parameters<typeof api.updateCron>[1] = {};
@@ -571,17 +627,9 @@ function EditCronModal({
       if (prompt !== (job.prompt ?? "")) body.prompt = prompt;
       if (model !== (job.model ?? "")) body.model = model;
     }
-    if (isCron) {
-      const origExpr = job.schedule.kind === "cron" ? job.schedule.expr : "";
-      const origTz = job.schedule.kind === "cron" ? job.schedule.tz ?? "" : "";
-      if (expr !== origExpr || tz !== origTz) {
-        const err = validateCron(expr);
-        if (err) {
-          toast.error(err);
-          return;
-        }
-        body.schedule = { kind: "cron", expr: expr.trim(), tz: tz.trim() || undefined };
-      }
+    if (!untouched && !draftError) {
+      const built = buildSchedule(draft);
+      if (!sameSchedule(built, job.schedule)) body.schedule = built;
     }
     setBusy(true);
     try {
@@ -590,7 +638,7 @@ function EditCronModal({
       onSaved();
       onClose();
     } catch (e) {
-      toast.error(`Update failed: ${e instanceof Error ? e.message : e}`);
+      toast.error(`Update failed: ${describeApiError(e)}`);
     } finally {
       setBusy(false);
     }
@@ -610,7 +658,7 @@ function EditCronModal({
           <Button
             size="sm"
             onClick={save}
-            disabled={busy || disabledReason != null || (isCron && cronError != null)}
+            disabled={busy || disabledReason != null || draftError != null}
             title={disabledReason ?? undefined}
           >
             Save
@@ -652,25 +700,20 @@ function EditCronModal({
             aria-label="Model override"
           />
         )}
-        {isCron && (
-          <div className="flex flex-wrap gap-2">
-            <Input
-              value={expr}
-              onChange={(e) => setExpr(e.target.value)}
-              placeholder="0 9 * * *"
-              className="h-8 w-36 font-mono text-xs"
-              aria-label="Cron expression"
-            />
-            <Input
-              value={tz}
-              onChange={(e) => setTz(e.target.value)}
-              placeholder="zone (blank = UTC)"
-              className="h-8 w-40 text-xs"
-              aria-label="Timezone"
-            />
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {draft.kind === "every" && (
+            <label htmlFor="edit-every" className="text-xs text-muted-foreground">
+              Interval (minutes)
+            </label>
+          )}
+          <ScheduleFields draft={draft} onChange={patchDraft} now={now} idPrefix="edit" />
+        </div>
+        {pastOneOff && untouched && (
+          <p className="text-[11px] text-muted-foreground">
+            This one-off&apos;s time has passed. Give it a new time to run it again.
+          </p>
         )}
-        {isCron && cronError && <p className="text-[11px] text-destructive">{cronError}</p>}
+        {!untouched && <DraftLine draft={draft} now={now} />}
       </div>
     </Modal>
   );
@@ -708,9 +751,11 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
     >
       <div className="max-h-[50vh] space-y-2 overflow-y-auto">
         {error && <p className="text-[11px] text-destructive">{error}</p>}
-        {!error && runs == null && <p className="text-[11px] text-muted-foreground">Loading…</p>}
+        {!error && runs == null && (
+          <p className="text-[11px] text-muted-foreground">Loading runs…</p>
+        )}
         {runs != null && runs.length === 0 && (
-          <p className="text-[11px] text-muted-foreground">No runs yet.</p>
+          <p className="text-[11px] text-muted-foreground">No runs yet. Run now records the first.</p>
         )}
         {runs?.map((r) => (
           <details key={r.id} className="rounded border border-border px-2 py-1.5">
