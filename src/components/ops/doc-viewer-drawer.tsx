@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Network, Sparkles } from "lucide-react";
+import { AlertTriangle, FileScan, FileText, Network, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { formatNumber, relativeTime } from "@/lib/utils";
 import { formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/drawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,12 +45,17 @@ export function DocViewerDrawer({
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="border-b border-border/60 px-4 pt-3">
+            {/* First focus lands on the active tab (the Drawer honours
+                data-autofocus), not on the sheet's X. */}
             <TabsList>
-              <TabsTrigger value="preview">
+              <TabsTrigger value="preview" data-autofocus={initialTab === "preview" || undefined}>
                 <FileText className="size-3.5" /> Preview
               </TabsTrigger>
-              <TabsTrigger value="intelligence">
-                <Sparkles className="size-3.5" /> Intelligence
+              <TabsTrigger
+                value="intelligence"
+                data-autofocus={initialTab === "intelligence" || undefined}
+              >
+                <FileScan className="size-3.5" /> Intelligence
               </TabsTrigger>
             </TabsList>
           </div>
@@ -86,7 +92,19 @@ function DocPreview({ documentId }: { documentId: string }) {
   }
 
   if (doc.error) {
-    return <div className="py-10 text-center text-sm text-destructive">{doc.error}</div>;
+    return (
+      <EmptyState
+        tone="destructive"
+        icon={<AlertTriangle className="size-6" />}
+        title="Couldn't load this document"
+        hint={doc.error}
+        action={
+          <Button size="sm" variant="outline" onClick={doc.refresh}>
+            <RefreshCw /> Retry
+          </Button>
+        }
+      />
+    );
   }
 
   const d = doc.data;
@@ -109,7 +127,7 @@ function DocPreview({ documentId }: { documentId: string }) {
       {/* Metadata row */}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         {meta && (
-          <span className="font-mono uppercase tracking-wide">{meta}</span>
+          <span>{meta}</span>
         )}
         {d.created_at != null && (
           <>

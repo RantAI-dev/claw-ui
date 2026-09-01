@@ -1,120 +1,24 @@
-// File-type icon + color mapping for KB documents. Ported from the main app's
-// file-type-utils.ts, keyed off the gateway's lowercased `file_type` enum string
-// (mime_type is frequently null). Colors use chart tokens + tasteful per-type
-// Tailwind variants so the grid reads as a colour-coded library.
-import {
-  FileText,
-  FileType,
-  Image,
-  Globe,
-  FileCode,
-  Code,
-  Table2,
-  Sigma,
-  Presentation,
-  Terminal,
-  type LucideIcon,
-} from "lucide-react";
+// File-type icon + colour for KB documents, keyed by the gateway's lowercased
+// `file_type` enum: `markdown | pdf | image | document | text`
+// (RantAIClaw `src/kb/file/mod.rs`, `SupportedFileType`). The map used to
+// carry eighteen keys (`csv`, `python`, `react`, …) in raw Tailwind hues the
+// gateway could never send; a `.csv` and a `.json` both arrive as `text`.
+import { FileText, FileType, Image, type LucideIcon } from "lucide-react";
 
 export interface FileTypeInfo {
   Icon: LucideIcon;
-  /** Tailwind text-color class for the glyph. */
+  /** Tailwind text-colour class for the glyph. */
   iconColor: string;
   /** Tailwind background class for the tinted tile behind the glyph. */
   bgColor: string;
 }
 
 const TYPE_MAP: Record<string, FileTypeInfo> = {
-  image: {
-    Icon: Image,
-    iconColor: "text-chart-2",
-    bgColor: "bg-chart-2/10",
-  },
-  pdf: {
-    Icon: FileType,
-    iconColor: "text-destructive",
-    bgColor: "bg-destructive/10",
-  },
-  docx: {
-    Icon: FileText,
-    iconColor: "text-blue-500",
-    bgColor: "bg-blue-500/10",
-  },
-  doc: {
-    Icon: FileText,
-    iconColor: "text-blue-500",
-    bgColor: "bg-blue-500/10",
-  },
-  markdown: {
-    Icon: FileText,
-    iconColor: "text-chart-1",
-    bgColor: "bg-chart-1/10",
-  },
-  md: {
-    Icon: FileText,
-    iconColor: "text-chart-1",
-    bgColor: "bg-chart-1/10",
-  },
-  text: {
-    Icon: FileText,
-    iconColor: "text-muted-foreground",
-    bgColor: "bg-muted/40",
-  },
-  txt: {
-    Icon: FileText,
-    iconColor: "text-muted-foreground",
-    bgColor: "bg-muted/40",
-  },
-  csv: {
-    Icon: Table2,
-    iconColor: "text-green-500",
-    bgColor: "bg-green-500/10",
-  },
-  sheet: {
-    Icon: Table2,
-    iconColor: "text-green-500",
-    bgColor: "bg-green-500/10",
-  },
-  xlsx: {
-    Icon: Table2,
-    iconColor: "text-green-500",
-    bgColor: "bg-green-500/10",
-  },
-  code: {
-    Icon: Code,
-    iconColor: "text-cyan-500",
-    bgColor: "bg-cyan-500/10",
-  },
-  python: {
-    Icon: Terminal,
-    iconColor: "text-yellow-500",
-    bgColor: "bg-yellow-500/10",
-  },
-  html: {
-    Icon: Globe,
-    iconColor: "text-orange-500",
-    bgColor: "bg-orange-500/10",
-  },
-  react: {
-    Icon: FileCode,
-    iconColor: "text-blue-500",
-    bgColor: "bg-blue-500/10",
-  },
-  latex: {
-    Icon: Sigma,
-    iconColor: "text-rose-500",
-    bgColor: "bg-rose-500/10",
-  },
-  slides: {
-    Icon: Presentation,
-    iconColor: "text-indigo-500",
-    bgColor: "bg-indigo-500/10",
-  },
-  pptx: {
-    Icon: Presentation,
-    iconColor: "text-indigo-500",
-    bgColor: "bg-indigo-500/10",
-  },
+  markdown: { Icon: FileText, iconColor: "text-chart-1", bgColor: "bg-chart-1/10" },
+  pdf: { Icon: FileType, iconColor: "text-destructive", bgColor: "bg-destructive/10" },
+  image: { Icon: Image, iconColor: "text-chart-2", bgColor: "bg-chart-2/10" },
+  document: { Icon: FileText, iconColor: "text-chart-3", bgColor: "bg-chart-3/10" },
+  text: { Icon: FileText, iconColor: "text-muted-foreground", bgColor: "bg-muted/40" },
 };
 
 const DEFAULT_INFO: FileTypeInfo = {

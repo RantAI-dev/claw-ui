@@ -154,7 +154,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   kb: {
     title: "Knowledge Bases",
     eyebrow: "Retrieval",
-    blurb: "Grouped document collections the agent can retrieve from. Upload files, organize, and pick which bases a chat draws on.",
+    blurb: "Grouped document collections the agent can retrieve from. Create a base, upload files into it, remove them, and read what the entity graph found.",
   },
   kbgraph: {
     title: "Knowledge Graph",

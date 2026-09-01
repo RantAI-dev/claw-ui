@@ -5,7 +5,7 @@ import { Network, RefreshCw, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
-import { formatNumber } from "@/lib/utils";
+import { cn, formatNumber } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Segmented } from "@/components/ui/segmented";
 import { EmptyState, IconButton, PanelFrame, StatTile } from "./shared";
@@ -14,6 +14,7 @@ import { deriveGraphState, fromIntelligence, isSmallModel } from "./graph-lens-h
 
 const GRAPH_LIMIT = 200;
 const GRAPH_HEIGHT = 480;
+const ENTITY_LIST_LIMIT = 12;
 
 /** A knowledge graph can be scoped to one document, one knowledge base (group), or the whole corpus. */
 export type GraphScope =
@@ -23,6 +24,24 @@ export type GraphScope =
 
 function entityVar(entityType: string): string {
   return `var(${entityToken(entityType)})`;
+}
+
+/**
+ * The entity type as a badge: the tone on a dot, the word in the foreground.
+ * Tone-coloured text on its own 18% tint failed AA in every hue at 10 px
+ * (purple 1.81:1); this is the shape `ui/badge.tsx` uses for the same reason.
+ */
+export function EntityTypeBadge({ type, className }: { type: string; className?: string }) {
+  return (
+    <Badge variant="outline" className={cn("gap-1.5 text-[11px] capitalize", className)}>
+      <span
+        className="size-2 shrink-0 rounded-full"
+        style={{ background: entityVar(type) }}
+        aria-hidden
+      />
+      {type}
+    </Badge>
+  );
 }
 
 /**
@@ -51,7 +70,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
   const documentId = activeScope.kind === "document" ? activeScope.documentId : undefined;
   const groupId = activeScope.kind === "group" ? activeScope.groupId : undefined;
 
-  const { data, error, loading, refresh } = useAsync(() => {
+  const { data, error, loading, loaded, refreshing, refresh } = useAsync(() => {
     if (activeScope.kind === "document") {
       return api.kbDocumentIntelligence(activeScope.documentId).then(fromIntelligence);
     }
@@ -81,6 +100,16 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
     for (const n of nodes) counts.set(n.entity_type, (counts.get(n.entity_type) ?? 0) + 1);
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [nodes]);
+
+  // The same facts as the canvas, reachable without a pointer: the busiest
+  // entities first, capped so the list stays a list.
+  const topNodes = React.useMemo(
+    () =>
+      [...nodes]
+        .sort((a, b) => b.degree - a.degree || a.name.localeCompare(b.name))
+        .slice(0, ENTITY_LIST_LIMIT),
+    [nodes],
+  );
 
   const selectedRelations = React.useMemo(() => {
     if (!selectedNode) return [] as KbGraphEdge[];
@@ -120,15 +149,21 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
         ) : (
           <div />
         )}
-        <IconButton onClick={refresh} title="Refresh graph" aria-label="Refresh graph" className="shrink-0">
-          <RefreshCw className="size-4" />
+        <IconButton
+          onClick={refresh}
+          disabled={refreshing}
+          title="Refresh graph"
+          aria-label="Refresh graph"
+          className="shrink-0"
+        >
+          <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
         </IconButton>
       </div>
 
       {/* Stats — only once the graph is actually populated, so they don't read
           "0 / 0 / 0" over the loading, error, disabled, or empty states. */}
       {graphState === "ready" && !error && (
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
           <StatTile
             label="entities"
             value={formatNumber(totalEntities)}
@@ -143,7 +178,13 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
         </div>
       )}
 
-      <PanelFrame loading={graphState === "loading"} error={error} onRefresh={refresh}>
+      <PanelFrame
+        loading={graphState === "loading"}
+        error={error}
+        loaded={loaded}
+        onRefresh={refresh}
+        loadingLabel="Loading the graph…"
+      >
         {graphState === "disabled" ? (
           <EmptyState
             icon={<Network className="size-6" />}
@@ -151,8 +192,8 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
             hint={
               <>
                 Set <code>KB_INTELLIGENCE_ENABLED</code> to extract entities and relations across
-                your knowledge bases — a document&apos;s <em>Re-extract</em> also works while
-                disabled.
+                your knowledge bases. A document&apos;s <em>Re-extract</em> also works while it is
+                off.
                 {data?.capability?.extraction_model && (
                   <ModelNote model={data.capability.extraction_model} />
                 )}
@@ -180,7 +221,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
             title="No graph yet"
             hint={
               <>
-                No entities have been extracted for this scope yet — try a document&apos;s{" "}
+                No entities have been extracted for this scope yet. Try a document&apos;s{" "}
                 <em>Re-extract</em>.
                 {data?.capability?.extraction_model && (
                   <ModelNote model={data.capability.extraction_model} />
@@ -201,9 +242,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
               />
               {typeCounts.length > 0 && (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-border bg-card/60 px-3 py-2">
-                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Legend
-                  </span>
+                  <span className="eyebrow">Legend</span>
                   {typeCounts.map(([type, count]) => (
                     <span
                       key={type}
@@ -214,15 +253,51 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
                         style={{ background: entityVar(type) }}
                         aria-hidden
                       />
-                      <span className="capitalize text-foreground/80">{type}</span>
-                      <span className="text-muted-foreground/60">{count}</span>
+                      <span className="capitalize text-foreground">{type}</span>
+                      <span className="text-muted-foreground">{count}</span>
                     </span>
                   ))}
                 </div>
               )}
+              <div className="rounded-lg border border-border bg-card/60 px-3 py-2">
+                <div className="eyebrow">Entities by links</div>
+                <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Entities by links">
+                  {topNodes.map((n) => {
+                    const on = selectedNode?.id === n.id;
+                    return (
+                      <li key={n.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedNode(n)}
+                          aria-pressed={on}
+                          className={cn(
+                            "inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10",
+                            on ? "border-accent/60 bg-accent/10" : "border-border hover:bg-secondary",
+                          )}
+                        >
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ background: entityVar(n.entity_type) }}
+                            aria-hidden
+                          />
+                          <span className="font-medium">{n.name}</span>
+                          <span className="text-muted-foreground">
+                            · {n.entity_type} · {formatNumber(n.degree)}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                {nodes.length > topNodes.length && (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    and {formatNumber(nodes.length - topNodes.length)} more in the graph
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Entity detail — grid stretch keeps this column at the graph row's height. */}
+            {/* Entity detail: grid stretch keeps this column at the graph row's height. */}
             <div>
               {selectedNode ? (
                 <EntityDetail
@@ -235,7 +310,7 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
                 <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-4 text-center">
                   <Network className="size-6 text-muted-foreground" />
                   <p className="text-xs text-muted-foreground">
-                    Click a node to inspect an entity and its relationships.
+                    Select an entity in the graph or in the list to see its relationships.
                   </p>
                 </div>
               )}
@@ -251,8 +326,8 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
 function ModelNote({ model }: { model: string }) {
   return (
     <span className="mt-2 block text-[11px] text-muted-foreground">
-      Extraction model: <code>{model}</code>
-      {isSmallModel(model) && " — small; the extracted graph may be sparse or noisy."}
+      Extraction model: <code>{model}</code>.
+      {isSmallModel(model) && " A small model may give a sparse or noisy graph."}
     </span>
   );
 }
@@ -269,7 +344,7 @@ function EntityDetail({
   onClose: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col rounded-xl border border-border bg-card shadow-sm animate-in fade-in-0 slide-in-from-right-2">
+    <div className="flex h-full flex-col rounded-xl border border-border bg-card">
       <div className="flex items-start justify-between gap-2 border-b border-border/60 p-3">
         <div className="flex min-w-0 items-center gap-2">
           <span
@@ -278,17 +353,10 @@ function EntityDetail({
             aria-hidden
           />
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{node.name}</div>
-            <Badge
-              className="mt-1 text-[10px] capitalize"
-              style={{
-                background: `color-mix(in oklab, ${entityVar(node.entity_type)} 18%, transparent)`,
-                color: entityVar(node.entity_type),
-                borderColor: "transparent",
-              }}
-            >
-              {node.entity_type}
-            </Badge>
+            <div title={node.name} className="truncate text-sm font-semibold">
+              {node.name}
+            </div>
+            <EntityTypeBadge type={node.entity_type} className="mt-1" />
           </div>
         </div>
         <IconButton onClick={onClose} aria-label="Close" className="shrink-0">
@@ -302,9 +370,7 @@ function EntityDetail({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col border-t border-border/60">
-        <div className="px-3 pt-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Relationships · {relations.length}
-        </div>
+        <div className="eyebrow px-3 pt-3">Relationships · {relations.length}</div>
         <div className="min-h-0 flex-1 space-y-1.5 overflow-auto p-3 scrollbar-thin">
           {relations.length === 0 ? (
             <p className="text-xs text-muted-foreground">No relationships recorded.</p>

@@ -3,9 +3,8 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import type { ComponentType } from "react";
-import { Loader2, Network } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import type { KbGraphEdge, KbGraphNode } from "@/lib/types";
-import { EmptyState } from "./shared";
 
 // ── Entity-type → design token ──────────────────────────────────────────────
 // Each entity colour resolves to a console accent CSS var so the graph stays
@@ -251,8 +250,10 @@ export function KnowledgeGraph({
       ctx.save();
       ctx.beginPath();
       ctx.arc(x, y, r, 0, 2 * Math.PI);
+      // The one glow: the selected node. A halo on every node made the
+      // picture a field of glows and the selection invisible.
       ctx.shadowColor = color;
-      ctx.shadowBlur = selected ? 22 : 8;
+      ctx.shadowBlur = selected ? 18 : 0;
       ctx.globalAlpha = dimmed ? 0.3 : selected ? 1 : 0.92;
       ctx.fillStyle = color;
       ctx.fill();
@@ -307,38 +308,13 @@ export function KnowledgeGraph({
     for (const n of graphData.nodes) n.__adj = adj.has(n.id);
   }, [selectedId, edges, graphData]);
 
-  if (nodes.length === 0) {
-    return (
-      <div
-        ref={wrapRef}
-        className="flex items-center justify-center rounded-xl border border-dashed border-border bg-muted/20"
-        style={{ height }}
-      >
-        <EmptyState
-          className="py-0"
-          icon={<Network className="size-6" />}
-          title="No graph to show"
-          hint={
-            <>
-              No entities have been extracted for these documents yet. Check the Graph tab&apos;s
-              status for the cause (extraction off, or no credential under Knowledge Base
-              settings), or use a document&apos;s <em>Re-extract</em>.
-            </>
-          }
-        />
-      </div>
-    );
-  }
-
+  // GraphLens decides the empty / disabled / no-credential states before this
+  // canvas mounts, so an empty node set never reaches it.
   return (
     <div
       ref={wrapRef}
-      className="relative overflow-hidden rounded-xl border border-border"
-      style={{
-        height,
-        background:
-          "radial-gradient(120% 120% at 50% 0%, color-mix(in oklab, var(--brand-sky) 7%, var(--card)) 0%, var(--card) 60%)",
-      }}
+      className="relative overflow-hidden rounded-xl border border-border bg-card"
+      style={{ height }}
     >
       {width > 0 && (
         <ForceGraph2D

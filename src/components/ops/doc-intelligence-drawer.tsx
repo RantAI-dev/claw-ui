@@ -1,38 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Network, Sparkles } from "lucide-react";
+import { AlertTriangle, Loader2, Network, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { api, describeApiError } from "@/lib/api";
 import { deriveGraphState } from "./graph-lens-helpers";
 import { useAsync } from "@/hooks/use-async";
-import { formatNumber } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { cn, formatNumber } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "./shared";
-import { entityToken } from "./knowledge-graph";
-import { GraphLens } from "./graph-lens";
-
-function entityVar(entityType: string): string {
-  return `var(${entityToken(entityType)})`;
-}
-
-function EntityTypeBadge({ type }: { type: string }) {
-  return (
-    <Badge
-      className="text-[10px] capitalize"
-      style={{
-        background: `color-mix(in oklab, ${entityVar(type)} 18%, transparent)`,
-        color: entityVar(type),
-        borderColor: "transparent",
-      }}
-    >
-      {type}
-    </Badge>
-  );
-}
+import { EntityTypeBadge, GraphLens } from "./graph-lens";
 
 /**
  * The intelligence content (re-extract + entities/relations/graph) for a single
@@ -61,8 +40,8 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
       if ((r.failed_chunks ?? 0) > 0) {
         // Partial failure: some chunks extracted, some did not — say both.
         toast.warning(
-          `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations — ` +
-            `${formatNumber(r.failed_chunks ?? 0)} chunks failed${r.error ? ` (${r.error})` : ""}`,
+          `Found ${formatNumber(r.entities)} entities · ${formatNumber(r.relations)} relations; ` +
+            `${formatNumber(r.failed_chunks ?? 0)} chunk${(r.failed_chunks ?? 0) === 1 ? "" : "s"} failed${r.error ? ` (${r.error})` : ""}`,
           { id: t },
         );
       } else {
@@ -83,11 +62,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
     <div className="space-y-3">
       <div className="flex justify-end">
         <Button size="sm" variant="outline" onClick={reextract} disabled={reextracting || intel.loading}>
-          {reextracting ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="size-3.5" />
-          )}
+          <RefreshCw className={cn("size-3.5", reextracting && "animate-spin")} />
           Re-extract
         </Button>
       </div>
@@ -99,7 +74,17 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
           ))}
         </div>
       ) : intel.error ? (
-        <div className="py-10 text-center text-sm text-destructive">{intel.error}</div>
+        <EmptyState
+          tone="destructive"
+          icon={<AlertTriangle className="size-6" />}
+          title="Couldn't load its intelligence"
+          hint={intel.error}
+          action={
+            <Button size="sm" variant="outline" onClick={intel.refresh}>
+              <RefreshCw /> Retry
+            </Button>
+          }
+        />
       ) : entities.length === 0 ? (
         <EmptyState
           icon={<Network className="size-6" />}
@@ -112,9 +97,9 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
             if (state === "disabled")
               return (
                 <>
-                  Intelligence extraction is disabled — enable it with{" "}
+                  Intelligence extraction is off. Enable it with{" "}
                   <code>KB_INTELLIGENCE_ENABLED</code>, or use <em>Re-extract</em>, which works
-                  while disabled.
+                  while it is off.
                 </>
               );
             if (state === "no-credential")
@@ -127,7 +112,7 @@ export function DocIntelligenceBody({ documentId }: { documentId: string }) {
               );
             return (
               <>
-                No entities are stored for this document — it may genuinely yield none. Try{" "}
+                No entities are stored for this document; it may genuinely yield none. Try{" "}
                 <em>Re-extract</em>.
               </>
             );

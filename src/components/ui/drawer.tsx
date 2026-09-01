@@ -107,7 +107,11 @@ export function Drawer({
             )}
             <div className="min-w-0">
               {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-              <div id={titleId} className="truncate text-sm font-semibold">
+              <div
+                id={titleId}
+                title={typeof title === "string" ? title : undefined}
+                className="line-clamp-2 break-words text-sm font-semibold"
+              >
                 {title}
               </div>
             </div>

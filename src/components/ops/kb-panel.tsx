@@ -20,8 +20,9 @@ import {
   Network,
   UploadCloud,
   Upload,
-  Sparkles,
   Eye,
+  AlertTriangle,
+  FileScan,
 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
@@ -32,6 +33,20 @@ import {
   MAX_BYTES,
 } from "@/lib/attachments";
 import type { KbDocument, KbGroup } from "@/lib/types";
+import {
+  DEFAULT_KB_COLOR,
+  DEFAULT_KB_PRESET,
+  KB_PRESETS,
+  SUPPORTED_UPLOADS,
+  countLine,
+  deleteDocCopy,
+  deleteGroupCopy,
+  duplicateTitles,
+  ingestNote,
+  isPreset,
+  tileInk,
+  unlinkDocCopy,
+} from "@/lib/kb";
 import { cn, relativeTime, formatNumber } from "@/lib/utils";
 import { getFileTypeIcon, formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
@@ -42,24 +57,12 @@ import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
-import { EmptyState, PanelFrame, RefreshButton } from "./shared";
+import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { GraphLens } from "./graph-lens";
-import { KnowledgeSettingsCard } from "./knowledge-settings-card";
+import { KnowledgeSettingsCard, type KnowledgeStatusState } from "./knowledge-settings-card";
 import { toast } from "sonner";
 
-const PRESET_COLORS = [
-  "#ef4444",
-  "#f97316",
-  "#eab308",
-  "#22c55e",
-  "#06b6d4",
-  "#3b82f6",
-  "#8b5cf6",
-  "#ec4899",
-];
-
-const DEFAULT_KB_COLOR = "var(--brand-sky)";
 
 type SortOption = "newest" | "oldest" | "name" | "retrieved";
 type ViewMode = "grid" | "list";
@@ -83,18 +86,27 @@ export function KbPanel() {
     ? (kbStatus.data.enabled ?? kbStatus.data.embedding_configured)
     : false;
 
-  if (kbStatus.loading) return null;
-  if (!kbEnabled) {
-    // Activation screen only — no Documents/Graph chrome, no doomed fetches.
-    return <KnowledgeSettingsCard onChanged={kbStatus.refresh} />;
+  if (kbStatus.loading) {
+    return (
+      <PanelFrame loading loadingLabel="Loading Knowledge Base status…">
+        <></>
+      </PanelFrame>
+    );
   }
-  return <KbPanelBody onStatusChanged={kbStatus.refresh} />;
+  if (!kbEnabled) {
+    // Activation screen only: no Documents/Graph chrome, no doomed fetches.
+    return <KnowledgeSettingsCard status={kbStatus} />;
+  }
+  return <KbPanelBody status={kbStatus} />;
 }
 
-function KbPanelBody({ onStatusChanged }: { onStatusChanged: () => void }) {
+function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
   const groups = useAsync(() => api.kbGroups(), []);
   const [selected, setSelected] = React.useState<KbGroup | null>(null);
   const [view, setView] = React.useState<LibraryView>("documents");
+  // Set when a delete removes the element that had focus (a card's Delete, or
+  // the detail's), so the list can put focus on something that still exists.
+  const focusListRef = React.useRef(false);
 
   // Keep the selected group's metadata fresh after the list refreshes.
   React.useEffect(() => {
@@ -108,7 +120,7 @@ function KbPanelBody({ onStatusChanged }: { onStatusChanged: () => void }) {
 
   return (
     <div className="space-y-4">
-      <KnowledgeSettingsCard onChanged={onStatusChanged} />
+      <KnowledgeSettingsCard status={status} />
 
       <Segmented
         value={view}
@@ -139,9 +151,14 @@ function KbPanelBody({ onStatusChanged }: { onStatusChanged: () => void }) {
             group={selected}
             onBack={() => setSelected(null)}
             onChanged={() => groups.refresh()}
+            onDeleted={async () => {
+              await groups.refresh();
+              focusListRef.current = true;
+              setSelected(null);
+            }}
           />
         ) : (
-          <KbList groups={groups} onOpen={setSelected} />
+          <KbList groups={groups} onOpen={setSelected} focusOnMount={focusListRef} />
         )
       ) : (
         <GraphLens scope={selected ? { kind: "group", groupId: selected.id } : { kind: "all" }} />
@@ -155,14 +172,34 @@ function KbPanelBody({ onStatusChanged }: { onStatusChanged: () => void }) {
 function KbList({
   groups,
   onOpen,
+  focusOnMount,
 }: {
   groups: ReturnType<typeof useAsync<KbGroup[]>>;
   onOpen: (g: KbGroup) => void;
+  focusOnMount?: React.MutableRefObject<boolean>;
 }) {
+  const newButtonRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    if (focusOnMount?.current) {
+      focusOnMount.current = false;
+      newButtonRef.current?.focus();
+    }
+  }, [focusOnMount]);
   const [editorOpen, setEditorOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<KbGroup | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<KbGroup | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  // After a delete the confirm's opener is gone with the card. The Modal hands
+  // focus back in its own effect cleanup; this effect runs after it in the same
+  // flush (React cleans up children before it creates parent effects), so the
+  // one control still here ends up focused.
+  const focusNewAfterClose = React.useRef(false);
+  React.useEffect(() => {
+    if (focusNewAfterClose.current && !deleteTarget) {
+      focusNewAfterClose.current = false;
+      newButtonRef.current?.focus();
+    }
+  }, [deleteTarget]);
 
   const list = groups.data ?? [];
   const totalDocs = list.reduce((sum, g) => sum + (g.document_count ?? 0), 0);
@@ -183,8 +220,11 @@ function KbList({
     try {
       await api.kbDeleteGroup(deleteTarget.id);
       toast.success(`Deleted “${name}”`);
+      // Refresh before closing the confirm: its opener (the card's Delete) is
+      // gone by the time the Modal tries to hand focus back.
+      await groups.refresh();
+      focusNewAfterClose.current = true;
       setDeleteTarget(null);
-      groups.refresh();
     } catch (e) {
       toast.error(`Delete failed: ${errMsg(e)}`);
     } finally {
@@ -194,28 +234,26 @@ function KbList({
 
   return (
     <div className="space-y-4">
-      {/* Header — the page title comes from the ops header; this row is stats + action */}
+      {/* Header: the page title comes from the ops header; this row is the count + actions.
+          The count waits for the list: "0 knowledge bases" before the data was a number
+          nobody had computed. */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            <Database className="size-3.5" />
-            {formatNumber(list.length)} knowledge base{list.length === 1 ? "" : "s"}
-          </span>
-          <span className="text-muted-foreground/40">·</span>
-          <span className="flex items-center gap-1.5">
-            <BookOpen className="size-3.5" />
-            {formatNumber(totalDocs)} document{totalDocs === 1 ? "" : "s"}
-          </span>
-        </div>
+        <span className="eyebrow">{groups.loaded ? countLine(list.length, totalDocs) : ""}</span>
         <div className="flex items-center gap-2">
-          <RefreshButton onClick={groups.refresh} />
-          <Button size="sm" onClick={openCreate}>
+          <RefreshButton onClick={groups.refresh} spinning={groups.refreshing} />
+          <Button ref={newButtonRef} size="sm" onClick={openCreate}>
             <Plus className="size-4" /> New knowledge base
           </Button>
         </div>
       </div>
 
-      <PanelFrame loading={groups.loading} error={groups.error} onRefresh={groups.refresh}>
+      <PanelFrame
+        loading={groups.loading}
+        error={groups.error}
+        loaded={groups.loaded}
+        onRefresh={groups.refresh}
+        loadingLabel="Loading knowledge bases…"
+      >
         {list.length === 0 ? (
           <EmptyState
             icon={<Database className="size-6" />}
@@ -256,11 +294,7 @@ function KbList({
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         title="Delete knowledge base"
-        description={
-          deleteTarget
-            ? `Delete “${deleteTarget.name}”? Documents stay in the library but are unlinked.`
-            : undefined
-        }
+        description={deleteTarget ? deleteGroupCopy(deleteTarget).body : undefined}
         busy={deleting}
         onConfirm={confirmDelete}
       />
@@ -280,76 +314,67 @@ function KbCard({
   onDelete: () => void;
 }) {
   const docCount = group.document_count ?? 0;
+  // A card that is itself a button cannot hold buttons: Enter on its Edit used
+  // to open the base and cancel the editor. The name is the button, stretched
+  // over the card by its ::after; the actions are siblings layered above it,
+  // and they exist on every pointer (a phone has no hover).
   return (
-    <div
-      onClick={onOpen}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onOpen();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={`Open knowledge base ${group.name}`}
-      className="group relative cursor-pointer overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {/* Hover / focus actions */}
-      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          title="Edit"
-          aria-label={`Edit knowledge base ${group.name}`}
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-secondary hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Pencil className="size-3.5" />
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          title="Delete"
-          aria-label={`Delete knowledge base ${group.name}`}
-          className="rounded-md bg-background/80 p-1.5 text-muted-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-destructive/10 hover:text-destructive cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <Trash2 className="size-3.5" />
-        </button>
-      </div>
-
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors hover:border-accent/40 focus-within:border-accent/40">
       <div className="flex items-start gap-3">
         <div
-          className="flex size-11 shrink-0 items-center justify-center rounded-lg shadow-sm"
-          style={{ backgroundColor: group.color || DEFAULT_KB_COLOR }}
+          className="flex size-11 shrink-0 items-center justify-center rounded-lg"
+          style={{ backgroundColor: group.color || DEFAULT_KB_COLOR, color: tileInk(group.color) }}
           aria-hidden
         >
-          <FolderOpen className="size-5 text-white" />
+          <FolderOpen className="size-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 pr-12">
-            <span className="truncate text-sm font-semibold">{group.name}</span>
+          <div className="flex items-center gap-2 pr-16">
+            <button
+              type="button"
+              onClick={onOpen}
+              title={group.name}
+              className="min-w-0 cursor-pointer truncate text-left text-sm font-semibold after:absolute after:inset-0 after:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {group.name}
+            </button>
             <Badge variant="secondary" className="shrink-0 text-[10px]">
               {docCount} doc{docCount === 1 ? "" : "s"}
             </Badge>
           </div>
           {group.description ? (
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+            <p
+              title={group.description}
+              className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground"
+            >
               {group.description}
             </p>
           ) : (
-            <p className="mt-1 text-xs italic text-muted-foreground/60">No description</p>
+            <p className="mt-1 text-xs italic text-muted-foreground">No description</p>
           )}
         </div>
       </div>
 
-      {group.updated_at != null && (
-        <div className="mt-3 border-t border-border/50 pt-2.5 text-[11px] text-muted-foreground">
-          Updated {relativeTime(group.updated_at)}
-        </div>
-      )}
+      {/* After the content in the DOM so Tab reads name, then actions; the
+          absolute position keeps them at the top-right. */}
+      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+        <IconButton
+          onClick={onEdit}
+          title="Edit"
+          aria-label={`Edit knowledge base ${group.name}`}
+          className="bg-background/90"
+        >
+          <Pencil className="size-3.5" />
+        </IconButton>
+        <IconButton
+          onClick={onDelete}
+          title="Delete"
+          aria-label={`Delete knowledge base ${group.name}`}
+          className="bg-background/90 hover:bg-destructive/10 hover:text-destructive"
+        >
+          <Trash2 className="size-3.5" />
+        </IconButton>
+      </div>
     </div>
   );
 }
@@ -367,19 +392,49 @@ function KbEditorModal({
 }) {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
-  const [color, setColor] = React.useState(PRESET_COLORS[5]);
+  const [color, setColor] = React.useState(DEFAULT_KB_PRESET);
   const [saving, setSaving] = React.useState(false);
+  const nameId = React.useId();
+  const descId = React.useId();
+  const colorId = React.useId();
+
+  // The swatches, plus the stored colour first when it is not one of them, so
+  // editing never silently recolours a base.
+  const swatches = React.useMemo(() => {
+    const list = KB_PRESETS.map((p) => ({ hex: p.hex, name: p.name }));
+    if (group?.color && !isPreset(group.color)) {
+      list.unshift({ hex: group.color, name: "Current colour" });
+    }
+    return list;
+  }, [group?.color]);
+  const swatchRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
+  const checkedIndex = swatches.findIndex((c) => c.hex === color);
+  const onSwatchKey = (e: React.KeyboardEvent<HTMLButtonElement>, i: number) => {
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % swatches.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i - 1 + swatches.length) % swatches.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = swatches.length - 1;
+    if (next === null) return;
+    e.preventDefault();
+    setColor(swatches[next].hex);
+    swatchRefs.current[next]?.focus();
+  };
 
   // Sync form when the modal opens for a (new or existing) KB.
   React.useEffect(() => {
     if (!open) return;
     setName(group?.name ?? "");
     setDescription(group?.description ?? "");
-    setColor(
-      group?.color ??
-        PRESET_COLORS[Math.floor(Math.random() * PRESET_COLORS.length)],
-    );
+    setColor(group?.color ?? DEFAULT_KB_PRESET);
   }, [open, group]);
+
+  // A stable close handler: the Modal re-runs its first-focus effect whenever
+  // `onClose` changes identity, and an inline arrow changed on every keystroke,
+  // which yanked focus back to the Name field while typing in Description.
+  const handleClose = React.useCallback(() => {
+    if (!saving) onClose();
+  }, [saving, onClose]);
 
   const save = async () => {
     const trimmed = name.trim();
@@ -412,7 +467,7 @@ function KbEditorModal({
   return (
     <Modal
       open={open}
-      onClose={() => !saving && onClose()}
+      onClose={handleClose}
       title={group ? "Edit knowledge base" : "New knowledge base"}
       description={
         group
@@ -437,11 +492,12 @@ function KbEditorModal({
     >
       <div className="space-y-4">
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <label htmlFor={nameId} className="eyebrow">
             Name
           </label>
           <Input
-            autoFocus
+            id={nameId}
+            data-autofocus
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Product Docs"
@@ -451,10 +507,11 @@ function KbEditorModal({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <label htmlFor={descId} className="eyebrow">
             Description
           </label>
           <Textarea
+            id={descId}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="What lives in this knowledge base? (optional)"
@@ -462,25 +519,34 @@ function KbEditorModal({
           />
         </div>
         <div className="space-y-2">
-          <label className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div id={colorId} className="eyebrow">
             Color
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {PRESET_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                aria-label={`Color ${c}`}
-                className={cn(
-                  "size-7 rounded-full transition-transform hover:scale-110 cursor-pointer",
-                  color === c
-                    ? "ring-2 ring-ring ring-offset-2 ring-offset-card"
-                    : "",
-                )}
-                style={{ backgroundColor: c }}
-              />
-            ))}
+          </div>
+          <div role="radiogroup" aria-labelledby={colorId} className="flex flex-wrap gap-2">
+            {swatches.map((c, i) => {
+              const checked = color === c.hex;
+              return (
+                <button
+                  key={c.hex}
+                  ref={(el) => {
+                    swatchRefs.current[i] = el;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={checked}
+                  aria-label={c.name}
+                  title={c.name}
+                  tabIndex={checked || (checkedIndex < 0 && i === 0) ? 0 : -1}
+                  onClick={() => setColor(c.hex)}
+                  onKeyDown={(e) => onSwatchKey(e, i)}
+                  className={cn(
+                    "size-7 cursor-pointer rounded-full pointer-coarse:size-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                    checked && "ring-2 ring-ring ring-offset-2 ring-offset-card",
+                  )}
+                  style={{ backgroundColor: c.hex }}
+                />
+              );
+            })}
           </div>
         </div>
       </div>
@@ -495,16 +561,23 @@ interface UploadEntry {
   name: string;
   status: "uploading" | "ready" | "error";
   error?: string;
+  /** The gateway's extraction measurement, once the upload succeeded. */
+  note?: string;
+  /** The gateway flagged the extraction as thin (it may retrieve poorly). */
+  thin?: boolean;
 }
 
 function KbDetail({
   group,
   onBack,
   onChanged,
+  onDeleted,
 }: {
   group: KbGroup;
   onBack: () => void;
   onChanged: () => void;
+  /** The base was deleted: the host refreshes, leaves the detail and moves focus. */
+  onDeleted: () => void | Promise<void>;
 }) {
   const docs = useAsync(() => api.kbGroupDocuments(group.id), [group.id]);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -574,6 +647,9 @@ function KbDetail({
       status: "uploading",
     }));
     setUploads((prev) => [...prev, ...seeded]);
+    // The gateway titles a document by its file stem and accepts the same
+    // stem twice; say so rather than growing a silent second "notes".
+    const dupes = duplicateTitles(arr, docs.data ?? []);
 
     let ok = 0;
     let failed = 0;
@@ -593,11 +669,19 @@ function KbDetail({
       try {
         // Link to this group at ingest via the gateway's `groups` field — no
         // separate kbAddDocToGroup round-trip and no UUID category pollution.
-        await ingestFile(file, { groups: [group.id] });
+        const r = await ingestFile(file, { groups: [group.id] });
         ok += 1;
+        const note = ingestNote(r);
         setUploads((prev) =>
-          prev.map((u) => (u.id === entryId ? { ...u, status: "ready" } : u)),
+          prev.map((u) =>
+            u.id === entryId ? { ...u, status: "ready", note: note.text, thin: note.thin } : u,
+          ),
         );
+        if (note.thin) {
+          toast.warning(
+            `${file.name} extracted only ${formatNumber(r.chars_extracted)} characters; it may retrieve poorly.`,
+          );
+        }
       } catch (e) {
         failed += 1;
         const msg = errMsg(e);
@@ -611,13 +695,19 @@ function KbDetail({
     }
 
     if (ok) toast.success(`Added ${ok} document${ok === 1 ? "" : "s"} to “${group.name}”`);
+    if (ok && dupes.length) {
+      toast.warning(
+        `${dupes.map((d) => `“${d}”`).join(", ")} already existed in this knowledge base; added again.`,
+      );
+    }
     if (ok || failed) {
       docs.refresh();
       onChanged();
     }
-    // Clear the finished rows after a short beat (keep errors visible longer).
+    // Clear the plain "ready" rows after a short beat; keep failures and thin
+    // extractions on screen, since both ask the operator for a decision.
     setTimeout(() => {
-      setUploads((prev) => prev.filter((u) => u.status === "error"));
+      setUploads((prev) => prev.filter((u) => u.status === "error" || u.thin));
     }, 2500);
   };
 
@@ -664,8 +754,7 @@ function KbDetail({
     try {
       await api.kbDeleteGroup(group.id);
       toast.success(`Deleted “${group.name}”`);
-      onChanged();
-      onBack();
+      await onDeleted();
     } catch (e) {
       toast.error(`Delete failed: ${errMsg(e)}`);
     } finally {
@@ -691,15 +780,17 @@ function KbDetail({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <div
-            className="flex size-11 shrink-0 items-center justify-center rounded-lg shadow-sm"
-            style={{ backgroundColor: group.color || DEFAULT_KB_COLOR }}
+            className="flex size-11 shrink-0 items-center justify-center rounded-lg"
+            style={{ backgroundColor: group.color || DEFAULT_KB_COLOR, color: tileInk(group.color) }}
             aria-hidden
           >
-            <FolderOpen className="size-5 text-white" />
+            <FolderOpen className="size-5" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-lg font-semibold tracking-tight">{group.name}</h3>
+              <h3 title={group.name} className="truncate text-lg font-semibold tracking-tight">
+                {group.name}
+              </h3>
               <Badge variant="secondary" className="text-[10px]">
                 {docCount} doc{docCount === 1 ? "" : "s"}
               </Badge>
@@ -712,7 +803,7 @@ function KbDetail({
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          <RefreshButton onClick={docs.refresh} />
+          <RefreshButton onClick={docs.refresh} spinning={docs.refreshing} />
           <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
             <Pencil className="size-3.5" /> Edit
           </Button>
@@ -752,17 +843,10 @@ function KbDetail({
           e.target.value = "";
         }}
       />
+      {/* Drop target. The outer div only catches drag and drop; the control is a
+          real button, so Enter and Space do exactly one thing and no wrapper key
+          handler can swallow the sibling "Upload images" button's activation. */}
       <div
-        onClick={() => fileRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            fileRef.current?.click();
-          }
-        }}
-        role="button"
-        tabIndex={0}
-        aria-label="Upload files to this knowledge base"
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);
@@ -774,40 +858,35 @@ function KbDetail({
           void upload(e.dataTransfer.files);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          dragOver
-            ? "border-accent bg-accent/5"
-            : "border-border bg-muted/30 hover:border-accent/50 hover:bg-muted/50",
+          "rounded-xl border-2 border-dashed px-4 py-4 text-center transition-colors sm:py-5",
+          dragOver ? "border-accent bg-accent/5" : "border-border bg-muted/30",
         )}
       >
-        <UploadCloud
-          className={cn(
-            "size-7",
-            dragOver ? "text-accent" : "text-muted-foreground",
-          )}
-        />
-        <div className="text-sm font-medium">
-          Drop files or <span className="text-accent">click to upload</span>
-        </div>
-        <div className="text-[11px] text-muted-foreground">
-          Documents &amp; images · ingested into this knowledge base · max 20 MB
-        </div>
-        <div className="mt-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => fileRef.current?.click()}
-            disabled={uploading}
-          >
-            <Upload className="size-3.5" /> Upload documents
-          </Button>
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
+        >
+          <UploadCloud
+            className={cn("size-7 max-sm:hidden", dragOver ? "text-accent" : "text-muted-foreground")}
+            aria-hidden
+          />
+          <span className="text-sm font-medium">
+            Drop files here or <span className="text-accent">choose documents</span>
+          </span>
+          <span className="text-[11px] text-muted-foreground max-sm:hidden">
+            {SUPPORTED_UPLOADS} · max 20 MB · added to “{group.name}”
+          </span>
+        </button>
+        <div className="mt-2 flex justify-center">
           <Button
             size="sm"
             variant="outline"
             onClick={() => imageRef.current?.click()}
             disabled={uploading}
           >
-            <Upload className="size-3.5" /> Upload images
+            <Upload className="size-3.5" /> Upload images instead
           </Button>
         </div>
       </div>
@@ -823,7 +902,10 @@ function KbDetail({
               {u.status === "uploading" && (
                 <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
               )}
-              {u.status === "ready" && (
+              {u.status === "ready" && u.thin && (
+                <AlertTriangle className="size-3.5 shrink-0 text-warning" />
+              )}
+              {u.status === "ready" && !u.thin && (
                 <Check className="size-3.5 shrink-0 text-success" />
               )}
               {u.status === "error" && (
@@ -841,7 +923,7 @@ function KbDetail({
                 {u.status === "uploading"
                   ? "uploading…"
                   : u.status === "ready"
-                    ? "ready"
+                    ? (u.note ?? "ready")
                     : u.error || "failed"}
               </span>
             </div>
@@ -888,12 +970,14 @@ function KbDetail({
       <PanelFrame
         loading={docs.loading}
         error={docs.error}
-        empty={false}
+        loaded={docs.loaded}
         onRefresh={docs.refresh}
+        loadingLabel="Loading documents…"
       >
         {visible.length === 0 ? (
           <DocsEmpty
-            searching={search.trim().length > 0}
+            query={search.trim()}
+            total={(docs.data ?? []).length}
             onUpload={() => fileRef.current?.click()}
           />
         ) : view === "grid" ? (
@@ -953,7 +1037,7 @@ function KbDetail({
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         title="Delete knowledge base"
-        description={`Delete “${group.name}”? Documents stay in the library but are unlinked.`}
+        description={deleteGroupCopy(group).body}
         busy={deleting}
         onConfirm={confirmDelete}
       />
@@ -963,9 +1047,7 @@ function KbDetail({
         onClose={() => setUnlinkDoc(null)}
         title="Remove from this knowledge base"
         description={
-          unlinkDoc
-            ? `Remove “${unlinkDoc.title || unlinkDoc.id.slice(0, 8)}” from “${group.name}”? It stays in the library and in any other knowledge bases it belongs to.`
-            : ""
+          unlinkDoc ? unlinkDocCopy(unlinkDoc.title || unlinkDoc.id.slice(0, 8), group.name) : ""
         }
         confirmLabel="Remove"
         busy={unlinking}
@@ -976,11 +1058,7 @@ function KbDetail({
         open={!!deleteDoc}
         onClose={() => setDeleteDoc(null)}
         title="Delete document"
-        description={
-          deleteDoc
-            ? `Delete “${deleteDoc.title || deleteDoc.id.slice(0, 8)}” from the library? It leaves every knowledge base and stops being used for retrieval.`
-            : ""
-        }
+        description={deleteDoc ? deleteDocCopy(deleteDoc.title || deleteDoc.id.slice(0, 8)) : ""}
         busy={deletingDoc}
         onConfirm={confirmDeleteDoc}
       />
@@ -998,20 +1076,23 @@ function KbDetail({
 }
 
 function DocsEmpty({
-  searching,
+  query,
+  total,
   onUpload,
 }: {
-  searching: boolean;
+  query: string;
+  total: number;
   onUpload: () => void;
 }) {
+  const searching = query.length > 0;
   return (
     <div className="rounded-xl border border-dashed border-border bg-muted/20">
       <EmptyState
         icon={<BookOpen className="size-6" />}
-        title={searching ? "No matching documents" : "No documents yet"}
+        title={searching ? `No documents match “${query}”.` : "No documents yet"}
         hint={
           searching
-            ? "Try a different search."
+            ? `Clear the search to see all ${formatNumber(total)} document${total === 1 ? "" : "s"}.`
             : "Upload files above to add them to this knowledge base."
         }
         action={
@@ -1042,38 +1123,42 @@ function DocActions({
   onDelete: () => void;
   buttonClassName?: string;
 }) {
-  const btn = (hover: string) =>
-    cn(
-      "cursor-pointer rounded-md p-1.5 text-muted-foreground transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-      buttonClassName,
-      hover,
-    );
   return (
     <>
-      <button onClick={onView} title="View document" aria-label="View document" className={btn("hover:bg-accent/10 hover:text-accent")}>
+      <IconButton
+        onClick={onView}
+        title="View document"
+        aria-label="View document"
+        className={cn(buttonClassName, "hover:bg-accent/10 hover:text-accent")}
+      >
         <Eye className="size-3.5" />
-      </button>
-      <button onClick={onIntel} title="Document intelligence" aria-label="Document intelligence" className={btn("hover:bg-accent/10 hover:text-accent")}>
-        <Sparkles className="size-3.5" />
-      </button>
-      <button
+      </IconButton>
+      <IconButton
+        onClick={onIntel}
+        title="Document intelligence"
+        aria-label="Document intelligence"
+        className={cn(buttonClassName, "hover:bg-accent/10 hover:text-accent")}
+      >
+        <FileScan className="size-3.5" />
+      </IconButton>
+      <IconButton
         onClick={onUnlink}
         disabled={busy}
         title="Remove from this knowledge base"
         aria-label="Remove from this knowledge base"
-        className={btn("hover:bg-secondary hover:text-foreground disabled:opacity-50")}
+        className={buttonClassName}
       >
         <FolderMinus className="size-3.5" />
-      </button>
-      <button
+      </IconButton>
+      <IconButton
         onClick={onDelete}
         disabled={busy}
-        title="Delete document from library"
-        aria-label="Delete document from library"
-        className={btn("hover:bg-destructive/10 hover:text-destructive disabled:opacity-50")}
+        title="Delete document"
+        aria-label="Delete document"
+        className={cn(buttonClassName, "hover:bg-destructive/10 hover:text-destructive")}
       >
         {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-      </button>
+      </IconButton>
     </>
   );
 }
@@ -1100,15 +1185,15 @@ function DocCard({
     .join(" · ");
 
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-accent/40 hover:shadow-md">
-      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-3 transition-colors hover:border-accent/40 focus-within:border-accent/40">
+      <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
         <DocActions
           busy={busy}
           onView={onView}
           onIntel={onIntel}
           onUnlink={onUnlink}
           onDelete={onDelete}
-          buttonClassName="bg-background/80 shadow-sm backdrop-blur-sm"
+          buttonClassName="bg-background/90"
         />
       </div>
 
@@ -1116,14 +1201,17 @@ function DocCard({
         <div className={cn("rounded-xl p-3", bgColor)} aria-hidden>
           <Icon className={cn("size-8", iconColor)} />
         </div>
-        <p className="line-clamp-2 px-1 text-center text-sm font-medium leading-snug">
+        <p
+          title={doc.title || doc.id.slice(0, 8)}
+          className="line-clamp-2 px-1 text-center text-sm font-medium leading-snug"
+        >
           {doc.title || doc.id.slice(0, 8)}
         </p>
       </div>
 
       <div className="mt-1 flex flex-col items-center gap-1.5 border-t border-border/50 pt-2.5">
         {meta && (
-          <p className="truncate font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
+          <p title={meta} className="truncate text-[11px] text-muted-foreground">
             {meta}
           </p>
         )}
@@ -1171,9 +1259,11 @@ function DocRow({
         <Icon className={cn("size-4", iconColor)} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{doc.title || doc.id.slice(0, 8)}</div>
+        <div title={doc.title || doc.id.slice(0, 8)} className="truncate text-sm font-medium">
+          {doc.title || doc.id.slice(0, 8)}
+        </div>
         {meta && (
-          <div className="truncate font-mono text-[10px] text-muted-foreground">{meta}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{meta}</div>
         )}
       </div>
       {retrievals > 0 && (
@@ -1187,7 +1277,7 @@ function DocRow({
         onIntel={onIntel}
         onUnlink={onUnlink}
         onDelete={onDelete}
-        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+        buttonClassName="shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
       />
     </div>
   );

@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, describeApiError } from "@/lib/api";
-import { useAsync } from "@/hooks/use-async";
+import type { useAsync } from "@/hooks/use-async";
+import type { KnowledgeStatus } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,11 +23,21 @@ import { ConfirmModal } from "@/components/ui/confirm-modal";
  * Deactivate is NOT Clear: it sends `{enabled:false}` and keeps the key so
  * re-activation is one click. The destructive Remove key stays behind its
  * confirm modal. A key the provider rejects (the gateway probes it live and
- * answers 400) surfaces INLINE on the input — a rejected key is a form
+ * answers 400) surfaces INLINE on the input: a rejected key is a form
  * error, not a toast.
+ *
+ * The status is owned by `KbPanel` (which gates the library on it) and handed
+ * down, so `/config/knowledge` is requested once per mount, not twice.
  */
-export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void }) {
-  const status = useAsync(() => api.getKnowledge(), []);
+export type KnowledgeStatusState = ReturnType<typeof useAsync<KnowledgeStatus>>;
+
+export function KnowledgeSettingsCard({
+  status,
+  onChanged,
+}: {
+  status: KnowledgeStatusState;
+  onChanged?: () => void;
+}) {
   const [editing, setEditing] = React.useState(false);
   const [embedding, setEmbedding] = React.useState("");
   const [vision, setVision] = React.useState("");
@@ -68,15 +79,26 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
     }
   };
 
+  const typedEmb = embedding.trim();
+  const typedVis = vision.trim();
+  // Activating needs an embedding key (typed now, or already stored); editing
+  // needs something typed, or Save would send nothing and still claim a change.
+  const canSubmit = editing ? !!(typedEmb || typedVis) : !!typedEmb || configured;
+
   const saveAndActivate = async () => {
-    const emb = embedding.trim();
-    if (!emb && !configured) return;
-    const body: { enabled?: boolean; embedding_api_key?: string; vision_api_key?: string } = {
-      enabled: true,
-    };
-    if (emb) body.embedding_api_key = emb;
-    if (vision.trim()) body.vision_api_key = vision.trim();
-    if (await put(body, "Knowledge Base activated")) {
+    if (!canSubmit) return;
+    const body: { enabled?: boolean; embedding_api_key?: string; vision_api_key?: string } = {};
+    if (!editing) body.enabled = true;
+    if (typedEmb) body.embedding_api_key = typedEmb;
+    if (typedVis) body.vision_api_key = typedVis;
+    const okMessage = !editing
+      ? "Knowledge Base activated"
+      : typedEmb && typedVis
+        ? "Embedding and OCR keys updated"
+        : typedEmb
+          ? "Embedding key updated"
+          : "OCR key updated";
+    if (await put(body, okMessage)) {
       setEmbedding("");
       setVision("");
       setEditing(false);
@@ -87,7 +109,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
   const setEnabled = async (next: boolean) => {
     const ok = await put(
       { enabled: next },
-      next ? "Knowledge Base activated" : "Knowledge Base deactivated — key kept",
+      next ? "Knowledge Base activated" : "Knowledge Base deactivated. The key is kept.",
     );
     if (ok) refreshAll();
   };
@@ -101,7 +123,13 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
     if (ok) refreshAll();
   };
 
-  if (status.loading) return null;
+  if (status.loading) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" /> Loading Knowledge Base status…
+      </div>
+    );
+  }
 
   // Never silently vanish on error — that hides the only place to enter an
   // embedding key. Surface it with a retry instead.
@@ -150,7 +178,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           open={confirmClear}
           onClose={() => setConfirmClear(false)}
           title="Remove Knowledge Base keys?"
-          description="Permanently removes the stored keys — you will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
+          description="Permanently removes the stored keys. You will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
           confirmLabel="Remove keys"
           busy={busy}
           onConfirm={clear}
@@ -173,7 +201,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           {envManaged ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">
-                Key managed by <code>KB_EMBEDDING_API_KEY</code> — unset it to manage the key here.
+                Key managed by <code>KB_EMBEDDING_API_KEY</code>. Unset it to manage the key here.
               </span>
               <Button size="sm" variant="outline" onClick={() => setEnabled(false)} disabled={busy}>
                 Deactivate
@@ -202,7 +230,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           open={confirmClear}
           onClose={() => setConfirmClear(false)}
           title="Remove Knowledge Base keys?"
-          description="Permanently removes the stored keys — you will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
+          description="Permanently removes the stored keys. You will have to re-enter one to activate again. To pause the Knowledge Base without losing the key, use Deactivate instead."
           confirmLabel="Remove keys"
           busy={busy}
           onConfirm={clear}
@@ -220,14 +248,15 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
           {editing ? "Edit Knowledge Base key" : "Activate Knowledge Base"}
         </div>
         <p className="text-xs text-muted-foreground">
-          Document search needs an embedding API key. Optionally add a separate OCR/vision key
-          (defaults to the embedding key). Stored encrypted; env <code>KB_EMBEDDING_API_KEY</code>{" "}
-          still overrides. The key is verified with the provider before it is saved.
+          Document search needs an embedding API key. Image uploads also need an OCR / vision
+          key. Both are stored encrypted; env <code>KB_EMBEDDING_API_KEY</code> still overrides.
+          The key is verified with the provider before it is saved.
         </p>
       </div>
       <Input
         type="password"
         placeholder="Embedding API key (OpenRouter)"
+        aria-label="Embedding API key"
         autoComplete="off"
         value={embedding}
         aria-invalid={formError ? true : undefined}
@@ -239,7 +268,8 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
       {formError && <p className="text-xs text-destructive">{formError}</p>}
       <Input
         type="password"
-        placeholder="OCR / vision key (optional — leave blank to reuse embedding key)"
+        placeholder="OCR / vision key (needed for image uploads)"
+        aria-label="OCR / vision key"
         autoComplete="off"
         value={vision}
         onChange={(e) => setVision(e.target.value)}
@@ -248,7 +278,7 @@ export function KnowledgeSettingsCard({ onChanged }: { onChanged?: () => void })
         <Button
           size="sm"
           onClick={saveAndActivate}
-          disabled={busy || (!embedding.trim() && !configured)}
+          disabled={busy || !canSubmit}
         >
           {busy ? "Verifying…" : editing ? "Save" : "Activate"}
         </Button>
