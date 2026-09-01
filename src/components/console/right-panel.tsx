@@ -136,7 +136,7 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
               ))}
             </div>
           ) : (
-            <div className="auto-blurb min-h-0">No skills installed.</div>
+            <div className="auto-blurb min-h-0">No active skills.</div>
           )}
         </div>
       </div>

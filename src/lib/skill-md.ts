@@ -105,12 +105,16 @@ function instructionsSpan(
   const lines = rest.split("\n");
   const items: string[] = [];
   let consumed = 0;
+  let stopLine: string | undefined;
   for (const line of lines) {
     const isBullet = /^[ \t]*-[ \t]+/.test(line);
     const isBlank = line.trim() === "";
     // Stop at the first line that is neither a bullet nor blank padding —
     // the next heading, or prose. Trailing blanks before it are not consumed.
-    if (!isBullet && !isBlank) break;
+    if (!isBullet && !isBlank) {
+      stopLine = line;
+      break;
+    }
     if (isBullet) {
       // Marker off the front, stray CR off the back — nothing else. Trimming
       // here would strip a trailing space the moment it was typed, the same
@@ -122,6 +126,14 @@ function instructionsSpan(
     } else {
       break;
     }
+  }
+  // A section that opens with prose has no list to project. Returning an
+  // empty list here made the Form show "Add step" over a paragraph the model
+  // reads, and a step added there landed in front of it. A heading (or the
+  // end of the file) straight after the heading is an empty list, which the
+  // Form can hold.
+  if (items.length === 0 && stopLine !== undefined && !/^[ \t]*#/.test(stopLine)) {
+    return null;
   }
   return { items, start: afterHeading, end: afterHeading + consumed };
 }

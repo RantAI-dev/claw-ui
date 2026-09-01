@@ -26,7 +26,7 @@ export function Segmented<T extends string>({
           aria-label={o.ariaLabel}
           title={o.ariaLabel}
           className={cn(
-            "cursor-pointer rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors",
+            "cursor-pointer rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10",
             value === o.value
               ? "bg-background text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",

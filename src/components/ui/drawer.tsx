@@ -4,10 +4,15 @@ import * as React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** What first focus and the Tab trap count as focusable inside the sheet. */
+const FOCUSABLE =
+  'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
 /**
  * Right-side sheet with the shared chrome (backdrop, icon tile + eyebrow + title
- * header, close button, Esc/focus-trap/scroll-lock). Sits at z-40 so a Modal
- * (z-50) opened on top of it always stacks above deterministically.
+ * header, close button, Esc/focus-trap/scroll-lock, focus restore). Sits at
+ * z-40 so a Modal (z-50) opened on top of it always stacks above
+ * deterministically. Named by its title, so AT announces which sheet opened.
  */
 export function Drawer({
   eyebrow,
@@ -26,9 +31,27 @@ export function Drawer({
   children: React.ReactNode;
 }) {
   const panelRef = React.useRef<HTMLDivElement>(null);
+  const titleId = React.useId();
 
-  // Esc to close, trap Tab focus within the dialog, lock background scroll, and
-  // move focus into the panel on open (WCAG 2.4.3).
+  // Move focus into the sheet on open and hand it back on close (WCAG 2.4.3).
+  // The opener is read before anything inside is focused; without the
+  // hand-back every close (Escape, the X, Save) dropped a keyboard user on
+  // <body>. A child marked data-autofocus wins, else the first focusable (the
+  // X); a parent that wants a field instead focuses it in its own effect,
+  // which runs after this one.
+  React.useEffect(() => {
+    const restoreTo = document.activeElement as HTMLElement | null;
+    const panel = panelRef.current;
+    const first =
+      panel?.querySelector<HTMLElement>("[data-autofocus]") ??
+      panel?.querySelector<HTMLElement>(FOCUSABLE);
+    first?.focus();
+    return () => {
+      if (restoreTo && document.contains(restoreTo)) restoreTo.focus();
+    };
+  }, []);
+
+  // Esc to close, trap Tab focus within the dialog, lock background scroll.
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -36,9 +59,7 @@ export function Drawer({
         return;
       }
       if (e.key === "Tab" && panelRef.current) {
-        const f = panelRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-        );
+        const f = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
         if (f.length === 0) return;
         const first = f[0];
         const last = f[f.length - 1];
@@ -68,6 +89,7 @@ export function Drawer({
       }}
       role="dialog"
       aria-modal="true"
+      aria-labelledby={titleId}
     >
       <div
         ref={panelRef}
@@ -84,19 +106,17 @@ export function Drawer({
               </div>
             )}
             <div className="min-w-0">
-              {eyebrow && (
-                <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  {eyebrow}
-                </div>
-              )}
-              <div className="truncate text-sm font-semibold">{title}</div>
+              {eyebrow && <div className="eyebrow">{eyebrow}</div>}
+              <div id={titleId} className="truncate text-sm font-semibold">
+                {title}
+              </div>
             </div>
           </div>
           <button
-            autoFocus
+            type="button"
             onClick={onClose}
             aria-label="Close"
-            className="shrink-0 cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            className="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10 pointer-coarse:min-w-10"
           >
             <X className="size-4" />
           </button>

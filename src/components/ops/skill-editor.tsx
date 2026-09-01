@@ -13,6 +13,7 @@ import {
 } from "@/lib/skill-md";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Drawer } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
@@ -26,6 +27,12 @@ import { toast } from "sonner";
  * middleware tells the user nothing.
  */
 const MAX_BODY_BYTES = 64 * 1024;
+
+/** The small X on a tag chip or a step row: 20 px around a 12-14 px glyph on a
+ *  fine pointer, 40 px on a coarse one, and the same 2 px ring as every other
+ *  control. The bare glyph was 12×12 with the browser's default outline. */
+const REMOVE_BUTTON =
+  "inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10 pointer-coarse:min-w-10";
 
 interface SkillEditorProps {
   mode: "create" | "edit";
@@ -50,6 +57,12 @@ export function SkillEditor({
   const [md, setMd] = React.useState(() =>
     mode === "create" ? emptyTemplate() : "",
   );
+  // What the document looked like when it opened: the template, or the file
+  // as loaded. Anything else is unsaved work, and closing over it asks first.
+  const [baseline, setBaseline] = React.useState(() =>
+    mode === "create" ? emptyTemplate() : "",
+  );
+  const [confirmDiscard, setConfirmDiscard] = React.useState(false);
   const [view, setView] = React.useState<"form" | "markdown">("form");
   const [loading, setLoading] = React.useState(mode === "edit");
   const [saving, setSaving] = React.useState(false);
@@ -66,7 +79,10 @@ export function SkillEditor({
     api
       .skillContent(slug)
       .then((r) => {
-        if (!cancelled) setMd(r.content);
+        if (!cancelled) {
+          setMd(r.content);
+          setBaseline(r.content);
+        }
       })
       .catch((e) => {
         if (!cancelled) setLoadError(describeApiError(e));
@@ -99,12 +115,33 @@ export function SkillEditor({
   const name = fields?.name.trim() ?? "";
   const derivedSlug = slugify(name);
 
-  // The drawer's shared chrome autofocuses its close button. Land in the field
-  // the user came here to fill instead — a new skill starts with typing a name.
+  // The drawer's shared chrome focuses its close button. Land in the field the
+  // user came here to fill instead: a new skill starts with typing a name; an
+  // existing one's name is read-only, so the first field that can change, or
+  // the Markdown source when the form cannot hold the file. Runs when the
+  // content is there and not again on a view switch, so it does not yank
+  // focus around; the target is whichever field is mounted, read off the
+  // refs rather than tracked as a dependency. (A "ran once" ref survived
+  // StrictMode's double effect in dev and left focus on the X.)
   const nameRef = React.useRef<HTMLInputElement>(null);
+  const descriptionRef = React.useRef<HTMLTextAreaElement>(null);
+  const markdownRef = React.useRef<HTMLTextAreaElement>(null);
   React.useEffect(() => {
+    if (loading || loadError) return;
     if (mode === "create") nameRef.current?.focus();
-  }, [mode]);
+    else (descriptionRef.current ?? markdownRef.current)?.focus();
+  }, [mode, loading, loadError]);
+
+  // Escape, the X, the backdrop and Cancel all come through here. A document
+  // typed by hand cannot be regenerated, so a changed one asks before it goes;
+  // an untouched one closes at once. `confirmDiscard` short-circuits the
+  // drawer's own Escape while the question is on screen.
+  const dirty = md !== baseline;
+  const requestClose = React.useCallback(() => {
+    if (confirmDiscard) return;
+    if (dirty && !saving) setConfirmDiscard(true);
+    else onClose();
+  }, [confirmDiscard, dirty, saving, onClose]);
 
   // Collision on BOTH keys: two different display names can slugify to one
   // directory, so checking names alone leaves the other collision reachable.
@@ -155,7 +192,7 @@ export function SkillEditor({
       const detail = describeApiError(e);
       if (status === 409) toast.error(`Name already taken: ${detail}`);
       else if (status === 413)
-        toast.error("Too large to save — the gateway caps bodies at 64 KB.");
+        toast.error("Too large to save: the gateway caps bodies at 64 KB.");
       else toast.error(`Save failed: ${detail}`);
     } finally {
       setSaving(false);
@@ -163,17 +200,18 @@ export function SkillEditor({
   };
 
   return (
+    <>
     <Drawer
       eyebrow={mode === "create" ? "New skill" : "Editing"}
       title={mode === "create" ? "Write a skill" : name || slug}
       icon={<FilePen className="size-4" />}
-      onClose={onClose}
+      onClose={requestClose}
       className="max-w-3xl"
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-12 font-mono text-xs text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Loading…
+          <div className="flex items-center justify-center gap-2 py-12 text-xs text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> Loading the skill…
           </div>
         ) : loadError ? (
           <p className="py-8 text-center text-sm text-destructive">{loadError}</p>
@@ -192,8 +230,9 @@ export function SkillEditor({
               />
             ) : (
               <p className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
-                This file’s structure was changed by hand, so the form view can’t
-                be used. Keep editing here — nothing is lost.
+                The form can&apos;t map this file: its Instructions are not a
+                bullet list, or its structure was changed by hand. Edit the
+                Markdown here; nothing is lost.
               </p>
             )}
 
@@ -204,8 +243,10 @@ export function SkillEditor({
                   htmlFor="skill-name"
                   hint={
                     mode === "edit"
-                      ? "Renaming isn’t supported here — create a new skill instead."
-                      : `Folder: ${derivedSlug || "—"}`
+                      ? "Renaming is not supported here. Create a new skill instead."
+                      : derivedSlug
+                        ? `Folder: ${derivedSlug}`
+                        : "Folder: chosen from the name"
                   }
                   problem={nameTouched ? nameProblem : null}
                 >
@@ -217,7 +258,6 @@ export function SkillEditor({
                       setNameTouched(true);
                       patch("name", e.target.value);
                     }}
-                    onBlur={() => setNameTouched(true)}
                     // Renaming would keep the old folder while the manifest
                     // claimed a new name, and would orphan the config entry that
                     // tracks whether the skill is enabled. The gateway refuses
@@ -228,7 +268,7 @@ export function SkillEditor({
                         ? "cursor-not-allowed bg-muted/40 text-muted-foreground"
                         : undefined
                     }
-                    placeholder="Kopi Pagi"
+                    placeholder="Skill name"
                   />
                 </Field>
 
@@ -239,11 +279,12 @@ export function SkillEditor({
                 >
                   <Textarea
                     id="skill-description"
+                    ref={descriptionRef}
                     value={fields.description}
                     onChange={(e) => patch("description", e.target.value)}
                     rows={3}
                     className="resize-y"
-                    placeholder="Panduan menyeduh kopi V60 — rasio, suhu, dan waktu bloom."
+                    placeholder="When should the model use this skill? One or two sentences."
                   />
                 </Field>
 
@@ -264,6 +305,7 @@ export function SkillEditor({
             ) : (
               <Textarea
                 id="skill-markdown"
+                ref={markdownRef}
                 aria-label="SKILL.md source"
                 value={md}
                 onChange={(e) => setMd(e.target.value)}
@@ -288,10 +330,10 @@ export function SkillEditor({
           )}
         >
           {(encodedSize / 1024).toFixed(1)} / 64 KB
-          {tooLarge && " — too large to save"}
+          {tooLarge && ", too large to save"}
         </span>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="ghost" onClick={requestClose} disabled={saving}>
             Cancel
           </Button>
           <Button
@@ -305,6 +347,20 @@ export function SkillEditor({
         </div>
       </div>
     </Drawer>
+    <ConfirmModal
+      open={confirmDiscard}
+      onClose={() => setConfirmDiscard(false)}
+      title={
+        mode === "create"
+          ? "Discard this skill?"
+          : `Discard changes to “${name || slug}”?`
+      }
+      description="Nothing has been saved."
+      confirmLabel="Discard"
+      icon={null}
+      onConfirm={onClose}
+    />
+    </>
   );
 }
 
@@ -374,7 +430,7 @@ function TagInput({
             type="button"
             onClick={() => onChange(tags.filter((x) => x !== t))}
             aria-label={`Remove tag ${t}`}
-            className="cursor-pointer text-muted-foreground hover:text-destructive"
+            className={REMOVE_BUTTON}
           >
             <X className="size-3" />
           </button>
@@ -452,7 +508,7 @@ function ListInput({
             type="button"
             onClick={() => onChange(items.filter((_, idx) => idx !== i))}
             aria-label={`Remove step ${i + 1}`}
-            className="cursor-pointer text-muted-foreground hover:text-destructive"
+            className={REMOVE_BUTTON}
           >
             <X className="size-3.5" />
           </button>

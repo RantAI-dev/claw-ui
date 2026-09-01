@@ -49,6 +49,7 @@ import type {
   SessionSummary,
 } from "@/lib/types";
 import { kbSearch } from "@/lib/attachments";
+import { isSkillActive } from "@/lib/skills";
 import { useChat } from "@/hooks/use-chat";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
 import { Button } from "@/components/ui/button";
@@ -324,9 +325,10 @@ export function ConsoleShell({
       .skills()
       .then((r) =>
         setSkills(
-          (r.skills || [])
-            .filter((s) => s.enabled !== false)
-            .map((s) => s.name),
+          // Active, not merely enabled: a skill the loader drops (missing
+          // binary, unset env) never reaches the prompt, so it is neither
+          // counted on the badge nor listed as active in the rail.
+          (r.skills || []).filter(isSkillActive).map((s) => s.name),
         ),
       )
       .catch(() => {});

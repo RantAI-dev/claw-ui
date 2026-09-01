@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   candidateAnnotation,
   candidatesFromError,
+  describeHubError,
   indexInstalledSkills,
   installStateFor,
   skillReference,
@@ -187,3 +188,39 @@ describe("installStateFor", () => {
     );
   });
 });
+
+describe("describeHubError", () => {
+  it("blames the browser's connection for a fetch that never left", () => {
+    expect(describeHubError(new TypeError("Failed to fetch"))).toBe(
+      "The console could not be reached (Failed to fetch). Check your connection, then retry.",
+    );
+  });
+
+  it("says the console's server could not reach ClawHub, with the proxy's detail", () => {
+    expect(
+      describeHubError({
+        status: 502,
+        message: "fetch failed",
+        body: { error: "clawhub_unreachable", detail: "fetch failed" },
+      }),
+    ).toBe(
+      "ClawHub could not be reached from the console's server (fetch failed). Check its network access, then retry.",
+    );
+    expect(describeHubError({ status: 502, message: "", body: { error: "clawhub_unreachable" } })).toBe(
+      "ClawHub could not be reached from the console's server. Check its network access, then retry.",
+    );
+  });
+
+  it("reports the status ClawHub answered with", () => {
+    expect(describeHubError({ status: 502, message: "clawhub 503", body: { error: "clawhub 503" } })).toBe(
+      "ClawHub answered 503. Retry in a moment.",
+    );
+  });
+
+  it("falls back to the message for anything else, never to the gateway sentence", () => {
+    expect(describeHubError(new Error("boom"))).toBe("ClawHub error: boom");
+    expect(describeHubError({ status: 502, message: "odd", body: {} })).toBe("ClawHub error: odd");
+    expect(describeHubError("x")).toBe("ClawHub error: x");
+  });
+});
+
