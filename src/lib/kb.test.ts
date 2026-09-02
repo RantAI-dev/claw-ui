@@ -4,8 +4,8 @@ import {
   INK_HEX,
   KB_PRESETS,
   contrastRatio,
-  countLine,
   isPreset,
+  kbVerdict,
   presetName,
   tileInk,
   deleteDocCopy,
@@ -111,10 +111,49 @@ describe("duplicates and counts", () => {
     expect(duplicateTitles(files, [{ title: "notes" }, { title: null }])).toEqual(["notes"]);
     expect(duplicateTitles(files, [])).toEqual([]);
   });
-  it("pluralises the count line", () => {
-    expect(countLine(1, 1)).toBe("1 knowledge base · 1 document");
-    expect(countLine(3, 1200)).toBe("3 knowledge bases · 1,200 documents");
-    expect(countLine(0, 0)).toBe("0 knowledge bases · 0 documents");
+});
+
+describe("kbVerdict", () => {
+  const on = { enabled: true, embedding_configured: true, vision_configured: false, source: "config" };
+
+  it("says retrieval is off, with the next move, before any key exists", () => {
+    const v = kbVerdict({ enabled: false, embedding_configured: false, vision_configured: false, source: "none" }, null);
+    expect(v).toEqual({
+      headline: "Document retrieval is off",
+      tone: "warn",
+      meta: [],
+      detail: "Add an embedding key to activate the Knowledge Base.",
+    });
+  });
+
+  it("keeps the stored key visible when retrieval is paused", () => {
+    const v = kbVerdict({ enabled: false, embedding_configured: true, vision_configured: false, source: "config" }, null);
+    expect(v.tone).toBe("warn");
+    expect(v.meta).toEqual(["key stored"]);
+    expect(v.detail).toBe("Activate to resume retrieval. The key is kept.");
+  });
+
+  it("treats a keyed older gateway without the enabled field as on", () => {
+    const v = kbVerdict({ embedding_configured: true, vision_configured: false, source: "env" }, []);
+    expect(v.headline).toBe("Nothing to retrieve yet");
+  });
+
+  it("flags an active setup with no bases, then no documents", () => {
+    expect(kbVerdict(on, []).headline).toBe("Nothing to retrieve yet");
+    expect(kbVerdict(on, [{ document_count: 0 }]).headline).toBe("No documents to retrieve yet");
+    expect(kbVerdict(on, [{ document_count: 0 }]).meta).toEqual(["1 knowledge base"]);
+  });
+
+  it("answers with the document count and the key facts when ready", () => {
+    const v = kbVerdict(
+      { ...on, vision_configured: true },
+      [{ document_count: 5 }, { document_count: 1 }, {}],
+    );
+    expect(v).toEqual({
+      headline: "6 documents ready to retrieve",
+      tone: "ok",
+      meta: ["3 knowledge bases", "OCR on", "key from config"],
+    });
   });
 });
 

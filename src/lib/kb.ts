@@ -120,8 +120,69 @@ export function duplicateTitles(
   return out;
 }
 
-export function countLine(groups: number, docs: number): string {
-  return `${formatNumber(groups)} knowledge base${groups === 1 ? "" : "s"} · ${formatNumber(docs)} document${docs === 1 ? "" : "s"}`;
+/**
+ * The page's opening answer: can the agent retrieve, and from what? Follows
+ * the Status / Channels / Providers / Schedules / Skills verdicts: a headline
+ * with a tone dot, a mono meta line of counts, a detail that says the next
+ * move when the tone is orange.
+ */
+export interface KbVerdict {
+  headline: string;
+  tone: "ok" | "warn";
+  meta: string[];
+  detail?: string;
+}
+
+export function kbVerdict(
+  status: {
+    enabled?: boolean;
+    embedding_configured: boolean;
+    vision_configured: boolean;
+    source: string;
+  },
+  groups: { document_count?: number | null }[] | null,
+): KbVerdict {
+  const enabled = status.enabled ?? status.embedding_configured;
+  if (!enabled) {
+    if (status.embedding_configured) {
+      return {
+        headline: "Document retrieval is off",
+        tone: "warn",
+        meta: ["key stored"],
+        detail: "Activate to resume retrieval. The key is kept.",
+      };
+    }
+    return {
+      headline: "Document retrieval is off",
+      tone: "warn",
+      meta: [],
+      detail: "Add an embedding key to activate the Knowledge Base.",
+    };
+  }
+  const bases = groups?.length ?? 0;
+  const docs = (groups ?? []).reduce((n, g) => n + (g.document_count ?? 0), 0);
+  if (bases === 0) {
+    return {
+      headline: "Nothing to retrieve yet",
+      tone: "warn",
+      meta: ["0 knowledge bases"],
+      detail: "Create a knowledge base and upload documents into it.",
+    };
+  }
+  const baseMeta = `${formatNumber(bases)} knowledge base${bases === 1 ? "" : "s"}`;
+  if (docs === 0) {
+    return {
+      headline: "No documents to retrieve yet",
+      tone: "warn",
+      meta: [baseMeta],
+      detail: "Upload files into a base so the agent can draw on them.",
+    };
+  }
+  return {
+    headline: `${formatNumber(docs)} document${docs === 1 ? "" : "s"} ready to retrieve`,
+    tone: "ok",
+    meta: [baseMeta, `OCR ${status.vision_configured ? "on" : "off"}`, `key from ${status.source}`],
+  };
 }
 
 // ── Colours ──────────────────────────────────────────────────────────────────
