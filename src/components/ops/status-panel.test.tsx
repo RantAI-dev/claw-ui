@@ -102,12 +102,31 @@ describe("StatusPanel usage tiles", () => {
 });
 
 describe("StatusPanel health", () => {
-  it("renders the daemon's health snapshot from status.runtime", async () => {
+  it("opens with the verdict and the vitals from status.runtime", async () => {
     status.mockResolvedValue({ ...(await status()), runtime });
     render(<StatusPanel />);
-    expect(await screen.findByText("gateway")).toBeTruthy();
-    expect(await screen.findByText("0 restarts")).toBeTruthy();
-    expect(await screen.findByText(/Up 1h 2m/)).toBeTruthy();
+    expect(await screen.findByText("Runtime healthy")).toBeTruthy();
+    // Single healthy component: one metadata line, no per-component rows.
+    expect(await screen.findByText(/gateway ok · up 1h 2m · 0 restarts · pid 4122820/)).toBeTruthy();
+  });
+
+  it("leads with the unwell component when one is", async () => {
+    status.mockResolvedValue({
+      ...(await status()),
+      runtime: {
+        components: {
+          gateway: { status: "ok", restart_count: 0 },
+          telegram: { status: "degraded", restart_count: 3, last_error: "401 Unauthorized" },
+        },
+        pid: 1,
+        uptime_seconds: 60,
+      },
+    });
+    render(<StatusPanel />);
+    expect(await screen.findByText("telegram degraded")).toBeTruthy();
+    // More than one component: the rows appear, errors named.
+    expect(await screen.findByText("last error: 401 Unauthorized")).toBeTruthy();
+    expect(await screen.findByText("3 restarts")).toBeTruthy();
   });
 
   it("says so when the gateway sent no snapshot", async () => {

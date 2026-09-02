@@ -196,9 +196,21 @@ export const IconButton = React.forwardRef<
 ));
 IconButton.displayName = "IconButton";
 
-export function KeyVal({ k, v, mono }: { k: string; v: React.ReactNode; mono?: boolean }) {
+export function KeyVal({
+  k,
+  v,
+  mono,
+  stack,
+}: {
+  k: string;
+  v: React.ReactNode;
+  mono?: boolean;
+  /** Key above the value, left-aligned: for long values (paths, urls) that
+   *  would otherwise wrap right-aligned mid-token in a narrow column. */
+  stack?: boolean;
+}) {
   return (
-    <div className="kv-row border-b border-border/60 py-2 last:border-b-0">
+    <div className={cn("kv-row border-b border-border/60 py-2 last:border-b-0", stack && "kv-stack")}>
       <span className="k">{k}</span>
       <span className="v" style={mono ? undefined : { fontFamily: "var(--font-sans)" }}>
         {v}
