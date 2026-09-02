@@ -1643,6 +1643,14 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+.kv-row.kv-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.kv-row.kv-stack .v {
+  text-align: left;
+}
 .kv-row .v.sky {
   color: var(--brand-sky);
 }
