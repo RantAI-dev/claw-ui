@@ -2,7 +2,7 @@
 // 5-field validator (mirrors the backend's 5-field syntax), the job/run state
 // words, and the gateway sentences the panel has to read.
 
-import type { CronJob, CronSchedule } from "./types";
+import type { CronJob, CronList, CronSchedule } from "./types";
 
 export const DOW = [
   "Sunday",
@@ -111,7 +111,9 @@ export function whenMs(ts: string | number | null | undefined): number | null {
 export function fmtWhen(ts: string | number | null | undefined): string {
   if (ts == null) return "not yet";
   const ms = whenMs(ts);
-  return ms == null ? String(ts) : new Date(ms).toLocaleString();
+  if (ms == null) return String(ts);
+  // Minute precision: a schedule's times read as appointments, not log lines.
+  return new Date(ms).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 }
 
 /** The browser's IANA zone, or "" when the runtime cannot tell. */
@@ -333,3 +335,93 @@ export function isPastOneOffRefusal(message: string): boolean {
 }
 
 export const PAST_ONE_OFF = "This one-off's time has passed. Edit it with a new time to run it again.";
+
+/** A job's display name: its own, or the id's first block. */
+export function jobLabel(j: Pick<CronJob, "id" | "name">): string {
+  return j.name || j.id.slice(0, 8);
+}
+
+/** The tone dot beside a run outcome, from the topbar pill's colour set. */
+export function statusDotColor(status: string | null | undefined): string {
+  const s = (status ?? "").toLowerCase();
+  if (s === "ok") return "var(--accent-green)";
+  if (s === "error") return "var(--accent-red)";
+  return "var(--accent-orange)";
+}
+
+// ---- The page's verdict ----
+
+export interface CronVerdict {
+  headline: string;
+  tone: "ok" | "warn";
+  /** Mono metadata line, joined with a dot. */
+  meta: string[];
+  detail?: string;
+}
+
+/** The answer the page opens with: whether the schedule is running, and what
+ *  fires next. Feature switches outrank everything; overdue outranks the
+ *  happy path; a list with nothing armed says so. */
+export function cronVerdict(
+  list: Pick<CronList, "jobs" | "count" | "cron_enabled" | "scheduler_enabled">,
+  now: number,
+): CronVerdict {
+  let paused = 0;
+  let overdue = 0;
+  let next: { label: string; at: number } | null = null;
+  for (const j of list.jobs) {
+    const st = jobState(j, now);
+    if (st === "overdue") overdue += 1;
+    else if (st !== "scheduled") paused += 1;
+    if (st === "scheduled") {
+      const at = whenMs(j.next_run);
+      if (at != null && (next == null || at < next.at)) next = { label: jobLabel(j), at };
+    }
+  }
+  const meta = [`${list.count} job${list.count === 1 ? "" : "s"}`];
+  if (paused > 0) meta.push(`${paused} paused`);
+  if (overdue > 0) meta.push(`${overdue} overdue`);
+  if (list.cron_enabled === false) {
+    return {
+      headline: "Cron is off",
+      tone: "warn",
+      meta,
+      detail: "cron.enabled=false: jobs are read-only here, and nothing fires until it is re-enabled.",
+    };
+  }
+  if (list.scheduler_enabled === false) {
+    return {
+      headline: "The scheduler loop is off",
+      tone: "warn",
+      meta,
+      detail: "scheduler.enabled=false: these jobs will not fire until it is re-enabled.",
+    };
+  }
+  if (list.count === 0) {
+    return {
+      headline: "No scheduled jobs",
+      tone: "warn",
+      meta: [],
+      detail:
+        "Create the first one with the New job form. Jobs fire from the RantaiClaw daemon while it is running.",
+    };
+  }
+  if (overdue > 0) {
+    return {
+      headline: `${overdue} job${overdue === 1 ? "" : "s"} overdue`,
+      tone: "warn",
+      meta,
+      detail:
+        "A due time passed with no run recorded. Jobs fire from the RantaiClaw daemon; check that it is running.",
+    };
+  }
+  if (next == null) {
+    return {
+      headline: "Nothing scheduled to run",
+      tone: "warn",
+      meta,
+      detail: "Every job is paused or already ran; resume one or create a new job.",
+    };
+  }
+  return { headline: `Next up: ${next.label}`, tone: "ok", meta: [fmtWhen(next.at), ...meta] };
+}

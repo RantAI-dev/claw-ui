@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   PAST_ONE_OFF,
+  cronVerdict,
   buildSchedule,
   createWarningReason,
   describeCron,
@@ -200,5 +201,75 @@ describe("firstLine", () => {
     expect(firstLine("\n\n")).toBe("");
     expect(firstLine("x".repeat(200))).toHaveLength(120);
     expect(firstLine("x".repeat(200)).endsWith("…")).toBe(true);
+  });
+});
+
+describe("cronVerdict", () => {
+  const j = (over: Record<string, unknown>) => ({
+    id: "x",
+    name: null,
+    enabled: true,
+    next_run: ahead(3_600_000),
+    last_run: null,
+    schedule: cron,
+    ...over,
+  });
+  const list = (jobs: ReturnType<typeof j>[], flags: Record<string, unknown> = {}) =>
+    ({ jobs, count: jobs.length, cron_enabled: true, scheduler_enabled: true, ...flags }) as never;
+
+  it("lets the feature switches outrank everything", () => {
+    const v = cronVerdict(list([j({})], { cron_enabled: false, scheduler_enabled: false }), NOW);
+    expect(v.headline).toBe("Cron is off");
+    expect(v.tone).toBe("warn");
+    const w = cronVerdict(list([j({})], { scheduler_enabled: false }), NOW);
+    expect(w.headline).toBe("The scheduler loop is off");
+  });
+
+  it("treats missing flags as unknown, not off", () => {
+    const v = cronVerdict(
+      { jobs: [j({ name: "a" })], count: 1 } as never,
+      NOW,
+    );
+    expect(v.headline).toBe("Next up: a");
+    expect(v.tone).toBe("ok");
+  });
+
+  it("says so when the list is empty", () => {
+    const v = cronVerdict(list([]), NOW);
+    expect(v.headline).toBe("No scheduled jobs");
+    expect(v.meta).toEqual([]);
+  });
+
+  it("leads with overdue when a due time went by", () => {
+    const v = cronVerdict(list([j({ next_run: ago(10 * 60_000) }), j({ name: "b" })]), NOW);
+    expect(v.headline).toBe("1 job overdue");
+    expect(v.tone).toBe("warn");
+    expect(v.meta).toContain("2 jobs");
+    expect(v.meta).toContain("1 overdue");
+  });
+
+  it("names the soonest scheduled job when all is well", () => {
+    const v = cronVerdict(
+      list([
+        j({ name: "later", next_run: ahead(7_200_000) }),
+        j({ name: "sooner", next_run: ahead(1_800_000) }),
+        j({ name: "asleep", enabled: false }),
+      ]),
+      NOW,
+    );
+    expect(v.headline).toBe("Next up: sooner");
+    expect(v.tone).toBe("ok");
+    expect(v.meta).toContain("3 jobs");
+    expect(v.meta).toContain("1 paused");
+  });
+
+  it("says nothing is scheduled when every job is paused or spent", () => {
+    const past = { kind: "at" as const, at: ago(60_000) };
+    const v = cronVerdict(
+      list([j({ enabled: false }), j({ enabled: false, schedule: past, next_run: past.at, last_run: past.at })]),
+      NOW,
+    );
+    expect(v.headline).toBe("Nothing scheduled to run");
+    expect(v.tone).toBe("warn");
   });
 });
