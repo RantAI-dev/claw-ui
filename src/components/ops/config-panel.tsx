@@ -19,6 +19,7 @@ export function ConfigPanel() {
   const [showRaw, setShowRaw] = React.useState(false);
   const tempErrId = React.useId();
   const tempHintId = React.useId();
+  const rawId = React.useId();
 
   // Until the first successful GET /config, we have no temperature to edit
   // against. Writing then would save against a config we never read, so hold
@@ -124,22 +125,36 @@ export function ConfigPanel() {
         </PanelFrame>
       </Card>
 
-      <div>
-        <button
-          onClick={() => setShowRaw((v) => !v)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-        >
-          {showRaw ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          {showRaw ? "Hide" : "Show"} full config (API keys and MCP env values masked)
-        </button>
-        {showRaw && (
-          <PanelFrame loading={cfg.loading} error={cfg.error} loaded={cfg.loaded} onRefresh={cfg.refresh}>
-            <pre className="mt-2 max-h-[60vh] overflow-auto rounded-lg border border-border bg-muted p-3 font-mono text-[11px] scrollbar-thin">
-              {JSON.stringify(maskConfigForDisplay(cfg.data), null, 2)}
-            </pre>
-          </PanelFrame>
-        )}
-      </div>
+      {/* The disclosure exists only when there is something to disclose: during
+          an initial-load error it would only duplicate the frame's error box,
+          and on a refresh failure the card's strip is the one error surface
+          while the loaded dump stays readable. */}
+      {cfg.data != null && (
+        <div>
+          <button
+            type="button"
+            aria-expanded={showRaw}
+            aria-controls={rawId}
+            onClick={() => setShowRaw((v) => !v)}
+            className="flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10"
+          >
+            {showRaw ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+            {showRaw ? "Hide" : "Show"} full config (secrets masked)
+          </button>
+          {showRaw && (
+            <div id={rawId}>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Values this console recognizes as secrets show as ••••••••; the gateway
+                blanks the rest before sending, so an empty value can mean unset
+                or hidden.
+              </p>
+              <pre className="mt-2 max-h-[60vh] overflow-auto rounded-lg border border-border bg-muted p-3 font-mono text-[11px] scrollbar-thin">
+                {JSON.stringify(maskConfigForDisplay(cfg.data), null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

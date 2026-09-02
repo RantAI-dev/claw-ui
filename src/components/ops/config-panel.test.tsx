@@ -147,3 +147,24 @@ describe("ConfigPanel save honesty", () => {
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 });
+
+describe("ConfigPanel masked viewer", () => {
+  it("exposes aria-expanded and reveals the masked dump without credentials", async () => {
+    const { container } = await renderLoaded();
+    const toggle = screen.getByRole("button", { name: /full config/ }) as HTMLButtonElement;
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const pre = container.querySelector("pre")!;
+    expect(pre.textContent).toContain("\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022");
+    expect(pre.textContent).not.toContain("sk-arg-9999");
+    expect(pre.textContent).not.toContain("sk-test-12345");
+  });
+
+  it("renders no disclosure until config data exists", async () => {
+    config.mockRejectedValue(new Error("down"));
+    render(<ConfigPanel />);
+    await screen.findByText("Couldn't load this panel");
+    expect(screen.queryByRole("button", { name: /full config/ })).toBeNull();
+  });
+});

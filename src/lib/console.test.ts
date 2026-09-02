@@ -104,4 +104,52 @@ describe("maskConfigForDisplay", () => {
       autonomy: { level: "smart" },
     });
   });
+
+  it("masks the arg after a credential flag", () => {
+    const masked = maskConfigForDisplay({
+      mcp_servers: {
+        qa: { command: "npx", args: ["-y", "qa-server", "--api-key", "sk-arg-9999"] },
+      },
+    }) as { mcp_servers: { qa: { args: string[] } } };
+    expect(masked.mcp_servers.qa.args).toEqual(["-y", "qa-server", "--api-key", "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"]);
+  });
+
+  it("masks inline --flag=value forms and bare key-shaped args", () => {
+    const masked = maskConfigForDisplay({
+      mcp_servers: { qa: { args: ["--token=tok123", "--verbose", "sk-live-abc"] } },
+    }) as { mcp_servers: { qa: { args: string[] } } };
+    expect(masked.mcp_servers.qa.args).toEqual([
+      "--token=\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+      "--verbose",
+      "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+    ]);
+  });
+
+  it("masks the value after --max-keys too: parity with the gateway heuristic, not perfection", () => {
+    const masked = maskConfigForDisplay({
+      mcp_servers: { qa: { args: ["--max-keys", "10"] } },
+    }) as { mcp_servers: { qa: { args: string[] } } };
+    expect(masked.mcp_servers.qa.args).toEqual(["--max-keys", "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"]);
+  });
+
+  it("masks a key-shaped command and keeps a normal one", () => {
+    const masked = maskConfigForDisplay({
+      mcp_servers: { a: { command: "sk-something" }, b: { command: "npx" } },
+    }) as { mcp_servers: Record<string, { command: string }> };
+    expect(masked.mcp_servers.a.command).toBe("\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022");
+    expect(masked.mcp_servers.b.command).toBe("npx");
+  });
+
+  it("passes non-string arg members through and still masks after a flag", () => {
+    const masked = maskConfigForDisplay({
+      mcp_servers: { qa: { args: [1, "--key", "v"] as unknown[] } },
+    }) as { mcp_servers: { qa: { args: unknown[] } } };
+    expect(masked.mcp_servers.qa.args).toEqual([1, "--key", "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"]);
+  });
+
+  it("does not mutate the caller's args", () => {
+    const original = { mcp_servers: { x: { args: ["--key", "v"] } } };
+    maskConfigForDisplay(original);
+    expect(original.mcp_servers.x.args).toEqual(["--key", "v"]);
+  });
 });

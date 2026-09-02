@@ -333,14 +333,58 @@ export function initials(name: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+const MASK = "••••••••";
+/** Provider key prefixes, mirroring RantAIClaw `config/api_url.rs` API_KEY_PREFIXES. */
+const API_KEY_PREFIXES = ["sk-", "sk_", "gsk_", "xai-", "AIza", "hf_"];
+const SECRET_FLAG_WORDS = ["key", "token", "secret", "password"];
+
+function looksLikeApiKey(value: string): boolean {
+  const v = value.trim();
+  return API_KEY_PREFIXES.some((p) => v.startsWith(p));
+}
+
+/**
+ * Mask credential-shaped MCP launch args, mirroring the gateway's
+ * `redact_mcp_args`: the value after a `--flag` whose name contains
+ * key/token/secret/password (both `--flag value` and `--flag=value` forms),
+ * and any bare arg that starts like a provider key. Parity with the gateway,
+ * not perfection: `--max-keys 10` masks the 10 on both sides.
+ */
+function maskMcpArgs(args: unknown[]): unknown[] {
+  let maskNext = false;
+  return args.map((raw) => {
+    if (typeof raw !== "string") {
+      maskNext = false;
+      return raw;
+    }
+    if (maskNext) {
+      maskNext = false;
+      return MASK;
+    }
+    if (looksLikeApiKey(raw)) return MASK;
+    if (raw.startsWith("--")) {
+      const flag = raw.toLowerCase();
+      if (SECRET_FLAG_WORDS.some((k) => flag.includes(k))) {
+        const eq = raw.indexOf("=");
+        if (eq >= 0) return raw.slice(0, eq + 1) + MASK;
+        maskNext = true;
+      }
+    }
+    return raw;
+  });
+}
+
 /**
  * A config dump safe to put on screen.
  *
  * The backend redacts by key-name suffix, which cannot cover
  * `mcp_servers.*.env` — those are arbitrary operator-chosen names holding
- * arbitrary values, and API keys live there routinely. The panel's label said
- * "secrets redacted" over exactly that gap. This masks the env **values**
- * client-side; the key names stay, so the operator can still see what is set.
+ * arbitrary values, and API keys live there routinely — nor arg values
+ * (`npx server --api-key sk-…` has no key name to match). This masks the env
+ * **values**, credential-shaped **arg values**, and a key-shaped **command**
+ * client-side; key and flag names stay, so the operator can still see what is
+ * set. Gateways released after v0.25 blank the same set server-side; this is
+ * the client-side floor for the older ones.
  */
 export function maskConfigForDisplay(config: unknown): unknown {
   if (!config || typeof config !== "object") return config;
@@ -349,11 +393,15 @@ export function maskConfigForDisplay(config: unknown): unknown {
   if (!servers || typeof servers !== "object") return clone;
   for (const server of Object.values(servers as Record<string, unknown>)) {
     if (!server || typeof server !== "object") continue;
-    const env = (server as Record<string, unknown>).env;
-    if (!env || typeof env !== "object") continue;
-    for (const key of Object.keys(env as Record<string, unknown>)) {
-      (env as Record<string, unknown>)[key] = "••••••••";
+    const s = server as Record<string, unknown>;
+    const env = s.env;
+    if (env && typeof env === "object") {
+      for (const key of Object.keys(env as Record<string, unknown>)) {
+        (env as Record<string, unknown>)[key] = MASK;
+      }
     }
+    if (Array.isArray(s.args)) s.args = maskMcpArgs(s.args);
+    if (typeof s.command === "string" && looksLikeApiKey(s.command)) s.command = MASK;
   }
   return clone;
 }
