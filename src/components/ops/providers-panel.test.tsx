@@ -184,19 +184,30 @@ describe("ProvidersPanel", () => {
     expect(toastSuccess.mock.calls[0][0]).toBe("Saved: API key stored");
   });
 
-  it("the key badge says stored / not stored / not needed", async () => {
+  it("the verdict says stored / not stored / not needed, by name", async () => {
     render(<ProvidersPanel />);
-    expect(await screen.findByText("No key needed")).toBeTruthy();
-    expect(screen.queryByText("No key stored")).toBeNull();
+    expect(await screen.findByText("Talking to Ollama")).toBeTruthy();
+    expect(screen.getByText("no key needed")).toBeTruthy();
+    expect(screen.queryByText("no key stored")).toBeNull();
     cleanup();
     secrets.mockResolvedValue(secretsWith("openai"));
     render(<ProvidersPanel />);
-    expect(await screen.findByText("No key stored")).toBeTruthy();
+    expect(await screen.findByText("Talking to OpenAI")).toBeTruthy();
+    expect(screen.getByText("no key stored")).toBeTruthy();
+    expect(screen.getByText(/If OpenAI needs a key/)).toBeTruthy();
     cleanup();
     secrets.mockResolvedValue(secretsWith("openai", { api_key_present: true }));
     render(<ProvidersPanel />);
-    expect(await screen.findByText("Key stored")).toBeTruthy();
-    expect(screen.getByText("OpenAI", { selector: ".rounded-md" })).toBeTruthy();
+    expect(await screen.findByText("key stored encrypted")).toBeTruthy();
+  });
+
+  it("picking a provider from the catalog fills the form", async () => {
+    render(<ProvidersPanel />);
+    await waitFor(() => expect(providerTrigger()).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Anthropic/ }));
+    expect(providerTrigger().textContent).toContain("Anthropic");
+    await waitFor(() => expect(modelTrigger().textContent).toContain("claude-sonnet-4.6"));
+    expect(screen.getByText("Unsaved changes")).toBeTruthy();
   });
 
   it("a failed first read is an error, never 'none / no key'", async () => {
@@ -205,7 +216,8 @@ describe("ProvidersPanel", () => {
     expect(await screen.findByText(/Couldn't load this panel/)).toBeTruthy();
     expect(screen.getByText("boom")).toBeTruthy();
     expect(screen.queryByText("none")).toBeNull();
-    expect(screen.queryByText(/No key/)).toBeNull();
+    expect(screen.queryByText(/no key/i)).toBeNull();
+    expect(screen.queryByText(/Talking to/)).toBeNull();
     expect(providerTrigger()).toBeNull();
   });
 
@@ -222,13 +234,14 @@ describe("ProvidersPanel", () => {
   });
 
   it("says how the key is stored from the gateway's flag, never from static copy", async () => {
+    secrets.mockResolvedValue(secretsWith("ollama", { api_key_present: true }));
     render(<ProvidersPanel />);
-    expect(await screen.findByText(/Stored encrypted in config.toml/)).toBeTruthy();
+    expect(await screen.findByText("key stored encrypted")).toBeTruthy();
     cleanup();
-    secrets.mockResolvedValue(secretsWith("ollama", { encrypt_at_rest: false }));
+    secrets.mockResolvedValue(secretsWith("ollama", { api_key_present: true, encrypt_at_rest: false }));
     render(<ProvidersPanel />);
-    expect(await screen.findByText(/Stored in plain text in config.toml/)).toBeTruthy();
-    expect(screen.queryByText(/Stored encrypted/)).toBeNull();
+    expect(await screen.findByText("key stored in plain text (secrets.encrypt off)")).toBeTruthy();
+    expect(screen.queryByText("key stored encrypted")).toBeNull();
   });
 
   it("a blank URL over a stored one says it keeps it and is not dirty", async () => {

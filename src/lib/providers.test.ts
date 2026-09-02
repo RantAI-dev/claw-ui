@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changes, isDirty, keyState, providerLabel, saveSummary } from "./providers";
+import { changes, isDirty, providerLabel, providersVerdict, saveSummary } from "./providers";
 
 const server = { provider: "ollama", model: "stub:latest", url: null, keyPresent: false };
 const clean = { provider: "ollama", model: "stub:latest", key: "", url: "" };
@@ -54,12 +54,47 @@ describe("saveSummary", () => {
   });
 });
 
-describe("keyState", () => {
-  it("is a warning only for a provider that needs a key and has none", () => {
-    expect(keyState(false, false)).toEqual({ label: "No key stored", variant: "warning" });
-    expect(keyState(true, false)).toEqual({ label: "No key needed", variant: "outline" });
-    expect(keyState(false, true)).toEqual({ label: "Key stored", variant: "success" });
-    expect(keyState(true, true)).toEqual({ label: "Key stored", variant: "success" });
+describe("providersVerdict", () => {
+  it("says when no provider is set and what that blocks", () => {
+    const v = providersVerdict({ provider: null, model: null, url: null, keyPresent: false }, false, "none", true);
+    expect(v.headline).toBe("No provider set");
+    expect(v.tone).toBe("warn");
+    expect(v.detail).toMatch(/Pick a provider/);
+  });
+
+  it("a local provider without a key is fine", () => {
+    const v = providersVerdict({ provider: "ollama", model: "stub:latest", url: null, keyPresent: false }, true, "Ollama", true);
+    expect(v.headline).toBe("Talking to Ollama");
+    expect(v.tone).toBe("ok");
+    expect(v.meta).toEqual(["model stub:latest", "no key needed"]);
+    expect(v.detail).toBeUndefined();
+  });
+
+  it("a keyed provider without a config key warns, hedged for env keys", () => {
+    const v = providersVerdict({ provider: "openai", model: "gpt-5.5", url: null, keyPresent: false }, false, "OpenAI", true);
+    expect(v.tone).toBe("warn");
+    expect(v.meta).toContain("no key stored");
+    expect(v.detail).toMatch(/If OpenAI needs a key/);
+  });
+
+  it("says how the key is stored, from the flag", () => {
+    const at = (enc: boolean | undefined) =>
+      providersVerdict({ provider: "openai", model: "m", url: null, keyPresent: true }, false, "OpenAI", enc);
+    expect(at(true).meta).toContain("key stored encrypted");
+    expect(at(false).meta).toContain("key stored in plain text (secrets.encrypt off)");
+    expect(at(true).tone).toBe("ok");
+  });
+
+  it("carries the base URL and flags a missing model", () => {
+    const v = providersVerdict(
+      { provider: "openai", model: null, url: "https://api.example.com/v1", keyPresent: true },
+      false,
+      "OpenAI",
+      true,
+    );
+    expect(v.meta).toEqual(["model not set", "key stored encrypted", "base URL https://api.example.com/v1"]);
+    expect(v.tone).toBe("warn");
+    expect(v.detail).toMatch(/No model set/);
   });
 });
 
