@@ -42,7 +42,7 @@ Mirrors the sibling `RantAI-Agents` app so components/icons/theme are reusable:
 - **shadcn** conventions (new-york / neutral, CSS variables) — minimal hand-written primitives, no Radix dep for v1
 - **next-themes** (theme forced per brand via `forcedTheme`; no user toggle - this is an operator console, dark on purpose) · **lucide-react** icons (relevance-first; the thin hairline stroke matches the hairline-border system, and the set is shared with the sibling RantAI apps) · **sonner** toasts
 - **react-markdown + remark-gfm** for assistant markdown (lightweight; streamdown is a drop-in upgrade later)
-- Package manager: **bun**
+- Package manager: **npm** (`package-lock.json` is the source of truth; the older `bun.lock` predates the switch)
 
 Theme tokens (OKLCH; dark is canonical - the `.light` block is brand-gated for future light brands, not user-facing), Geist + Geist Mono via next/font, and the brand logo live in this repo: see the "RantAI Design System" header in `src/app/globals.css` and `src/lib/branding.ts`.
 
@@ -93,22 +93,32 @@ Base: `${RANTAICLAW_GATEWAY_URL}/api/v1`. Auth: `Authorization: Bearer <token>` 
 - `error` `{type,message}`
 - `done` `{type,text,cancelled}` — stream terminates after this frame
 
+The table above is the original v1 surface and still holds, but the console now
+consumes a much wider one. The authoritative inventory is `src/lib/api.ts`; by
+area it adds: cron CRUD + run history (`cron`), skills content/enable/create/
+install + ClawHub search, MCP server add/remove, memory add/get/delete, KB
+groups/documents/upload/entity graph/document intelligence (`kb/groups`),
+knowledge activation (`config/knowledge`), config + secrets (`config`,
+`secrets`), autonomy + tool policy writes, provider model catalogs, Telegram
+provisioning, session fork, and the tool-approval round trip.
+
 ## 6. Information architecture
 
-```
-┌ left rail ─┐ ┌───────── main ─────────┐
-│ ● status   │ │  Chat mode:            │
-│ [Chat]     │ │   sessions │ thread │ details
-│ [Ops]      │ │  Ops mode:             │
-│ ─────────  │ │   tabs: Status·Sessions·Usage·
-│ theme      │ │   Providers·Channels·Skills·Memory·Persona
-│ logo       │ │                        │
-└────────────┘ └────────────────────────┘
-```
+One console shell (Next.js route `/chat`) with hash-routed views:
 
-- **Chat**: left = session list (resume/search/rename), center = streaming thread, composer
-  footer with model/provider switch + Stop. Tool-call & usage cards inline.
-- **Ops**: persistent metrics strip (version/provider/model/memory/health) + tabbed read-only panels.
+- **Left rail**: nav (Chat, Status, Channels, MCP Servers, Providers,
+  Tools & Autonomy, Schedules, Skills, Knowledge Bases, Memory, Persona,
+  Configuration), recent sessions (resume/search/rename/fork/export/delete),
+  agent identity card, and the autonomy control.
+- **Center**: the active view. Chat is the streaming thread + composer
+  (attachments, model/provider pickers, Stop); every ops route renders its
+  panel here, read-write wherever the gateway allows.
+- **Right panel** (chat only): session context: runtime snapshot, channels
+  online, per-session usage, active skills.
+
+Differences from the original sketch: there is no separate Ops mode or
+"Sessions"/"Usage" tab. Sessions live in the rail, usage folded into Status
+and the right panel.
 
 ## 7. Status & remaining backend work
 
@@ -132,6 +142,10 @@ Base: `${RANTAICLAW_GATEWAY_URL}/api/v1`. Auth: `Authorization: Bearer <token>` 
    enabled per `docs/auth.md`; the cookie is signed with `RANTAICLAW_UI_SECRET`.
 
 This brings the management surface to **minimal parity with the Hermes web UI**.
+The console has since grown well past this list (MCP servers, tools & autonomy
+policy, schedules, knowledge bases with document intelligence and an entity
+graph, memory management, a config panel, ClawHub skills, web approvals);
+`src/lib/api.ts` and section 5's addendum are the accurate inventory.
 
 **Deliberately out of scope (backend-blocked or too heavy for "minimal"):**
 
@@ -139,7 +153,8 @@ This brings the management surface to **minimal parity with the Hermes web UI**.
   (`empty_usage` returns zeros; `CostTracker` is unused). Needs token accounting wired out of
   provider responses first.
 - **Embedded PTY terminal** (Hermes's `/api/pty` xterm.js) — needs a WebSocket/PTY bridge.
-- **Chat polish** — file attachments, voice input, slash-command palette, logs viewer.
+- **Chat polish** — voice input, slash-command palette, logs viewer. (File
+  attachments shipped since: ingest in the composer + KB retrieval on send.)
 - Cron over HTTP creates **agent** jobs only; shell jobs stay CLI-only (no arbitrary-command surface).
 
 ## 8. Security
@@ -150,12 +165,14 @@ This brings the management surface to **minimal parity with the Hermes web UI**.
 
 ## 9. Run
 
-```bash
-# 1. backend (from packages/rantaiclaw)
-./target/release/rantaiclaw gateway --host 127.0.0.1 -p 3000
-# pair once, capture token → rantaiclaw-ui/.env.local : RANTAICLAW_TOKEN=...
-# (scripts/dev.sh automates pairing)
+Two separate repos: the runtime ([RantAIClaw](https://github.com/RantAI-dev/RantAIClaw)) and this UI.
 
-# 2. UI
-cd packages/rantaiclaw-ui && bun install && bun run dev   # http://127.0.0.1:3939
+```bash
+# 1. backend (from the RantAIClaw repo, or an installed binary)
+rantaiclaw gateway --host 127.0.0.1 -p 3000
+# pair once, capture token -> .env.local : RANTAICLAW_TOKEN=...
+# (npm run dev:full wraps scripts/dev.sh, which automates gateway + pairing)
+
+# 2. UI (this repo)
+npm install && npm run dev   # http://127.0.0.1:3939
 ```
