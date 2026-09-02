@@ -145,6 +145,12 @@ export type CronSchedule =
 /** Categories the backend recognises. Anything else is stored as a custom one. */
 export const MEMORY_CATEGORIES = ["core", "daily", "conversation"] as const;
 
+export interface MemoryStats {
+  backend: string;
+  total_entries: number;
+  healthy: boolean;
+}
+
 export interface MemoryEntry {
   key: string;
   category: string;

@@ -17,6 +17,7 @@ import type {
   KbReExtractResult,
   KnowledgeStatus,
   MemoryEntry,
+  MemoryStats,
   ModelCatalog,
   Personality,
   PersonaPreset,
@@ -408,6 +409,8 @@ export const api = {
     rc<{ key: string; removed: boolean }>(`memory/${encodeURIComponent(key)}`, {
       method: "DELETE",
     }),
+  /** Backend name, store-wide count and health: the verdict band reads this. */
+  memoryStats: () => rc<MemoryStats>("memory/stats"),
   /** One entry by key: 200 with the entry, or a 404 `not_found` `ApiError`. */
   getMemory: (key: string) =>
     rc<{

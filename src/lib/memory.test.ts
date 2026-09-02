@@ -10,6 +10,7 @@ import {
   isoTime,
   originWords,
   rememberToast,
+  memoryVerdict,
 } from "./memory";
 
 describe("hasSeparator", () => {
@@ -142,5 +143,33 @@ describe("absoluteTime / isoTime", () => {
     expect(absoluteTime(null)).toBeNull();
     expect(absoluteTime("soon")).toBeNull();
     expect(isoTime(undefined)).toBeNull();
+  });
+});
+
+describe("memoryVerdict", () => {
+  it("answers with the count when the backend is healthy and holds entries", () => {
+    expect(memoryVerdict({ backend: "sqlite", total_entries: 7, healthy: true })).toEqual({
+      headline: "7 memories on recall",
+      tone: "ok",
+      meta: ["sqlite backend"],
+    });
+    expect(memoryVerdict({ backend: "sqlite", total_entries: 1, healthy: true }).headline).toBe(
+      "1 memory on recall",
+    );
+  });
+
+  it("names the empty store and the first move", () => {
+    const v = memoryVerdict({ backend: "markdown", total_entries: 0, healthy: true });
+    expect(v.tone).toBe("warn");
+    expect(v.headline).toBe("Nothing on recall yet");
+    expect(v.meta).toEqual(["markdown backend"]);
+    expect(v.detail).toMatch(/auto-save/);
+  });
+
+  it("reports a failed health check over everything else", () => {
+    const v = memoryVerdict({ backend: "sqlite", total_entries: 9, healthy: false });
+    expect(v.tone).toBe("warn");
+    expect(v.headline).toBe("Recall isn't working");
+    expect(v.detail).toMatch(/health check/);
   });
 });

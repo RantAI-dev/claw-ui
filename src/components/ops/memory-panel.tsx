@@ -32,8 +32,10 @@ import {
   forgetFromTerminal,
   hasSeparator,
   isoTime,
+  memoryVerdict,
   originWords,
   rememberToast,
+  type MemoryVerdict,
 } from "@/lib/memory";
 import {
   EmptyState,
@@ -65,6 +67,44 @@ function isClampable(content: string): boolean {
   return content.length > CLAMP_CHARS || content.split("\n").length > 3;
 }
 
+/**
+ * The page opens with the answer: what will the agent recall on its next turn?
+ * Not a card; the whitespace around the band marks the focal point, as on
+ * Status, Channels, Providers, Schedules, Skills and Knowledge Bases.
+ */
+function MemoryBand({ verdict }: { verdict: MemoryVerdict }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="inline-block size-2.5 rounded-full"
+          style={{
+            background:
+              verdict.tone === "ok"
+                ? "var(--accent-green)"
+                : "var(--accent-orange)",
+          }}
+        />
+        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+      </div>
+      {verdict.meta.length > 0 && (
+        <p className="mt-1.5 font-mono text-xs text-muted-foreground">
+          {verdict.meta.map((m, i) => (
+            <React.Fragment key={m}>
+              {i > 0 && <span aria-hidden> · </span>}
+              <span>{m}</span>
+            </React.Fragment>
+          ))}
+        </p>
+      )}
+      {verdict.detail && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{verdict.detail}</p>
+      )}
+    </div>
+  );
+}
+
 export function MemoryPanel() {
   const [search, setSearch] = React.useState("");
   const [query, setQuery] = React.useState("");
@@ -92,6 +132,8 @@ export function MemoryPanel() {
   const nameErrId = React.useId();
   const listId = React.useId();
   const contentId = React.useId();
+  const nameId = React.useId();
+  const categoryId = React.useId();
 
   // Typing shouldn't fire a request per keystroke.
   React.useEffect(() => {
@@ -112,6 +154,14 @@ export function MemoryPanel() {
     () => api.memory(PAGE_SIZE, offset, { q: query, category: filter }),
     [offset, query, filter],
   );
+
+  // The band answers from the store, not from the page: filters narrow the
+  // list below, never the verdict.
+  const stats = useAsync(() => api.memoryStats(), []);
+  const refreshAll = () => {
+    stats.refresh();
+    refresh();
+  };
 
   const total = data?.total ?? 0;
   const first = total === 0 ? 0 : offset + 1;
@@ -142,7 +192,7 @@ export function MemoryPanel() {
       setContent("");
       setName("");
       setPendingReplace(null);
-      refresh();
+      refreshAll();
     } catch (e) {
       toast.error(`Could not remember that: ${describeApiError(e)}`);
     } finally {
@@ -201,7 +251,7 @@ export function MemoryPanel() {
       // already gone. Say so instead of claiming this click forgot it.
       if (r.removed) toast.success("Forgotten");
       else toast.message("That memory was already gone.");
-      refresh();
+      refreshAll();
     } catch (e) {
       toast.error(`Could not forget that: ${describeApiError(e)}`);
     } finally {
@@ -220,267 +270,332 @@ export function MemoryPanel() {
     });
 
   return (
-    <div className="space-y-4">
-      <SectionTitle
-        action={<RefreshButton onClick={refresh} spinning={refreshing} />}
-      >
-        Memories
-        {/* No range beside an error: the strip under it explains, and a count
-            from before the failure would contradict it. */}
-        {data && !error && (
-          <span className="text-muted-foreground">
-            {" · "}
-            {total === 0 ? "none" : `${first}–${last} of ${total}`}
-            {narrowed ? " matching" : ""}
-          </span>
-        )}
-      </SectionTitle>
-
-      <Card className="space-y-2 p-3">
-        <label htmlFor={contentId} className="eyebrow">
-          Remember something
-        </label>
-        <Textarea
-          id={contentId}
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="A durable fact or preference the agent should remember…"
-          rows={2}
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Name (optional)"
-            aria-label="Name this memory (optional)"
-            aria-invalid={nameError ? true : undefined}
-            aria-describedby={nameError ? nameErrId : undefined}
-            className="h-8 w-44 font-mono text-xs"
-          />
-          <Input
-            list={listId}
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            aria-label="Category"
-            placeholder="core"
-            className="h-8 w-36 text-xs"
-          />
-          <Button
-            size="sm"
-            onClick={remember}
-            disabled={busy || !content.trim() || !!nameError}
-          >
-            <Plus className="size-4" /> Remember
-          </Button>
+    <div className="max-w-[1120px] space-y-8">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          {stats.loading && !stats.loaded ? (
+            <p className="text-xs text-muted-foreground">Checking recall…</p>
+          ) : stats.data ? (
+            <MemoryBand verdict={memoryVerdict(stats.data)} />
+          ) : null}
         </div>
-        {nameError && (
-          <p
-            id={nameErrId}
-            role="alert"
-            className="text-[11px] text-destructive"
-          >
-            {nameError}
-          </p>
-        )}
-        {/* Naming is what makes an entry addressable from the CLI and the API
-            afterwards; unnamed ones get a UUID that means nothing to a reader. */}
-        <p className="text-[11px] text-muted-foreground">
-          Without a name the entry gets a generated key.
-        </p>
-      </Card>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search memories…"
-            aria-label="Search memories"
-            className="h-8 pl-7 pr-9 text-xs"
-          />
-          {search && (
-            <IconButton
-              onClick={() => setSearch("")}
-              aria-label="Clear search"
-              className="absolute right-1 top-1/2 -translate-y-1/2 p-1"
-            >
-              <X className="size-3.5" />
-            </IconButton>
-          )}
-        </div>
-        <Input
-          list={listId}
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          aria-label="Filter by category"
-          placeholder="All categories"
-          className="h-8 w-40 text-xs"
+        <RefreshButton
+          onClick={refreshAll}
+          spinning={refreshing || stats.refreshing}
         />
-        <datalist id={listId}>
-          {options.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
       </div>
 
-      <PanelFrame
-        loading={loading && !loaded}
-        error={error}
-        loaded={loaded}
-        loadingLabel="Loading memories…"
-        onRefresh={refresh}
-      >
-        {!error && data && data.count === 0 ? (
-          (() => {
-            const copy = emptyCopy({ query, filter });
-            return (
-              <EmptyState
-                icon={<Inbox className="size-6" />}
-                title={copy.title}
-                hint={copy.hint}
-                action={
-                  copy.action === "clear-search" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSearch("")}
-                    >
-                      Clear search
-                    </Button>
-                  ) : copy.action === "clear-filter" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setFilterText("")}
-                    >
-                      Show all categories
-                    </Button>
-                  ) : undefined
-                }
-              />
-            );
-          })()
-        ) : (
-          // A narrowed read dims the rows that are there instead of blanking them.
-          <div
-            className={cn("space-y-2", loading && loaded && "opacity-60")}
-            aria-busy={loading && loaded ? true : undefined}
-          >
-            {data?.entries.map((e) => {
-              const w = working === e.key;
-              const open = expanded.has(e.key);
-              const clampable = isClampable(e.content);
-              const origin = originWords(e);
-              return (
-                <Card key={e.key} data-slot="row" className="p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <p
-                      className={`min-w-0 flex-1 whitespace-pre-wrap text-sm leading-snug ${
-                        clampable && !open ? "line-clamp-3" : ""
-                      }`}
-                    >
-                      {e.content}
-                    </p>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <Badge variant="secondary" className="text-[11px]">
-                        {e.category}
-                      </Badge>
-                      <IconButton
-                        onClick={() =>
-                          setPendingForget({
-                            key: e.key,
-                            content: e.content,
-                            blocked: hasSeparator(e.key),
-                          })
-                        }
-                        disabled={w}
-                        title={`Forget "${previewOf(e.content)}"`}
-                        aria-label={`Forget "${previewOf(e.content)}"`}
-                        className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                      >
-                        {w ? (
-                          <Loader2 className="size-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="size-3.5" />
-                        )}
-                      </IconButton>
-                    </div>
-                  </div>
-                  <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                    <time
-                      className="shrink-0"
-                      dateTime={isoTime(e.timestamp) ?? undefined}
-                      title={absoluteTime(e.timestamp) ?? undefined}
-                    >
-                      {relativeTime(e.timestamp)}
-                    </time>
-                    {origin && (
-                      <>
-                        <span>·</span>
-                        <span className="shrink-0">{origin}</span>
-                      </>
-                    )}
-                    <span>·</span>
-                    {/* A generated key is an address, not a name: it is 43
-                      characters of UUID that only matters when reaching this
-                      entry from the API or CLI. Keep it available — clicking
-                      copies it — without letting it outweigh the content. */}
-                    <button
-                      type="button"
-                      onClick={() => copyKey(e.key)}
-                      title={`Copy key: ${e.key}`}
-                      aria-label={`Copy key ${e.key}`}
-                      className={cn("min-w-0 truncate font-mono", META_BUTTON)}
-                    >
-                      {isGeneratedMemoryKey(e.key) ? "copy key" : e.key}
-                    </button>
-                    {clampable && (
-                      <>
-                        <span>·</span>
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(e.key)}
-                          aria-expanded={open}
-                          aria-label={`${open ? "Show less" : "Show more"} of ${previewOf(e.content)}`}
-                          className={cn("shrink-0", META_BUTTON)}
-                        >
-                          {open ? "Show less" : "Show more"}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        )}
-      </PanelFrame>
+      {/* The 7/5 split gives the list — the answer — the width; remembering
+          something composes in the narrow column. On phones the list comes
+          first. */}
+      <div className="grid gap-8 lg:grid-cols-12">
+        <div className="min-w-0 lg:col-span-7">
+          <SectionTitle>
+            Memories
+            {data && !error && (
+              <span className="text-muted-foreground">
+                {" · "}
+                {narrowed
+                  ? total === 0
+                    ? "none matching"
+                    : `${first}–${last} of ${total} matching`
+                  : total > PAGE_SIZE
+                    ? `${first}–${last} of ${total}`
+                    : String(total)}
+              </span>
+            )}
+          </SectionTitle>
 
-      {total > PAGE_SIZE && (
-        <div className="flex items-center justify-between gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
-            disabled={loading || offset === 0}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1 basis-48">
+              <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search memories…"
+                aria-label="Search memories"
+                className="h-8 pl-7 pr-9 text-xs"
+              />
+              {search && (
+                <IconButton
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 p-1"
+                >
+                  <X className="size-3.5" />
+                </IconButton>
+              )}
+            </div>
+            <Input
+              list={listId}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              aria-label="Filter by category"
+              placeholder="All categories"
+              className="h-8 w-40 text-xs"
+            />
+            <datalist id={listId}>
+              {options.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
+
+          <PanelFrame
+            loading={loading && !loaded}
+            error={error}
+            loaded={loaded}
+            loadingLabel="Loading memories…"
+            onRefresh={refresh}
           >
-            <ChevronLeft className="size-4" /> Previous
-          </Button>
-          <span className="text-[11px] tabular-nums text-muted-foreground">
-            Page {Math.floor(offset / PAGE_SIZE) + 1} of{" "}
-            {Math.ceil(total / PAGE_SIZE)}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setOffset((o) => o + PAGE_SIZE)}
-            disabled={loading || last >= total}
-          >
-            Next <ChevronRight className="size-4" />
-          </Button>
+            {!error && data && data.count === 0 ? (
+              (() => {
+                const copy = emptyCopy({ query, filter });
+                return (
+                  <EmptyState
+                    icon={<Inbox className="size-6" />}
+                    title={copy.title}
+                    hint={copy.hint}
+                    action={
+                      copy.action === "clear-search" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSearch("")}
+                        >
+                          Clear search
+                        </Button>
+                      ) : copy.action === "clear-filter" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setFilterText("")}
+                        >
+                          Show all categories
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                );
+              })()
+            ) : (
+              // A narrowed read dims the rows that are there instead of
+              // blanking them.
+              <div
+                className={cn(loading && loaded && "opacity-60")}
+                aria-busy={loading && loaded ? true : undefined}
+              >
+                <Card className="p-0">
+                  <ul>
+                    {data?.entries.map((e) => {
+                      const w = working === e.key;
+                      const open = expanded.has(e.key);
+                      const clampable = isClampable(e.content);
+                      const origin = originWords(e);
+                      return (
+                        <li
+                          key={e.key}
+                          data-slot="row"
+                          className="border-b border-border/60 px-4 py-3 last:border-b-0"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p
+                              className={`min-w-0 flex-1 whitespace-pre-wrap text-sm leading-snug ${
+                                clampable && !open ? "line-clamp-3" : ""
+                              }`}
+                            >
+                              {e.content}
+                            </p>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              <Badge
+                                variant="secondary"
+                                className="text-[11px]"
+                              >
+                                {e.category}
+                              </Badge>
+                              <IconButton
+                                onClick={() =>
+                                  setPendingForget({
+                                    key: e.key,
+                                    content: e.content,
+                                    blocked: hasSeparator(e.key),
+                                  })
+                                }
+                                disabled={w}
+                                title={`Forget "${previewOf(e.content)}"`}
+                                aria-label={`Forget "${previewOf(e.content)}"`}
+                                className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                              >
+                                {w ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="size-3.5" />
+                                )}
+                              </IconButton>
+                            </div>
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <time
+                              className="shrink-0"
+                              dateTime={isoTime(e.timestamp) ?? undefined}
+                              title={absoluteTime(e.timestamp) ?? undefined}
+                            >
+                              {relativeTime(e.timestamp)}
+                            </time>
+                            {origin && (
+                              <>
+                                <span>·</span>
+                                <span className="shrink-0">{origin}</span>
+                              </>
+                            )}
+                            <span>·</span>
+                            {/* A generated key is an address, not a name: 43
+                              characters of UUID that only matter when reaching
+                              this entry from the API or CLI. Keep it available,
+                              clicking copies it, without letting it outweigh
+                              the content. */}
+                            <button
+                              type="button"
+                              onClick={() => copyKey(e.key)}
+                              title={`Copy key: ${e.key}`}
+                              aria-label={`Copy key ${e.key}`}
+                              className={cn(
+                                "min-w-0 truncate font-mono",
+                                META_BUTTON,
+                              )}
+                            >
+                              {isGeneratedMemoryKey(e.key) ? "copy key" : e.key}
+                            </button>
+                            {clampable && (
+                              <>
+                                <span>·</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExpanded(e.key)}
+                                  aria-expanded={open}
+                                  aria-label={`${open ? "Show less" : "Show more"} of ${previewOf(e.content)}`}
+                                  className={cn("shrink-0", META_BUTTON)}
+                                >
+                                  {open ? "Show less" : "Show more"}
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </Card>
+              </div>
+            )}
+          </PanelFrame>
+
+          {total > PAGE_SIZE && (
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOffset((o) => Math.max(0, o - PAGE_SIZE))}
+                disabled={loading || offset === 0}
+              >
+                <ChevronLeft className="size-4" /> Previous
+              </Button>
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                Page {Math.floor(offset / PAGE_SIZE) + 1} of{" "}
+                {Math.ceil(total / PAGE_SIZE)}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                disabled={loading || last >= total}
+              >
+                Next <ChevronRight className="size-4" />
+              </Button>
+            </div>
+          )}
         </div>
-      )}
+
+        <div className="min-w-0 space-y-8 lg:col-span-5">
+          <div>
+            <SectionTitle>Remember something</SectionTitle>
+            <p className="text-xs text-muted-foreground">
+              A durable fact or preference the agent should keep. It reaches
+              every future conversation.
+            </p>
+            <Card className="mt-3 space-y-4 p-4">
+              <div className="space-y-1.5">
+                <label htmlFor={contentId} className="eyebrow">
+                  What to remember
+                </label>
+                <Textarea
+                  id={contentId}
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="e.g. Deploys go out on Tuesdays, never on Fridays."
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor={nameId} className="eyebrow">
+                  Name (optional)
+                </label>
+                <Input
+                  id={nameId}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g. deploy-window"
+                  aria-invalid={nameError ? true : undefined}
+                  aria-describedby={nameError ? nameErrId : undefined}
+                  className="font-mono text-xs"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") remember();
+                  }}
+                />
+                {nameError && (
+                  <p
+                    id={nameErrId}
+                    role="alert"
+                    className="text-[11px] text-destructive"
+                  >
+                    {nameError}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor={categoryId} className="eyebrow">
+                  Category
+                </label>
+                <Input
+                  id={categoryId}
+                  list={listId}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  placeholder="core"
+                  className="text-xs"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") remember();
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                {/* Naming is what makes an entry addressable from the CLI and
+                    the API afterwards; unnamed ones get a UUID. */}
+                <p className="text-[11px] text-muted-foreground">
+                  Without a name the entry gets a generated key.
+                </p>
+                <Button
+                  size="sm"
+                  onClick={remember}
+                  disabled={busy || !content.trim() || !!nameError}
+                >
+                  <Plus className="size-4" /> Remember
+                </Button>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
 
       <ConfirmModal
         open={!!pendingReplace}
