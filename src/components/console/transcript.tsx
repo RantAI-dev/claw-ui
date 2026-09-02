@@ -216,10 +216,6 @@ const UserTurn = React.memo(function UserTurn({ m }: { m: ChatMessage }) {
             ))}
           </div>
         )}
-        <div className="msg-meta">
-          <span className="chan-dot" style={{ background: "var(--brand-sky)" }} />
-          <span>You</span>
-        </div>
       </div>
     </div>
   );

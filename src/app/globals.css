@@ -712,10 +712,10 @@
 .transcript {
   max-width: 780px;
   margin: 0 auto;
-  padding: 28px 28px 12px;
+  padding: 32px 28px 16px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 28px;
 }
 .turn {
   display: flex;
@@ -735,7 +735,7 @@
   border: 1px solid color-mix(in oklab, var(--brand-sky) 22%, transparent);
   color: var(--foreground);
   padding: 11px 14px;
-  border-radius: 14px 14px 4px 14px;
+  border-radius: 10px 10px 4px 10px;
   font-size: 14px;
   line-height: 1.55;
   letter-spacing: -0.005em;
@@ -782,7 +782,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
 }
 .bot-name b {
   font-size: 12.5px;
