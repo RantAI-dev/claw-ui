@@ -4,6 +4,7 @@ import {
 } from "./console";
 import {
   BUILTIN_TOOLS,
+  rungVerdict,
   autoApproveEffective,
   capsChanges,
   capsSeed,
@@ -151,5 +152,40 @@ describe("capsChanges", () => {
       dirty: true,
       error: null,
     });
+  });
+});
+
+describe("rungVerdict", () => {
+  const fresh = {
+    level: "supervised",
+    always_ask: ["ssh", "pty"],
+    auto_approve: ["file_read", "memory_recall"],
+    allowed_commands: ["git", "npm", "ls"],
+    max_actions_per_hour: 200,
+  };
+
+  it("opens with the consequence, with the facts under it", () => {
+    expect(rungVerdict(fresh)).toEqual({
+      rung: "smart",
+      headline: "Asks before writes & system changes",
+      meta: ["2 auto-approved", "2 always ask", "3 shell commands allowed", "200 actions/hour"],
+      detail: null,
+    });
+  });
+
+  it("skips the approval counts when the headline already covers every tool", () => {
+    const v = rungVerdict({ ...fresh, always_ask: ["*"], auto_approve: [] });
+    expect(v.headline).toBe("Every tool call asks first");
+    expect(v.meta).toEqual(["3 shell commands allowed", "200 actions/hour"]);
+    expect(rungVerdict({ ...fresh, level: "readonly" }).headline).toBe(
+      "Read-only: acting tools are denied",
+    );
+  });
+
+  it("warns on Off and counts a duplicated allowlist entry once", () => {
+    const v = rungVerdict({ ...fresh, level: "full", allowed_commands: ["git", "git"] });
+    expect(v.headline).toBe("Runs without asking");
+    expect(v.detail).toMatch(/^Trusted environments only\./);
+    expect(v.meta).toContain("1 shell command allowed");
   });
 });

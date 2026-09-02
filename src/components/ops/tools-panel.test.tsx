@@ -107,7 +107,11 @@ describe("ToolsPanel rung and rows", () => {
       window.dispatchEvent(new Event(AUTONOMY_CHANGED));
     });
     await waitFor(() => expect(config).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText(/Deny-by-default/)).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Strict" }).getAttribute("aria-pressed")).toBe(
+        "true",
+      ),
+    );
   });
 
   it("toasts the stored outcome after a switch toggle", async () => {
@@ -279,7 +283,12 @@ describe("ToolsPanel names, focus targets and labels", () => {
     const group = screen.getByRole("group", { name: "Autonomy level" });
     const pressed = group.querySelectorAll('button[aria-pressed="true"]');
     expect(pressed).toHaveLength(1);
-    expect(pressed[0].textContent).toBe("Smart");
+    // The card's accessible name stays the ladder word; the consequence rides
+    // as its description.
+    expect(pressed[0].textContent).toContain("Smart");
+    expect(screen.getByRole("button", { name: "Smart" }).getAttribute("aria-describedby")).toBe(
+      "rung-smart-blurb",
+    );
   });
 
   it("names every chip-removal button after its command, as a plain button", async () => {
@@ -290,17 +299,32 @@ describe("ToolsPanel names, focus targets and labels", () => {
     expect(x.className).toContain("chip-x");
   });
 
-  it("says what it is loading and sets every section label on the eyebrow scale", async () => {
+  it("says what it is loading and heads every section", async () => {
     let resolve!: (v: unknown) => void;
     config.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
     render(<ToolsPanel />);
     expect(await screen.findByText("Loading policy…")).toBeTruthy();
     act(() => resolve({ autonomy: server }));
     await screen.findByText(/Prompt only for writes/);
-    for (const h of screen.getAllByRole("heading", { level: 4 })) {
-      expect(h.className).toContain("eyebrow");
+    for (const name of [
+      "Autonomy level",
+      "Tool policy",
+      "Shell allowlist · 3",
+      "Rate & cost caps",
+      "Safety flags",
+      "Forbidden paths · 1 (read-only)",
+    ]) {
+      expect(screen.getByRole("heading", { level: 3, name })).toBeTruthy();
     }
     expect(screen.getByText(/Applies to the next tool call, in chat and on channels/)).toBeTruthy();
     expect(screen.queryByText(/restart/)).toBeNull();
+  });
+
+  it("opens with the verdict band for the enforced config", async () => {
+    render(<ToolsPanel />);
+    expect(await screen.findByText("Asks before writes & system changes")).toBeTruthy();
+    expect(
+      screen.getByText("Smart · 2 auto-approved · 2 always ask · 3 shell commands allowed · 200 actions/hour"),
+    ).toBeTruthy();
   });
 });

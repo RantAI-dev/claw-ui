@@ -32,7 +32,13 @@ export type Rung = "manual" | "smart" | "strict" | "off";
 
 /** Any object shaped like the gateway's `autonomy` block (or nothing yet). */
 type AutonomyLike =
-  | { level?: unknown; always_ask?: unknown; auto_approve?: unknown }
+  | {
+      level?: unknown;
+      always_ask?: unknown;
+      auto_approve?: unknown;
+      allowed_commands?: unknown;
+      max_actions_per_hour?: unknown;
+    }
   | GatewayAutonomy
   | null
   | undefined;
@@ -172,6 +178,52 @@ export const HIGH_RISK_COMMANDS: readonly string[] = [
 
 export function isHighRiskCommand(base: string): boolean {
   return HIGH_RISK_COMMANDS.includes(base);
+}
+
+/** The verdict band's content: the consequence in words, quiet mono facts. */
+export interface RungVerdict {
+  rung: Rung;
+  headline: string;
+  /** The panel prepends the ladder label (Manual/Smart/Strict/Off). */
+  meta: string[];
+  detail: string | null;
+}
+
+const HEADLINES: Record<Rung, string> = {
+  manual: "Every tool call asks first",
+  smart: "Asks before writes & system changes",
+  strict: "Read-only: acting tools are denied",
+  off: "Runs without asking",
+};
+
+/**
+ * What this page opens with: the enforced consequence of the current config,
+ * not the ladder word alone. Approval counts appear only under Smart (the
+ * other rungs' headlines already say what happens to every tool); the shell
+ * allowlist size and the enforced actions cap ride along for every rung.
+ */
+export function rungVerdict(a: AutonomyLike): RungVerdict {
+  const rung = rungFromAutonomy(a);
+  const meta: string[] = [];
+  if (rung === "smart") {
+    const auto = list(a?.auto_approve);
+    const ask = list(a?.always_ask).filter((t) => t !== WILDCARD);
+    if (auto.length > 0) meta.push(`${auto.length} auto-approved`);
+    if (ask.length > 0) meta.push(`${ask.length} always ask`);
+  }
+  const allowed = new Set(list(a?.allowed_commands)).size;
+  meta.push(`${allowed} shell ${allowed === 1 ? "command" : "commands"} allowed`);
+  const cap = a?.max_actions_per_hour;
+  if (typeof cap === "number") meta.push(`${cap} actions/hour`);
+  return {
+    rung,
+    headline: HEADLINES[rung],
+    meta,
+    detail:
+      rung === "off"
+        ? "Trusted environments only. Shell, files and the browser run unprompted."
+        : null,
+  };
 }
 
 export interface CapsDraft {
