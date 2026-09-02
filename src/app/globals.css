@@ -1173,9 +1173,13 @@
 }
 
 /* ============================ Composer ============================ */
+/* The command deck: the composer is the page's focal point, so it sits on its
+   own surface (rail-dark, a hairline above) instead of floating in the void. */
 .composer-wrap {
   flex: none;
-  padding: 14px 28px 20px;
+  padding: 12px 28px 16px;
+  background: color-mix(in oklab, var(--background) 92%, black);
+  border-top: 1px solid var(--border);
 }
 .composer-inner {
   max-width: 780px;
@@ -1193,7 +1197,10 @@
 }
 .composer:focus-within {
   border-color: color-mix(in oklab, var(--brand-sky) 55%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand-sky) 16%, transparent);
+  /* The identity motif (left stripe) marks the focused deck; inset, so no shift. */
+  box-shadow:
+    inset 2px 0 0 0 var(--brand-sky),
+    0 0 0 3px color-mix(in oklab, var(--brand-sky) 16%, transparent);
 }
 .composer textarea {
   width: 100%;
@@ -1226,12 +1233,21 @@
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--muted-foreground);
-  padding: 4px 8px;
+  height: 28px;
+  padding: 0 8px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
   transition: all var(--duration-fast);
   background: transparent;
+}
+/* Divides the attach cluster from the provider/model chips. */
+.composer-bar .bar-sep {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  margin: 0 2px;
+  background: var(--border);
 }
 .cchip:hover {
   border-color: var(--border);
