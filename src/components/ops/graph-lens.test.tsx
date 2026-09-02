@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { KbGraph } from "@/lib/types";
 
 const kbGraph = vi.fn();
@@ -65,6 +65,21 @@ describe("GraphLens", () => {
     // The detail panel opened for it: its Close button and its relationship count.
     expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
     expect(screen.getByText("Relationships · 14")).toBeTruthy();
+  });
+
+  it("keeps the selection across a refresh of the same graph", async () => {
+    // Fresh objects per call: a refresh really changes `data`'s identity, which
+    // is exactly what used to wipe the selection and close the panel.
+    kbGraph.mockImplementation(() => Promise.resolve(graph(15)));
+    render(<GraphLens scope={{ kind: "all" }} />);
+    const list = await screen.findByRole("list", { name: "Entities by links" });
+    const button = within(list).getAllByRole("button")[0];
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh graph" }));
+    await waitFor(() => expect(kbGraph).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(button.getAttribute("aria-pressed")).toBe("true"));
+    expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   });
 
   it("keeps the three stat tiles in one row on every width", async () => {
