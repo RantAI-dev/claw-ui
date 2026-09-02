@@ -5,15 +5,12 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark, oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
-import { useTheme } from "next-themes";
+import { brand } from "@/lib/branding";
 import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function CodeBlock({ className, children }: { className?: string; children: React.ReactNode }) {
   const [copied, setCopied] = React.useState(false);
-  const [mounted, setMounted] = React.useState(false);
-  const { resolvedTheme } = useTheme();
-  React.useEffect(() => setMounted(true), []);
 
   const lang = /language-(\w+)/.exec(className || "")?.[1] || "text";
   const raw = String(children).replace(/\n$/, "");
@@ -28,7 +25,10 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
     }
   };
 
-  const isDark = mounted ? resolvedTheme === "dark" : true;
+  // The theme is brand-forced (layout.tsx forcedTheme); next-themes'
+  // resolvedTheme still reports the OS preference, which painted the One
+  // Light palette onto the dark UI for light-preference viewers.
+  const isDark = brand.theme === "dark";
 
   return (
     <div className="group relative my-3 overflow-hidden rounded-lg border border-border bg-muted">
