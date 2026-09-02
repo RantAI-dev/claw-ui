@@ -1670,6 +1670,34 @@
 .kv-row .v.sky {
   color: var(--brand-sky);
 }
+.stat-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stat-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: oklch(var(--af) /1.5%);
+}
+.stat-mini b {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.stat-mini b.sky {
+  color: var(--brand-sky);
+}
+.stat-mini span {
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+}
+
 .minis {
   display: flex;
   flex-direction: column;
