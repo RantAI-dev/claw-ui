@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Skill } from "@/lib/types";
 import {
   countLine,
+  skillsVerdict,
   isSkillActive,
   plainReason,
   removalCopy,
@@ -170,3 +171,51 @@ describe("removalCopy", () => {
     }
   });
 });
+
+describe("skillsVerdict", () => {
+  it("answers ok when everything installed is in force", () => {
+    expect(skillsVerdict([skill(), skill({ name: "weather-lite" })])).toEqual({
+      headline: "2 skills active",
+      tone: "ok",
+      meta: ["2 installed"],
+    });
+  });
+
+  it("invites on an empty install", () => {
+    const v = skillsVerdict([]);
+    expect(v.headline).toBe("No skills installed");
+    expect(v.tone).toBe("warn");
+    expect(v.detail).toContain("Write one, or install one from ClawHub.");
+  });
+
+  it("leads with the skill that cannot load, and names why", () => {
+    const v = skillsVerdict([
+      skill(),
+      skill({ name: "Needs Ripgrep Plus", active: false, reasons: GATED_REASONS }),
+      skill({ name: "Prose Only", enabled: false }),
+    ]);
+    expect(v.headline).toBe("1 skill can't load");
+    expect(v.tone).toBe("warn");
+    expect(v.meta).toEqual(["3 installed", "1 active", "1 disabled"]);
+    expect(v.detail).toBe(
+      "Needs Ripgrep Plus: missing binary definitely-missing-bin-xyz; env QA_MISSING_ENV not set",
+    );
+  });
+
+  it("counts the extra gated skills instead of listing them", () => {
+    const v = skillsVerdict([
+      skill({ name: "a", active: false, reasons: ["missing binary `x`"] }),
+      skill({ name: "b", active: false, reasons: ["missing binary `y`"] }),
+    ]);
+    expect(v.headline).toBe("2 skills can't load");
+    expect(v.detail).toBe("a: missing binary x (+1 more below)");
+  });
+
+  it("calls a fully disabled install out", () => {
+    const v = skillsVerdict([skill({ enabled: false })]);
+    expect(v.headline).toBe("No skills active");
+    expect(v.tone).toBe("warn");
+    expect(v.meta).toEqual(["1 installed", "1 disabled"]);
+  });
+});
+
