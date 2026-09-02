@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { MemoryEntry } from "@/lib/types";
 
 const memory = vi.fn();
+const memoryStats = vi.fn();
 const getMemory = vi.fn();
 const addMemory = vi.fn();
 const deleteMemory = vi.fn();
@@ -16,6 +17,7 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api")>()),
   api: {
     memory: (...a: unknown[]) => memory(...a),
+    memoryStats: () => memoryStats(),
     getMemory: (key: string) => getMemory(key),
     addMemory: (body: unknown) => addMemory(body),
     deleteMemory: (key: string) => deleteMemory(key),
@@ -60,15 +62,16 @@ function notFound() {
 }
 
 async function fillRemember(content: string, name?: string) {
-  const box = await screen.findByPlaceholderText(/durable fact/i);
+  const box = await screen.findByLabelText("What to remember");
   fireEvent.change(box, { target: { value: content } });
   if (name !== undefined) {
-    fireEvent.change(screen.getByLabelText(/name this memory/i), { target: { value: name } });
+    fireEvent.change(screen.getByLabelText("Name (optional)"), { target: { value: name } });
   }
 }
 
 beforeEach(() => {
   memory.mockResolvedValue(page(ROWS));
+  memoryStats.mockResolvedValue({ backend: "sqlite", total_entries: 3, healthy: true });
   getMemory.mockRejectedValue(notFound());
   addMemory.mockResolvedValue({ key: "deploy-window", stored: true, notes: [] });
   deleteMemory.mockResolvedValue({ key: "deploy-window", removed: true });
@@ -224,12 +227,12 @@ describe("MemoryPanel: list state", () => {
     memory.mockResolvedValueOnce(page(ROWS)).mockRejectedValueOnce(new ApiError("boom", 502, {}));
     render(<MemoryPanel />);
     await screen.findByText(/Deploys go out on Tuesdays/);
-    expect(screen.getByRole("heading", { level: 3 }).textContent).toContain("of 3");
+    expect(screen.getByRole("heading", { name: /^Memories/ }).textContent).toContain("· 3");
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await screen.findByText(/The gateway is unreachable/);
     expect(screen.getByText(/Deploys go out on Tuesdays/)).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 3 }).textContent).toBe("Memories");
+    expect(screen.getByRole("heading", { name: /^Memories/ }).textContent).toBe("Memories");
   });
 
   it("describes a fresh store with the next step", async () => {
@@ -329,7 +332,7 @@ describe("MemoryPanel: labels, names and time", () => {
   it("labels the content field so its name survives typing", async () => {
     render(<MemoryPanel />);
     await screen.findByText(/Deploys go out on Tuesdays/);
-    const box = screen.getByLabelText("Remember something") as HTMLTextAreaElement;
+    const box = screen.getByLabelText("What to remember") as HTMLTextAreaElement;
     expect(box.tagName).toBe("TEXTAREA");
   });
 
@@ -370,5 +373,46 @@ describe("MemoryPanel: labels, names and time", () => {
     expect(clear.className).toContain("pointer-coarse:min-h-10");
     fireEvent.click(clear);
     expect(search.value).toBe("");
+  });
+});
+
+describe("MemoryPanel: composition", () => {
+  it("opens with the verdict band from the store-wide stats", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText("3 memories on recall");
+    expect(screen.getByText("sqlite backend")).toBeTruthy();
+  });
+
+  it("warns in the band when the backend fails its health check", async () => {
+    memoryStats.mockResolvedValue({ backend: "sqlite", total_entries: 3, healthy: false });
+    render(<MemoryPanel />);
+    await screen.findByText("Recall isn't working");
+  });
+
+  it("renders the rows as one hairline list, not a stack of cards", async () => {
+    const { container } = render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    const rows = container.querySelectorAll("[data-slot=row]");
+    expect(rows.length).toBe(3);
+    rows.forEach((r) => expect(r.tagName).toBe("LI"));
+    // One list under one card: every row shares the same <ul> parent.
+    const parents = new Set([...rows].map((r) => r.parentElement));
+    expect(parents.size).toBe(1);
+  });
+
+  it("refreshes the band and the list together", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText("3 memories on recall");
+    expect(memoryStats).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(memoryStats).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(memory).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps the composer as its own section beside the list", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    expect(screen.getByRole("heading", { name: "Remember something" })).toBeTruthy();
+    expect(screen.getByLabelText("Category")).toBeTruthy();
   });
 });

@@ -164,8 +164,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   memory: {
     title: "Memory",
     eyebrow: "Long-term recall",
-    blurb:
-      "What the agent recalls on its next turn: facts and preferences kept here, plus turns it saved on its own from conversations.",
+    blurb: "Facts and preferences the agent keeps, plus turns saved from conversations.",
   },
   persona: {
     title: "Persona",

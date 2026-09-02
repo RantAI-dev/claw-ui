@@ -106,3 +106,44 @@ export function isoTime(ts: number | string | null | undefined): string | null {
   const ms = parseMs(ts);
   return ms === null ? null : new Date(ms).toISOString();
 }
+
+export interface MemoryVerdict {
+  headline: string;
+  tone: "ok" | "warn";
+  /** The mono meta line under the headline, cron-band style. */
+  meta: string[];
+  detail?: string;
+}
+
+/**
+ * The answer the page opens with: what will the agent recall on its next turn?
+ * A backend that fails its health check outranks every count — the entries may
+ * exist, but nothing reaches a prompt until it recovers.
+ */
+export function memoryVerdict(stats: {
+  backend: string;
+  total_entries: number;
+  healthy: boolean;
+}): MemoryVerdict {
+  const meta = [`${stats.backend} backend`];
+  if (!stats.healthy) {
+    return {
+      headline: "Recall isn't working",
+      tone: "warn",
+      meta,
+      detail:
+        "The memory backend failed its health check; the agent recalls nothing until it recovers.",
+    };
+  }
+  if (stats.total_entries === 0) {
+    return {
+      headline: "Nothing on recall yet",
+      tone: "warn",
+      meta,
+      detail:
+        "Remember the first fact, or chat: the agent saves turns on its own when auto-save is on.",
+    };
+  }
+  const n = stats.total_entries;
+  return { headline: `${n} ${n === 1 ? "memory" : "memories"} on recall`, tone: "ok", meta };
+}
