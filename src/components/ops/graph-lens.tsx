@@ -80,9 +80,17 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
     });
   }, [activeScope.kind, documentId, groupId]);
 
-  // Reset the selection whenever the underlying graph changes (new scope/data).
+  // Reconcile the selection with the graph that just arrived: keep it (on the
+  // fresh node object, so the detail panel shows current numbers) while the
+  // entity still exists, drop it when the new scope/data no longer has it. The
+  // old blanket reset closed the detail panel on every refresh of the same
+  // graph, and raced a click that landed between the data commit and the
+  // passive-effect flush (the CI flake in this file's test).
   React.useEffect(() => {
-    setSelectedNode(null);
+    setSelectedNode((prev) => {
+      if (!prev) return prev;
+      return data?.nodes.find((n) => n.id === prev.id) ?? null;
+    });
   }, [data]);
 
   const nodes = React.useMemo(() => data?.nodes ?? [], [data]);
