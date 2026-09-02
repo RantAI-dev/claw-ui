@@ -107,7 +107,8 @@ describe("CronPanel feature switches", () => {
   it("makes the page read-only when cron is off", async () => {
     cron.mockImplementation(() => Promise.resolve(list([job()], { cron_enabled: false })));
     render(<CronPanel />);
-    expect(await screen.findByText(/Cron is off \(cron\.enabled=false\)/)).toBeTruthy();
+    expect(await screen.findByText("Cron is off")).toBeTruthy();
+    expect(screen.getByText(/jobs are read-only here/)).toBeTruthy();
     expect(button("Create").disabled).toBe(true);
     expect(button("Create").title).toMatch(/Cron is off/);
     expect(button("Pause Morning hello").disabled).toBe(true);
@@ -258,7 +259,7 @@ describe("CronPanel create", () => {
     );
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    fireEvent.change(screen.getByPlaceholderText(/Prompt the agent/), { target: { value: "hi" } });
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "hi" } });
     fireEvent.click(button("Create"));
     await waitFor(() => expect(toastWarning).toHaveBeenCalled());
     const [title, opts] = toastWarning.mock.calls[0] as [string, { description: string }];
@@ -273,7 +274,7 @@ describe("CronPanel create", () => {
     );
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    const zone = screen.getByLabelText("Timezone (IANA)") as HTMLInputElement;
+    const zone = screen.getByLabelText("Time zone (IANA)") as HTMLInputElement;
     expect(zone.value).toBe("Asia/Jakarta");
     expect(screen.getByText(/Runs at 09:00, every day · Asia\/Jakarta/)).toBeTruthy();
     fireEvent.change(zone, { target: { value: "" } });
@@ -311,15 +312,15 @@ describe("CronPanel draft validation", () => {
   it("applies one rule to the interval kind and never rounds", async () => {
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    type(/Prompt the agent/, "hi");
-    select("Schedule type", "every");
-    type("Interval in minutes", "1.5");
+    type("Prompt", "hi");
+    select("Repeats", "every");
+    type("Interval (minutes)", "1.5");
     expect(screen.getByText("Whole minutes only")).toBeTruthy();
     expect(button("Create").disabled).toBe(true);
-    type("Interval in minutes", "0");
+    type("Interval (minutes)", "0");
     expect(screen.getByText("At least 1 minute")).toBeTruthy();
     expect(button("Create").disabled).toBe(true);
-    type("Interval in minutes", "5");
+    type("Interval (minutes)", "5");
     expect(screen.getByText("Runs every 5 minutes")).toBeTruthy();
     expect(button("Create").disabled).toBe(false);
     fireEvent.click(button("Create"));
@@ -335,8 +336,8 @@ describe("CronPanel draft validation", () => {
   it("asks for a future time on the one-off kind", async () => {
     render(<CronPanel />);
     await screen.findByText("Morning hello");
-    type(/Prompt the agent/, "hi");
-    select("Schedule type", "at");
+    type("Prompt", "hi");
+    select("Repeats", "at");
     expect(screen.getByText("Pick a date and time")).toBeTruthy();
     expect(button("Create").disabled).toBe(true);
     type("Run once at", "2020-01-01T00:00");
@@ -379,7 +380,7 @@ describe("CronPanel edit", () => {
     render(<CronPanel />);
     await screen.findByText("every-30s");
     fireEvent.click(button("Edit every-30s"));
-    const interval = (await screen.findByLabelText("Interval in minutes")) as HTMLInputElement;
+    const interval = (await screen.findByLabelText("Interval (minutes)")) as HTMLInputElement;
     expect(interval.value).toBe("0.5");
     expect(screen.queryByText("Whole minutes only")).toBeNull(); // untouched: not re-validated
     fireEvent.change(interval, { target: { value: "1.5" } });
@@ -540,14 +541,15 @@ describe("CronPanel keyboard, contrast, names and sizes", () => {
     expect(close.className).toMatch(/focus-visible:outline-2/);
   });
 
-  it("puts Create after the last field, beside the preview", async () => {
+  it("puts Create last, after every field of the builder", async () => {
     render(<CronPanel />);
     await screen.findByText("Morning hello");
     const create = button("Create");
-    const preview = screen.getByText(/Runs at 09:00, every day/);
-    expect(create.parentElement).toBe(preview.parentElement);
-    const model = screen.getByLabelText("Model override");
-    // eslint-disable-next-line no-bitwise
-    expect(model.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (const label of ["Prompt", "Model override", "Repeats", "Cron expression", "Name"]) {
+      const field = screen.getByLabelText(label);
+      // eslint-disable-next-line no-bitwise
+      expect(field.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(screen.getByText(/Runs at 09:00, every day · UTC/)).toBeTruthy();
   });
 });
