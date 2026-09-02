@@ -37,6 +37,12 @@ export interface ChannelState {
   tone: "success" | "destructive" | "outline";
   /** One line under the badge, when the word alone would mislead. */
   detail: string | null;
+  /**
+   * Who the detail is about. "runtime" details (no snapshot, runtime down)
+   * are shared by every configured channel, so the page says them once in
+   * the verdict band; cards and rows only voice "channel" details.
+   */
+  detailScope?: "runtime" | "channel";
 }
 
 const RUNTIME_DOWN =
@@ -46,8 +52,8 @@ const NO_SNAPSHOT =
 const NOT_STARTED =
   "The channels runtime is up but this channel has not started; check its credentials in config.toml.";
 
-function configuredWith(detail: string): ChannelState {
-  return { word: "configured", label: "Configured", tone: "outline", detail };
+function configuredWith(detail: string, detailScope: "runtime" | "channel"): ChannelState {
+  return { word: "configured", label: "Configured", tone: "outline", detail, detailScope };
 }
 
 /**
@@ -71,12 +77,12 @@ export function channelState(
   if (!configured?.includes(key)) {
     return { word: "not configured", label: "Not configured", tone: "outline", detail: null };
   }
-  if (key === "webhook") return configuredWith("Served by the gateway itself.");
-  if (!runtime) return configuredWith(NO_SNAPSHOT);
+  if (key === "webhook") return configuredWith("Served by the gateway itself.", "channel");
+  if (!runtime) return configuredWith(NO_SNAPSHOT, "runtime");
   const byName = new Map(runtime.components.map((c) => [c.name, c]));
-  if (!byName.has("channels")) return configuredWith(RUNTIME_DOWN);
+  if (!byName.has("channels")) return configuredWith(RUNTIME_DOWN, "runtime");
   const own = byName.get(`channel:${key}`);
-  if (!own) return configuredWith(NOT_STARTED);
+  if (!own) return configuredWith(NOT_STARTED, "channel");
   if (own.status.toLowerCase() === "ok") {
     return { word: "running", label: "Running", tone: "success", detail: null };
   }
@@ -85,6 +91,7 @@ export function channelState(
     label: "Error",
     tone: "destructive",
     detail: own.lastError ? `last error: ${own.lastError}` : `status: ${own.status}`,
+    detailScope: "channel",
   };
 }
 
@@ -113,6 +120,82 @@ export function configuredRows(
     .filter((k) => k !== "telegram")
     .sort((a, b) => rank(a) - rank(b))
     .map((key) => ({ key, label: channelLabel(key), state: channelState(key, configured, runtime, stale) }));
+}
+
+export interface ChannelsVerdict {
+  /** The page's opening line. */
+  headline: string;
+  tone: "success" | "destructive" | "warning" | "muted";
+  /** One `key word` pair per configured channel, for the mono line. */
+  meta: string | null;
+  /** The runtime-level sentence, or the failing channel's error. */
+  detail: string | null;
+}
+
+/**
+ * The one answer the page opens with: is the agent reachable, where, and if
+ * not, why. Derived from the same per-channel states the cards render. The
+ * webhook counts as reachable while the gateway answers, because the gateway
+ * serves it itself.
+ */
+export function channelsVerdict(
+  configured: string[] | null,
+  runtime: RuntimeHealth | null,
+  stale: boolean,
+): ChannelsVerdict {
+  if (stale) {
+    return {
+      headline: "Channel status unknown",
+      tone: "warning",
+      meta: null,
+      detail: "The last read failed or the gateway is offline; nothing shown is current.",
+    };
+  }
+  const keys = configured ?? [];
+  if (keys.length === 0) {
+    return {
+      headline: "Not reachable on any channel",
+      tone: "muted",
+      meta: null,
+      detail: "Connect Telegram, or configure a channel in config.toml.",
+    };
+  }
+  const states = keys.map((key) => ({ key, state: channelState(key, configured, runtime, false) }));
+  const meta = states.map((s) => `${s.key} ${s.state.word}`).join(" · ");
+  const failing = states.filter((s) => s.state.word === "error");
+  if (failing.length > 0) {
+    return {
+      headline:
+        failing.length === 1
+          ? `${channelLabel(failing[0].key)} is failing`
+          : `${failing.length} channels are failing`,
+      tone: "destructive",
+      meta,
+      detail: failing.length === 1 ? failing[0].state.detail : null,
+    };
+  }
+  const reachable = states.filter((s) => s.state.word === "running" || s.key === "webhook");
+  if (reachable.length > 0) {
+    const names = reachable.map((s) => channelLabel(s.key));
+    return {
+      headline:
+        names.length === 1
+          ? `Reachable on ${names[0]}`
+          : names.length === 2
+            ? `Reachable on ${names[0]} and ${names[1]}`
+            : `Reachable on ${names.length} channels`,
+      tone: "success",
+      meta,
+      detail: null,
+    };
+  }
+  const subject = states.length === 1 ? channelLabel(states[0].key) : `${states.length} channels`;
+  const detail = !runtime
+    ? NO_SNAPSHOT
+    : !runtime.components.some((c) => c.name === "channels")
+      ? RUNTIME_DOWN
+      : "The channels runtime is up, but nothing has started; check credentials in config.toml.";
+  return { headline: `${subject} configured, not running`, tone: "muted", meta, detail };
 }
 
 /** The one success line for an allowlist save, from what the SERVER stored. */

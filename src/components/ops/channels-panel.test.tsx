@@ -80,10 +80,11 @@ describe("ChannelsPanel status words", () => {
       statusWith({ gateway: component(), channels: component(), "channel:telegram": component() }),
     );
     render(<ChannelsPanel />);
+    expect(await screen.findByText("Reachable on Telegram")).toBeTruthy();
     expect(await screen.findByText("Running")).toBeTruthy();
   });
 
-  it("shows the channel's last error", async () => {
+  it("opens with the failing channel and shows its last error", async () => {
     status.mockResolvedValue(
       statusWith({
         channels: component(),
@@ -91,8 +92,10 @@ describe("ChannelsPanel status words", () => {
       }),
     );
     render(<ChannelsPanel />);
+    expect(await screen.findByText("Telegram is failing")).toBeTruthy();
     expect(await screen.findByText("Error")).toBeTruthy();
-    expect(await screen.findByText("last error: 401 Unauthorized")).toBeTruthy();
+    // Once in the verdict band, once in place on the card.
+    expect(await screen.findAllByText("last error: 401 Unauthorized")).toHaveLength(2);
   });
 
   it("lists the other configured channels with the same vocabulary, and nothing else", async () => {
@@ -110,9 +113,27 @@ describe("ChannelsPanel status words", () => {
     channels.mockResolvedValue({ configured: [], count: 0 });
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
+    expect(await screen.findByText("Not reachable on any channel")).toBeTruthy();
     expect(await screen.findByText("Not configured")).toBeTruthy();
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+  });
+
+  it("says the runtime-level cause once, in the band, not on every card", async () => {
+    channels.mockResolvedValue({ configured: ["telegram", "discord"], count: 2 });
+    render(<ChannelsPanel />);
+    expect(await screen.findByText("2 channels configured, not running")).toBeTruthy();
+    expect(await screen.findAllByText(/channels runtime is not running/)).toHaveLength(1);
+  });
+
+  it("shows the channels-wide approval boundary whether or not Telegram is configured", async () => {
+    channels.mockResolvedValue({ configured: [], count: 0 });
+    config.mockResolvedValue({
+      channels_config: { approval_owners: ["1360247715"], autonomous_tools: false },
+    });
+    render(<ChannelsPanel />);
+    expect(await screen.findByText("May approve tool calls:")).toBeTruthy();
+    expect(await screen.findByText("1360247715")).toBeTruthy();
   });
 
   it("says Status unknown while the gateway is offline, whatever the last fetch said", async () => {

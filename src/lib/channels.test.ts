@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allowlistToastTitle, channelState, configuredRows } from "./channels";
+import { allowlistToastTitle, channelState, channelsVerdict, configuredRows } from "./channels";
 import type { RuntimeHealth } from "./status";
 
 function runtime(components: { name: string; status?: string; lastError?: string | null }[]): RuntimeHealth {
@@ -88,5 +88,77 @@ describe("allowlistToastTitle", () => {
     expect(allowlistToastTitle(0)).toBe("Allowlist saved: no senders allowed; every message is denied");
     expect(allowlistToastTitle(1)).toBe("Allowlist saved: 1 sender allowed");
     expect(allowlistToastTitle(2)).toBe("Allowlist saved: 2 senders allowed");
+  });
+});
+
+describe("channelsVerdict", () => {
+  const up = runtime([{ name: "gateway" }, { name: "channels" }, { name: "channel:telegram" }]);
+
+  it("opens with unknown while nothing shown is current", () => {
+    const v = channelsVerdict(["telegram"], up, true);
+    expect(v.headline).toBe("Channel status unknown");
+    expect(v.tone).toBe("warning");
+  });
+
+  it("invites the first connection when nothing is configured", () => {
+    const v = channelsVerdict([], null, false);
+    expect(v.headline).toBe("Not reachable on any channel");
+    expect(v.detail).toMatch(/Connect Telegram/);
+  });
+
+  it("names where the agent is reachable", () => {
+    expect(channelsVerdict(["telegram"], up, false)).toMatchObject({
+      headline: "Reachable on Telegram",
+      tone: "success",
+      meta: "telegram running",
+    });
+    const two = runtime([
+      { name: "channels" },
+      { name: "channel:telegram" },
+      { name: "channel:discord" },
+    ]);
+    expect(channelsVerdict(["telegram", "discord"], two, false).headline).toBe(
+      "Reachable on Telegram and Discord",
+    );
+  });
+
+  it("counts the webhook as reachable while the gateway answers", () => {
+    // The gateway serves the webhook itself; if we can read /channels, it is up.
+    const v = channelsVerdict(["webhook"], runtime([{ name: "gateway" }]), false);
+    expect(v.headline).toBe("Reachable on Webhook");
+  });
+
+  it("opens with the failing channel", () => {
+    const failed = runtime([
+      { name: "channels" },
+      { name: "channel:telegram", status: "error", lastError: "401" },
+    ]);
+    const v = channelsVerdict(["telegram"], failed, false);
+    expect(v.headline).toBe("Telegram is failing");
+    expect(v.tone).toBe("destructive");
+    expect(v.detail).toBe("last error: 401");
+  });
+
+  it("says configured-but-not-running with the runtime-level cause", () => {
+    const v = channelsVerdict(["telegram"], runtime([{ name: "gateway" }]), false);
+    expect(v.headline).toBe("Telegram configured, not running");
+    expect(v.tone).toBe("muted");
+    expect(v.detail).toMatch(/runtime is not running/);
+    expect(channelsVerdict(["telegram", "discord"], null, false).headline).toBe(
+      "2 channels configured, not running",
+    );
+  });
+});
+
+describe("detail scope", () => {
+  it("marks runtime-level details so the page says them once", () => {
+    expect(channelState("telegram", ["telegram"], null, false).detailScope).toBe("runtime");
+    expect(
+      channelState("telegram", ["telegram"], runtime([{ name: "gateway" }]), false).detailScope,
+    ).toBe("runtime");
+    expect(
+      channelState("discord", ["discord"], runtime([{ name: "channels" }]), false).detailScope,
+    ).toBe("channel");
+    expect(channelState("webhook", ["webhook"], null, false).detailScope).toBe("channel");
   });
 });
