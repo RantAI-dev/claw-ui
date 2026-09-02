@@ -168,3 +168,36 @@ describe("ConfigPanel masked viewer", () => {
     expect(screen.queryByRole("button", { name: /full config/ })).toBeNull();
   });
 });
+
+describe("ConfigPanel surface craft", () => {
+  it("labels the field on the shared scale, with no tracked-uppercase relic", async () => {
+    const { container } = await renderLoaded();
+    const byLabel = screen.getByLabelText("Default sampling temperature") as HTMLInputElement;
+    expect(byLabel.getAttribute("type")).toBe("number");
+    expect(byLabel.placeholder).toBe("");
+    expect(container.querySelector(".tracking-wider")).toBeNull();
+  });
+
+  it("titles the section Configuration, not Config", async () => {
+    await renderLoaded();
+    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
+    expect(screen.queryByText("Config")).toBeNull();
+  });
+
+  it("names its loading state and shows Refresh only once data exists", async () => {
+    let resolveConfig!: (v: unknown) => void;
+    config.mockReturnValue(new Promise((r) => (resolveConfig = r)));
+    render(<ConfigPanel />);
+    await screen.findByText("Loading config…");
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    resolveConfig(structuredClone(CONFIG));
+    await screen.findByRole("spinbutton");
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
+  });
+
+  it("links Providers as a real route link", async () => {
+    await renderLoaded();
+    const link = screen.getByRole("link", { name: "Providers" });
+    expect(link.getAttribute("href")).toBe("#providers");
+  });
+});

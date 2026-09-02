@@ -17,6 +17,7 @@ export function ConfigPanel() {
   const [temp, setTemp] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [showRaw, setShowRaw] = React.useState(false);
+  const tempId = React.useId();
   const tempErrId = React.useId();
   const tempHintId = React.useId();
   const rawId = React.useId();
@@ -71,17 +72,26 @@ export function ConfigPanel() {
 
   return (
     <div className="space-y-4">
-      <SectionTitle action={<RefreshButton onClick={cfg.refresh} />}>Config</SectionTitle>
+      <SectionTitle
+        action={
+          // The frame carries its own Retry until something has loaded; one
+          // control per action.
+          cfg.data ? <RefreshButton spinning={cfg.refreshing} onClick={cfg.refresh} /> : undefined
+        }
+      >
+        Configuration
+      </SectionTitle>
       <Card className="space-y-3 p-4">
-        <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Default sampling
-        </div>
+        <label htmlFor={tempId} className="eyebrow block">
+          Default sampling temperature
+        </label>
         {/* Guard the editable card: a failed initial GET /config shows a
             load/error state (with Retry) instead of an empty box that reads as
             "temperature unset" next to a live Save. `loaded` keeps the field on
             screen when only a post-save refresh fails. */}
         <PanelFrame
           loading={cfg.loading}
+          loadingLabel="Loading config…"
           error={cfg.error}
           loaded={cfg.loaded}
           onRefresh={cfg.refresh}
@@ -94,9 +104,9 @@ export function ConfigPanel() {
             className="flex flex-wrap items-center gap-2"
           >
             <Input
+              id={tempId}
               value={temp}
               onChange={(e) => setTemp(e.target.value)}
-              placeholder="temperature"
               type="number"
               min={0}
               max={2}
@@ -120,7 +130,10 @@ export function ConfigPanel() {
           )}
           <p className="mt-3 text-[11px] text-muted-foreground">
             Choose the active provider and model in{" "}
-            <span className="text-foreground">Providers</span>.
+            <a href="#providers" className="underline underline-offset-2 hover:text-foreground">
+              Providers
+            </a>
+            .
           </p>
         </PanelFrame>
       </Card>
