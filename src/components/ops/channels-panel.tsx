@@ -5,14 +5,21 @@ import { AlertTriangle } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
-import { allowlistToastTitle, channelState, configuredRows, type ChannelState } from "@/lib/channels";
+import {
+  allowlistToastTitle,
+  channelState,
+  channelsVerdict,
+  configuredRows,
+  type ChannelState,
+  type ChannelsVerdict,
+} from "@/lib/channels";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
 import { cn } from "@/lib/utils";
@@ -197,75 +204,177 @@ export function ChannelsPanel() {
     wasOffline.current = !online;
   }, [gateway.connection, refreshNow]);
 
+  const verdict = channelsVerdict(data?.configured ?? null, runtime, staleStatus);
+
   return (
-    <div>
-      {/* The topbar h1 already says Channels; the sections are Telegram and the rest. */}
-      <SectionTitle
-        action={
-          <RefreshButton onClick={refreshNow} spinning={refreshing || cfg.refreshing || st.refreshing} />
-        }
-      >
-        Telegram
-      </SectionTitle>
+    <div className="max-w-[1120px] space-y-8">
+      {/* The page opens with the answer: reachable where, or why not. Not a
+          card; the whitespace around the band marks the focal point, as on
+          Status. The topbar h1 already says Channels. */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <PanelFrame
+            loading={loading || cfg.loading}
+            error={error || cfg.error}
+            loaded={loaded && cfg.loaded}
+            loadingLabel="Loading channels…"
+          >
+            <ReachabilityBand verdict={verdict} />
+          </PanelFrame>
+        </div>
+        <RefreshButton
+          onClick={refreshNow}
+          spinning={refreshing || cfg.refreshing || st.refreshing}
+        />
+      </div>
+
       {applying !== "idle" && (
-        <div className="mb-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           Applying your change. The runtime reloads by itself when RantaiClaw runs as a
           managed service; otherwise restart <code>rantaiclaw daemon</code>. This panel
           refreshes when the gateway is back.
         </div>
       )}
-      {/* Gate on the config fetch too: the allowlist editor is seeded from
-          GET /config, so rendering it before config loads (or after it fails)
-          would let "Save allowlist" persist an empty deny-all list. The section
-          button is the one retry control, so the refresh-failure strip gets no
-          Retry of its own. */}
-      <PanelFrame
-        loading={loading || cfg.loading}
-        error={error || cfg.error}
-        loaded={loaded && cfg.loaded}
-        loadingLabel="Loading channels…"
-      >
-        <TelegramCard
-          connected={tgConnected}
-          state={tgState}
-          allowedUsers={telegramAllowlist(cfg.data)}
-          boundary={approvalBoundary(cfg.data)}
-          onReload={refreshAfterReload}
-        />
 
-        <div className="mt-6">
-          <SectionTitle>Other channels</SectionTitle>
-          <p className="text-xs text-muted-foreground">
-            Set up with <code>rantaiclaw setup</code> or in config.toml; this console manages
-            Telegram.
-          </p>
-          {rows.length > 0 && (
-            <ul className="mt-2 divide-y divide-border/60 rounded-lg border border-border">
-              {rows.map((r) => (
-                <li key={r.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
-                  <span
-                    aria-hidden
-                    className="inline-block size-2 rounded-full"
-                    style={{ background: channelDot(r.key) }}
-                  />
-                  <span className="font-medium">{r.label}</span>
-                  <Badge variant={r.state.tone}>{r.state.label}</Badge>
-                  {r.state.detail && (
-                    <span
-                      className={cn(
-                        "basis-full text-xs",
-                        r.state.word === "error" ? "text-destructive" : "text-muted-foreground",
-                      )}
-                    >
-                      {r.state.detail}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
+      {/* Editors only once both fetches have answered: the allowlist editor is
+          seeded from GET /config, so rendering it early would let "Save
+          allowlist" persist an empty deny-all list. Loaded data stays mounted
+          through a refresh failure; the band's strip reports it. The 7/5 split
+          gives the editor the width; the facts scan in the narrow column. */}
+      {data && cfg.loaded && (
+        <div className="grid gap-8 lg:grid-cols-12">
+          <div className="lg:col-span-7">
+            <TelegramCard
+              connected={tgConnected}
+              state={tgState}
+              allowedUsers={telegramAllowlist(cfg.data)}
+              onReload={refreshAfterReload}
+            />
+          </div>
+
+          <div className="space-y-8 lg:col-span-5">
+            <ApprovalsCard boundary={approvalBoundary(cfg.data)} />
+
+            <div>
+              <SectionTitle>Other channels</SectionTitle>
+              <p className="text-xs text-muted-foreground">
+                Set up with <code>rantaiclaw setup</code> or in config.toml; this console
+                manages Telegram.
+              </p>
+              {rows.length > 0 && (
+                <Card className="mt-3 p-0">
+                  <ul>
+                    {rows.map((r) => (
+                      <li
+                        key={r.key}
+                        className="border-b border-border/60 px-4 py-2.5 last:border-b-0"
+                      >
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                          <span
+                            aria-hidden
+                            className="inline-block size-2 rounded-full"
+                            style={{ background: channelDot(r.key) }}
+                          />
+                          <span className="font-medium">{r.label}</span>
+                          <Badge variant={r.state.tone}>{r.state.label}</Badge>
+                        </div>
+                        {r.state.detail && r.state.detailScope === "channel" && (
+                          <p
+                            className={cn(
+                              "mt-1 text-xs",
+                              r.state.word === "error"
+                                ? "text-destructive"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {r.state.detail}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+          </div>
         </div>
-      </PanelFrame>
+      )}
+    </div>
+  );
+}
+
+/** Dot colours for the verdict band, the same vocabulary as the topbar pill. */
+const VERDICT_DOT: Record<ChannelsVerdict["tone"], string> = {
+  success: "var(--accent-green)",
+  destructive: "var(--destructive)",
+  warning: "var(--accent-orange)",
+  muted: "var(--muted-foreground)",
+};
+
+function ReachabilityBand({ verdict }: { verdict: ChannelsVerdict }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="inline-block size-2.5 rounded-full"
+          style={{ background: VERDICT_DOT[verdict.tone] }}
+        />
+        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+      </div>
+      {verdict.meta && (
+        <p className="mt-1.5 font-mono text-xs text-muted-foreground">{verdict.meta}</p>
+      )}
+      {verdict.detail && (
+        <p
+          className={cn(
+            "mt-1.5 text-xs",
+            verdict.tone === "destructive" ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {verdict.detail}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Who may approve a gated tool call, and whether the gate is on at all.
+ * `channels_config.approval_owners` and `autonomous_tools` govern every
+ * channel; inside the Telegram card they read as Telegram-only, which they
+ * are not.
+ */
+function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousTools: boolean } }) {
+  return (
+    <div>
+      <SectionTitle>Approvals</SectionTitle>
+      <Card className="p-4 text-xs">
+        {boundary.autonomousTools ? (
+          <div className="flex items-start gap-2 font-medium text-destructive">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            <span>
+              autonomous_tools = true: messages on any channel run tools without
+              approval. The owner list does not restrain them.
+            </span>
+          </div>
+        ) : boundary.owners.length === 0 ? (
+          <div className="text-muted-foreground">
+            No approval owners: anything that needs approval is denied. Set{" "}
+            <code>channels_config.approval_owners</code>, or send{" "}
+            <code>/claim &lt;code&gt;</code> from the chat.
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
+            <span>May approve tool calls:</span>
+            {boundary.owners.map((o) => (
+              <Badge key={o} variant="secondary" className="font-mono text-xs">
+                {o}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -274,7 +383,6 @@ function TelegramCard({
   connected,
   state,
   allowedUsers,
-  boundary,
   onReload,
 }: {
   /** A Telegram section exists in config (the editor is shown). */
@@ -282,7 +390,6 @@ function TelegramCard({
   /** What the runtime says about it; drives the badge and its detail line. */
   state: ChannelState;
   allowedUsers: string[];
-  boundary: { owners: string[]; autonomousTools: boolean };
   onReload: (restartsRuntime: boolean) => void;
 }) {
   const [token, setToken] = React.useState("");
@@ -402,13 +509,20 @@ function TelegramCard({
 
   return (
     <>
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm">
-          Telegram
-          <Badge variant={state.tone}>{state.label}</Badge>
-        </CardTitle>
-        {state.detail && (
+    <Card className="p-0">
+      {/* Header strip: the channel's own dot (the colour the right rail uses
+          for it) beside the name and its state. */}
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-border/60 px-4 py-3">
+        <span
+          aria-hidden
+          className="inline-block size-2 rounded-full"
+          style={{ background: channelDot("telegram") }}
+        />
+        <span className="text-sm font-medium">Telegram</span>
+        <Badge variant={state.tone}>{state.label}</Badge>
+      </div>
+      <div className="space-y-2 p-4">
+        {state.detail && state.detailScope === "channel" && (
           <p
             className={cn(
               "text-xs",
@@ -418,8 +532,6 @@ function TelegramCard({
             {state.detail}
           </p>
         )}
-      </CardHeader>
-      <CardContent className="space-y-2">
         {connected ? (
           <form
             className="space-y-2"
@@ -437,36 +549,6 @@ function TelegramCard({
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />
-            {/* Who may approve a gated tool call, and whether the gate is on
-                at all. Neither value appeared anywhere in this console, so a
-                connected channel with no owners looked the same as one with
-                them — and `autonomous_tools` silently voided both. */}
-            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
-              {boundary.autonomousTools ? (
-                <div className="flex items-start gap-2 font-medium text-destructive">
-                  <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                  <span>
-                    autonomous_tools = true: messages on this channel run tools without
-                    approval. The owner list does not restrain them.
-                  </span>
-                </div>
-              ) : boundary.owners.length === 0 ? (
-                <div className="text-muted-foreground">
-                  No approval owners: anything that needs approval is denied. Set{" "}
-                  <code>channels_config.approval_owners</code>, or send{" "}
-                  <code>/claim &lt;code&gt;</code> from the chat.
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
-                  <span>May approve tool calls:</span>
-                  {boundary.owners.map((o) => (
-                    <Badge key={o} variant="secondary" className="font-mono text-xs">
-                      {o}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
                 Saved into the running channel on its next message; no restart. To change
@@ -527,7 +609,7 @@ function TelegramCard({
             </div>
           </form>
         )}
-      </CardContent>
+      </div>
     </Card>
     <ConfirmModal
       open={confirmDisconnect}
