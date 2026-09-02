@@ -37,7 +37,7 @@ export default function LoginPage() {
         const retry = Number(res.headers.get("retry-after"));
         if (res.status === 429 && Number.isFinite(retry) && retry > 0) {
           const when = retry >= 60 ? `${Math.ceil(retry / 60)} min` : `${retry}s`;
-          setError(`Too many attempts — try again in ${when}.`);
+          setError(`Too many attempts. Try again in ${when}.`);
         } else {
           setError(j.error || "Login failed");
         }
@@ -50,7 +50,7 @@ export default function LoginPage() {
       router.replace(safeNext ? next : "/chat");
       router.refresh();
     } catch {
-      setError("Network error — is the server reachable?");
+      setError("Network error. Is the server reachable?");
     } finally {
       setBusy(false);
     }
