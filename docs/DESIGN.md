@@ -40,11 +40,11 @@ Mirrors the sibling `RantAI-Agents` app so components/icons/theme are reusable:
 - **Next.js 16** (App Router) · **React 19** · **TypeScript**
 - **Tailwind CSS v4** (`@tailwindcss/postcss`, `@import "tailwindcss"`, `@theme inline`)
 - **shadcn** conventions (new-york / neutral, CSS variables) — minimal hand-written primitives, no Radix dep for v1
-- **next-themes** (class-based dark mode) · **lucide-react** icons · **sonner** toasts
+- **next-themes** (theme forced per brand via `forcedTheme`; no user toggle - this is an operator console, dark on purpose) · **lucide-react** icons (relevance-first; the thin hairline stroke matches the hairline-border system, and the set is shared with the sibling RantAI apps) · **sonner** toasts
 - **react-markdown + remark-gfm** for assistant markdown (lightweight; streamdown is a drop-in upgrade later)
 - Package manager: **bun**
 
-Theme tokens (OKLCH light/dark), Poppins font, and brand logo are copied verbatim from RantAI-Agents.
+Theme tokens (OKLCH; dark is canonical - the `.light` block is brand-gated for future light brands, not user-facing), Geist + Geist Mono via next/font, and the brand logo live in this repo: see the "RantAI Design System" header in `src/app/globals.css` and `src/lib/branding.ts`.
 
 ## 4. Architecture — server-side proxy (no CORS, no token in browser)
 

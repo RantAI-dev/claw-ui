@@ -125,7 +125,7 @@ export function McpPanel() {
           <EmptyState
             icon={<Server className="size-6" />}
             title="No MCP servers configured yet"
-            hint="Add one above — it connects on the next daemon restart."
+            hint="Add one above. It connects on the next daemon restart."
           />
         ) : (
           <Card className="divide-y divide-border">
