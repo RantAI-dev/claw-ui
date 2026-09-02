@@ -139,3 +139,55 @@ export function removalCopy(skill: Skill): RemovalCopy {
     toast: `Removed ${name}`,
   };
 }
+
+export interface SkillsVerdict {
+  headline: string;
+  tone: "ok" | "warn";
+  /** The mono meta line under the headline: counts, cron-band style. */
+  meta: string[];
+  detail?: string;
+}
+
+/**
+ * The answer the page opens with: is every standing instruction in force?
+ * A skill the loader drops is the one state worth the orange dot; disabled
+ * is a choice the operator made and only counts in the meta line.
+ */
+export function skillsVerdict(skills: Skill[]): SkillsVerdict {
+  const c = skillCounts(skills);
+  if (c.total === 0) {
+    return {
+      headline: "No skills installed",
+      tone: "warn",
+      meta: [],
+      detail:
+        "A skill is a set of standing instructions the agent follows. Write one, or install one from ClawHub.",
+    };
+  }
+  const meta = [`${c.total} installed`];
+  if (c.notLoadable > 0) {
+    meta.push(`${c.active} active`);
+    if (c.disabled) meta.push(`${c.disabled} disabled`);
+    const first = skills.find((s) => skillState(s).kind === "not-loadable");
+    const reasons = first ? skillState(first).reasons : [];
+    const why = reasons.length > 0 ? `: ${reasons.join("; ")}` : " can't load";
+    const more = c.notLoadable > 1 ? ` (+${c.notLoadable - 1} more below)` : "";
+    return {
+      headline: `${c.notLoadable} skill${c.notLoadable === 1 ? "" : "s"} can't load`,
+      tone: "warn",
+      meta,
+      detail: first ? `${first.name}${why}${more}` : undefined,
+    };
+  }
+  if (c.disabled) meta.push(`${c.disabled} disabled`);
+  if (c.active === 0) {
+    return {
+      headline: "No skills active",
+      tone: "warn",
+      meta,
+      detail: "Every installed skill is disabled. Resume one with its power button.",
+    };
+  }
+  return { headline: `${c.active} skill${c.active === 1 ? "" : "s"} active`, tone: "ok", meta };
+}
+

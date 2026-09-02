@@ -12,6 +12,7 @@ import {
   Star,
   Trash2,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
@@ -24,31 +25,69 @@ import {
   installStateFor,
   skillReference,
   type SkillCandidate,
+  type InstallState,
 } from "@/lib/clawhub";
 import { SKILLS_CHANGED } from "@/lib/console";
-import { countLine, removalCopy, skillCounts, skillState, versionLabel } from "@/lib/skills";
+import {
+  countLine,
+  removalCopy,
+  skillCounts,
+  skillState,
+  skillsVerdict,
+  versionLabel,
+  type SkillsVerdict,
+} from "@/lib/skills";
 import { cn, formatNumber } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Segmented } from "@/components/ui/segmented";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
-import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
+import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 import { SkillEditor } from "./skill-editor";
+
+/**
+ * The page opens with the answer: is every standing instruction in force?
+ * Not a card; the whitespace around the band marks the focal point, as on
+ * Status, Channels, Providers and Schedules.
+ */
+function SkillsBand({ verdict }: { verdict: SkillsVerdict }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="inline-block size-2.5 rounded-full"
+          style={{
+            background: verdict.tone === "ok" ? "var(--accent-green)" : "var(--accent-orange)",
+          }}
+        />
+        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+      </div>
+      {verdict.meta.length > 0 && (
+        <p className="mt-1.5 font-mono text-xs text-muted-foreground">
+          {verdict.meta.map((m, i) => (
+            <React.Fragment key={m}>
+              {i > 0 && <span aria-hidden> · </span>}
+              <span>{m}</span>
+            </React.Fragment>
+          ))}
+        </p>
+      )}
+      {verdict.detail && <p className="mt-1.5 text-xs text-muted-foreground">{verdict.detail}</p>}
+    </div>
+  );
+}
 
 export function SkillsPanel() {
   const installed = useAsync(() => api.skills(), []);
-  const [view, setView] = React.useState<"installed" | "browse">("installed");
-  // One query per view. A single value served both, so a term typed to filter
-  // the installed list became a ClawHub search on the switch, and a ClawHub
-  // search came back as a silent filter ("2 of 7 shown") on the way back.
+  // Two lists, two boxes: the filter belongs to the installed column, the
+  // search to the ClawHub column. Both are on screen at once, so neither can
+  // leak into the other.
   const [installedQuery, setInstalledQuery] = React.useState("");
   const [hubQuery, setHubQuery] = React.useState("");
-  const query = view === "installed" ? installedQuery : hubQuery;
-  const setQuery = view === "installed" ? setInstalledQuery : setHubQuery;
   const [hub, setHub] = React.useState<ClawHubSkill[] | null>(null);
   const [hubLoading, setHubLoading] = React.useState(false);
   const [hubError, setHubError] = React.useState<string | null>(null);
@@ -80,7 +119,6 @@ export function SkillsPanel() {
   // "fresh" came back with the same list and looked like it did nothing.
   const hubFresh = React.useRef(false);
   React.useEffect(() => {
-    if (view !== "browse") return;
     setHubLoading(true);
     setHubError(null);
     const fresh = hubFresh.current;
@@ -104,7 +142,7 @@ export function SkillsPanel() {
       hubQuery.trim() ? 350 : 0,
     );
     return () => clearTimeout(t);
-  }, [view, hubQuery, hubNonce]);
+  }, [hubQuery, hubNonce]);
 
   const skills = React.useMemo(
     () => installed.data?.skills || [],
@@ -202,243 +240,216 @@ export function SkillsPanel() {
     }
   };
 
-  const refreshActive = () => {
-    if (view === "installed") {
-      installed.refresh();
-    } else {
-      hubFresh.current = true;
-      setHubNonce((n) => n + 1);
-    }
+  const hubRefresh = () => {
+    hubFresh.current = true;
+    setHubNonce((n) => n + 1);
+  };
+
+  // "Search ClawHub instead": the one deliberate hand-off between the boxes.
+  const hubSearchRef = React.useRef<HTMLInputElement>(null);
+  const handOffToHub = () => {
+    setHubQuery(installedQuery);
+    hubSearchRef.current?.scrollIntoView({ block: "center" });
+    hubSearchRef.current?.focus();
   };
 
   return (
-    <div className="space-y-4">
-      {/* One toolbar for both views. Write sits outside the view switch: it used
-          to render only under Installed, which hid it behind a tab the moment a
-          user with nothing installed most wanted to find it. */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Segmented
-          value={view}
-          onChange={setView}
-          className="max-sm:w-full max-sm:[&>button]:flex-1"
-          options={[
-            { value: "installed", label: `Installed${installed.data ? ` · ${installed.data.count}` : ""}` },
-            { value: "browse", label: "Browse ClawHub" },
-          ]}
-        />
-        <div className="relative min-w-[8rem] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label={view === "installed" ? "Filter installed skills" : "Search ClawHub"}
-            // Short enough to survive the 170 px the phone toolbar leaves it.
-            placeholder={view === "installed" ? "Filter skills…" : "Search ClawHub…"}
-            className="pl-8 pr-8"
-          />
-          {view === "browse" && hubLoading ? (
-            <Loader2 className="absolute right-2.5 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
-          ) : (
-            query && (
-              <IconButton
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-                className="absolute right-1 top-1/2 -translate-y-1/2 p-1"
-              >
-                <X className="size-3.5" />
-              </IconButton>
-            )
-          )}
+    <>
+      <div className="max-w-[1120px] space-y-8">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <PanelFrame
+              loading={installed.loading}
+              error={installed.error}
+              loaded={installed.loaded}
+              loadingLabel="Loading skills…"
+              onRefresh={installed.refresh}
+            >
+              {installed.data && <SkillsBand verdict={skillsVerdict(skills)} />}
+            </PanelFrame>
+          </div>
+          <RefreshButton onClick={installed.refresh} spinning={installed.refreshing} />
         </div>
-        <Button
-          ref={writeRef}
-          size="sm"
-          variant="outline"
-          onClick={() => setEditor({ mode: "create" })}
-        >
-          <Plus className="size-3.5" /> Write
-        </Button>
-        <RefreshButton
-          onClick={refreshActive}
-          spinning={view === "installed" ? installed.refreshing : hubLoading}
-        />
-      </div>
 
-      {view === "installed" ? (
-        <PanelFrame
-          loading={installed.loading}
-          error={installed.error}
-          loaded={installed.loaded}
-          loadingLabel="Loading skills…"
-          onRefresh={installed.refresh}
-        >
-          {skills.length === 0 ? (
-            // The toolbar right above already carries Write and Browse
-            // ClawHub; repeating them here was two CTAs 90 px apart. Nothing
-            // auto-jumps to the marketplace either: that answered "install
-            // one" before anyone had been asked.
-            <EmptyState
-              icon={<Blocks className="size-6" />}
-              title="No skills installed yet."
-              hint="A skill is a set of standing instructions the agent follows. Write one with the Write button, or open Browse ClawHub."
-            />
-          ) : matching.length === 0 ? (
-            <EmptyState
-              icon={<Search className="size-6" />}
-              title={`Nothing installed matches “${installedQuery.trim()}”.`}
-              action={
+        {/* The 7/5 split gives the installed list the width to state its
+            facts; writing a skill and fetching one compose in the narrow
+            column. On phones the list (the answer) comes first. */}
+        {installed.data && (
+          <div className="grid gap-8 lg:grid-cols-12">
+            <div className="min-w-0 lg:col-span-7">
+              <SectionTitle>
+                Installed <span className="text-muted-foreground">· {skills.length}</span>
+              </SectionTitle>
+              {skills.length === 0 ? (
+                <EmptyState
+                  icon={<Blocks className="size-6" />}
+                  title="No skills installed yet."
+                  hint="A skill is a set of standing instructions the agent follows. Write one, or install one from ClawHub."
+                />
+              ) : (
+                <>
+                  <div className="relative mb-3 max-w-sm">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={installedQuery}
+                      onChange={(e) => setInstalledQuery(e.target.value)}
+                      aria-label="Filter installed skills"
+                      placeholder="Filter skills…"
+                      className="h-8 pl-8 pr-8 text-xs"
+                    />
+                    {installedQuery && (
+                      <IconButton
+                        onClick={() => setInstalledQuery("")}
+                        aria-label="Clear filter"
+                        className="absolute right-0.5 top-1/2 -translate-y-1/2"
+                      >
+                        <X className="size-3.5" />
+                      </IconButton>
+                    )}
+                  </div>
+                  {installedQuery.trim() && matching.length > 0 && (
+                    <p className="mb-3 text-xs text-muted-foreground">
+                      {countLine(counts, {
+                        query: installedQuery.trim(),
+                        shown: matching.length,
+                      })}
+                    </p>
+                  )}
+                  {matching.length === 0 ? (
+                    <EmptyState
+                      icon={<Search className="size-6" />}
+                      title={`Nothing installed matches “${installedQuery.trim()}”.`}
+                      action={
+                        <Button size="sm" variant="outline" onClick={handOffToHub}>
+                          Search ClawHub instead
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <Card className="divide-y divide-border">
+                      {matching.map((s) => (
+                        <InstalledRow
+                          key={s.slug ?? s.name}
+                          skill={s}
+                          busy={working === s.slug}
+                          onEdit={(slug) => setEditor({ mode: "edit", slug })}
+                          onToggle={toggle}
+                          onUninstall={setPendingUninstall}
+                        />
+                      ))}
+                    </Card>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="min-w-0 space-y-8 lg:col-span-5">
+              <div>
+                <SectionTitle>Write your own</SectionTitle>
+                <p className="text-xs text-muted-foreground">
+                  A SKILL.md the agent follows: a name, the sentence that tells the
+                  model when to use it, and the steps.
+                </p>
+                {/* The page's one primary action. */}
                 <Button
+                  ref={writeRef}
                   size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    // The one deliberate hand-off between the two queries.
-                    setHubQuery(installedQuery);
-                    setView("browse");
-                  }}
+                  className="mt-3"
+                  onClick={() => setEditor({ mode: "create" })}
                 >
-                  Search ClawHub instead
+                  <Plus className="size-3.5" /> Write a skill
                 </Button>
-              }
-            />
-          ) : (
-            <div className="space-y-3">
-              <p className="eyebrow">
-                {countLine(
-                  counts,
-                  installedQuery.trim()
-                    ? { query: installedQuery.trim(), shown: matching.length }
-                    : undefined,
-                )}
-              </p>
-              <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-                {matching.map((s) => (
-                  <InstalledCard
-                    key={s.slug ?? s.name}
-                    skill={s}
-                    busy={working === s.slug}
-                    onEdit={(slug) => setEditor({ mode: "edit", slug })}
-                    onToggle={toggle}
-                    onUninstall={setPendingUninstall}
+              </div>
+
+              <div>
+                <SectionTitle
+                  action={
+                    <IconButton
+                      onClick={hubRefresh}
+                      title="Refresh the ClawHub list"
+                      aria-label="Refresh the ClawHub list"
+                    >
+                      <RefreshCw className={cn("size-3.5", hubLoading && "animate-spin")} />
+                    </IconButton>
+                  }
+                >
+                  ClawHub
+                </SectionTitle>
+                <p className="text-xs text-muted-foreground">
+                  Community skills. Installing stages code the agent reads, so pick
+                  publishers you trust.
+                </p>
+                <div className="relative mt-3">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    ref={hubSearchRef}
+                    value={hubQuery}
+                    onChange={(e) => setHubQuery(e.target.value)}
+                    aria-label="Search ClawHub"
+                    placeholder="Search ClawHub…"
+                    className="h-8 pl-8 pr-8 text-xs"
                   />
-                ))}
+                  {hubLoading ? (
+                    <Loader2 className="absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 animate-spin text-muted-foreground" />
+                  ) : (
+                    hubQuery && (
+                      <IconButton
+                        onClick={() => setHubQuery("")}
+                        aria-label="Clear search"
+                        className="absolute right-0.5 top-1/2 -translate-y-1/2"
+                      >
+                        <X className="size-3.5" />
+                      </IconButton>
+                    )
+                  )}
+                </div>
+                <div className="mt-3">
+                  {hubError ? (
+                    <EmptyState
+                      tone="destructive"
+                      title="ClawHub unavailable"
+                      hint={hubError}
+                      action={
+                        <Button size="sm" variant="outline" onClick={hubRefresh}>
+                          Retry
+                        </Button>
+                      }
+                    />
+                  ) : hubLoading && !hub ? (
+                    <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" />{" "}
+                      {hubQuery.trim() ? "Searching ClawHub…" : "Loading the ClawHub list…"}
+                    </div>
+                  ) : hub && hub.length === 0 ? (
+                    <EmptyState
+                      title={
+                        hubQuery.trim()
+                          ? `No ClawHub skills match “${hubQuery.trim()}”.`
+                          : "ClawHub returned no skills."
+                      }
+                      hint={hubQuery.trim() ? "Try another word, or write one." : undefined}
+                    />
+                  ) : hub ? (
+                    <Card className="p-0">
+                      <ul>
+                        {hub.map((h) => (
+                          <HubRow
+                            key={skillReference(h)}
+                            s={h}
+                            state={installStateFor(h, installedIndex)}
+                            busy={working === skillReference(h)}
+                            onInstall={install}
+                          />
+                        ))}
+                      </ul>
+                    </Card>
+                  ) : null}
+                </div>
               </div>
             </div>
-          )}
-        </PanelFrame>
-      ) : hubError ? (
-        <EmptyState
-          tone="destructive"
-          title="ClawHub unavailable"
-          hint={hubError}
-          action={
-            <Button variant="outline" size="sm" onClick={refreshActive}>
-              Retry
-            </Button>
-          }
-        />
-      ) : hubLoading && !hub ? (
-        <div className="flex items-center justify-center gap-2 py-14 text-xs text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />{" "}
-          {hubQuery.trim() ? "Searching ClawHub…" : "Loading the ClawHub list…"}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
-          {(hub || []).map((s) => {
-            const reference = skillReference(s);
-            const state = installStateFor(s, installedIndex);
-            // Keyed on the reference, not the slug: several publishers
-            // share popular slugs, so `working === s.slug` put every
-            // same-slug card into the spinner on a single click.
-            const busy = working === reference;
-            // As text under the reference, not a tooltip: a tooltip is
-            // invisible on touch and to a keyboard. "Uninstall, then install
-            // again" because `install_one` leaves a slug that is already
-            // present alone; a plain reinstall records nothing.
-            const note =
-              state.kind === "installed-unattributed"
-                ? "Installed, publisher not recorded. Uninstall it, then install it again to record one."
-                : state.kind === "other-publisher"
-                  ? `Installed from @${state.owner}. Uninstall it first to switch publishers.`
-                  : null;
-            return (
-              <Card key={reference} className="flex flex-col gap-2 p-3">
-                <div className="flex items-start gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-semibold">{s.displayName}</span>
-                      {/* `official` is a claim about the publisher;
-                          `installed` below is a fact about this machine.
-                          They can appear on the same card, so they must
-                          not share a colour — a trust signal that looks
-                          like a status badge stops reading as one. */}
-                      {s.official && (
-                        <Badge variant="accent" className="shrink-0">official</Badge>
-                      )}
-                      {s.version && <span className="text-[10px] text-muted-foreground">v{s.version}</span>}
-                    </div>
-                    <div className="truncate font-mono text-[10px] text-muted-foreground">
-                      {reference}
-                    </div>
-                  </div>
-                  {state.kind === "installed" ||
-                  state.kind === "installed-unattributed" ? (
-                    <Badge variant="success" className="shrink-0">
-                      installed
-                    </Badge>
-                  ) : state.kind === "other-publisher" ? (
-                    // The slug's directory holds someone else's copy. The
-                    // gateway refuses to overwrite it, so offering Install
-                    // here would promise something that cannot happen.
-                    <Badge variant="warning" className="shrink-0">
-                      @{state.owner} installed
-                    </Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => install(reference)}
-                      disabled={busy}
-                      className="shrink-0"
-                    >
-                      {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
-                      Install
-                    </Button>
-                  )}
-                </div>
-                {note && <p className="text-[11px] text-muted-foreground">{note}</p>}
-                {s.summary && (
-                  <p className="line-clamp-2 text-xs text-muted-foreground" title={s.summary}>
-                    {s.summary}
-                  </p>
-                )}
-                <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-                  {s.stars != null && (
-                    <span className="flex items-center gap-0.5">
-                      <Star className="size-3" /> {formatNumber(s.stars)}
-                    </span>
-                  )}
-                  {s.downloads != null && (
-                    <span className="flex items-center gap-0.5">
-                      <Download className="size-3" /> {formatNumber(s.downloads)}
-                    </span>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
-          {!hubLoading && hub && hub.length === 0 && (
-            <EmptyState
-              className="col-span-full"
-              title={
-                hubQuery.trim()
-                  ? `No ClawHub skills match “${hubQuery.trim()}”.`
-                  : "ClawHub returned no skills."
-              }
-              hint={hubQuery.trim() ? "Try another word, or write one." : undefined}
-            />
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {editor && (
         <SkillEditor
@@ -524,36 +535,27 @@ export function SkillsPanel() {
           ))}
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
-
-/**
- * Where this copy came from, as the gateway resolved it. Absent origin renders
- * nothing rather than guessing — the type's own contract is that unknown must
- * not be read as "probably fine".
- *
- * `accent` is free to use for `yours` here: it marks `official` over in Browse,
- * and no card appears in both lists.
- */
 function OriginBadge({ skill }: { skill: Skill }) {
   const kind = skill.origin?.kind;
   if (kind === "authored")
-    return <Badge variant="accent" className="shrink-0 text-[10px]">yours</Badge>;
+    return <Badge variant="accent" className="shrink-0 text-[11px]">yours</Badge>;
   if (kind === "clawhub")
     return (
-      <Badge variant="outline" className="shrink-0 font-mono text-[10px]">
+      <Badge variant="outline" className="shrink-0 font-mono text-[11px]">
         {skill.clawhub?.owner ? `@${skill.clawhub.owner}` : "clawhub"}
       </Badge>
     );
   if (kind === "bundled")
-    return <Badge variant="secondary" className="shrink-0 text-[10px]">bundled</Badge>;
+    return <Badge variant="secondary" className="shrink-0 text-[11px]">bundled</Badge>;
   if (kind === "git" || kind === "local")
-    return <Badge variant="outline" className="shrink-0 text-[10px]">{kind}</Badge>;
+    return <Badge variant="outline" className="shrink-0 text-[11px]">{kind}</Badge>;
   return null;
 }
 
-function InstalledCard({
+function InstalledRow({
   skill,
   busy,
   onEdit,
@@ -566,9 +568,7 @@ function InstalledCard({
   onToggle: (slug: string, label: string, enabled: boolean) => void;
   onUninstall: (skill: Skill) => void;
 }) {
-  // `active` is what the loader injects; `enabled` is only the config flag. A
-  // skill whose binary or env is missing is enabled and never loaded, and the
-  // card used to show it exactly like one that works.
+  // `active` is what the loader injects; `enabled` is only the config flag.
   const state = skillState(skill);
   const enabled = skill.enabled !== false;
   // Without a slug the skill has no directory of its own (an open-skills file)
@@ -577,86 +577,205 @@ function InstalledCard({
   const editable = skill.origin?.kind === "authored" && !!slug;
   const version = versionLabel(skill);
   const removal = removalCopy(skill);
+  const facts: React.ReactNode[] = [];
+  if (slug && skill.name !== slug) {
+    facts.push(
+      <span key="slug" className="font-mono">
+        {slug}
+      </span>,
+    );
+  }
+  for (const t of skill.tags || []) facts.push(<span key={`tag-${t}`}>{t}</span>);
+  for (const t of skill.tools || [])
+    facts.push(
+      <span key={`tool-${t}`} className="font-mono">
+        {t}
+      </span>,
+    );
 
   return (
-    <Card className={cn("flex flex-col gap-2 p-3", state.kind === "disabled" && "opacity-60")}>
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="truncate text-sm font-semibold">{skill.name}</span>
-            {version && <span className="text-[10px] text-muted-foreground">{version}</span>}
-            <OriginBadge skill={skill} />
-            {state.kind === "disabled" && (
-              <Badge variant="warning" className="shrink-0 text-[10px]">disabled</Badge>
-            )}
-            {state.kind === "not-loadable" && (
-              <Badge variant="warning" className="shrink-0 text-[10px]">not loadable</Badge>
-            )}
-          </div>
-          {slug && skill.name !== slug && (
-            <div className="truncate font-mono text-[10px] text-muted-foreground">{slug}</div>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {editable && slug && (
-            <IconButton
-              onClick={() => onEdit(slug)}
-              disabled={busy}
-              title="Edit"
-              aria-label={`Edit ${skill.name}`}
-              className="disabled:opacity-50"
-            >
-              <Pencil className="size-3.5" />
-            </IconButton>
-          )}
-          <IconButton
-            onClick={() => slug && onToggle(slug, skill.name, !enabled)}
-            disabled={busy || !slug}
-            title={enabled ? "Disable" : "Enable"}
-            aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3">
+      <div className="min-w-0 flex-1 basis-48">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            title={skill.name}
             className={cn(
-              "disabled:opacity-50",
-              // Green means "in force", not "switched on": an enabled skill the
-              // loader dropped keeps the plain icon and the reasons line says why.
-              state.kind === "active" && "text-success hover:bg-success/10 hover:text-success",
+              "truncate text-sm font-medium",
+              // Disabled reads as muted ink, not a washed-out row: the badge
+              // carries the state and the text stays at AA.
+              state.kind === "disabled" && "text-muted-foreground",
             )}
           >
-            <Power className="size-3.5" />
-          </IconButton>
-          <IconButton
-            onClick={() => slug && onUninstall(skill)}
-            disabled={busy || !slug}
-            title={removal.confirm}
-            aria-label={removal.actionLabel}
-            className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+            {skill.name}
+          </span>
+          {version && <span className="text-[11px] text-muted-foreground">{version}</span>}
+          <OriginBadge skill={skill} />
+          {state.kind === "disabled" && (
+            <Badge variant="warning" className="shrink-0 text-[11px]">
+              disabled
+            </Badge>
+          )}
+          {state.kind === "not-loadable" && (
+            <Badge variant="warning" className="shrink-0 text-[11px]">
+              not loadable
+            </Badge>
+          )}
+        </div>
+        {facts.length > 0 && (
+          <div className="mt-0.5 break-words text-xs text-muted-foreground">
+            {facts.map((f, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <span aria-hidden> · </span>}
+                {f}
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+        {state.reasons.length > 0 && (
+          <div className="mt-0.5 break-words text-xs text-muted-foreground">
+            <span
+              aria-hidden
+              className="mr-1.5 inline-block size-1.5 rounded-full align-middle"
+              style={{ background: "var(--accent-orange)" }}
+            />
+            {state.kind === "disabled" ? "Would not load: " : "Not loaded: "}
+            {state.reasons.join("; ")}
+          </div>
+        )}
+        {skill.description && (
+          // One line on wide screens; the title keeps the whole sentence
+          // reachable, and it is what the model uses to pick the skill.
+          <div
+            className="mt-0.5 break-words text-xs text-muted-foreground/80 sm:truncate"
+            title={skill.description}
           >
-            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-          </IconButton>
-        </div>
+            {skill.description}
+          </div>
+        )}
       </div>
-      {skill.description && (
-        // Clamped to two lines; the title keeps the whole sentence reachable,
-        // and it is the sentence the model uses to pick the skill.
-        <p className="line-clamp-2 text-xs text-muted-foreground" title={skill.description}>
-          {skill.description}
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 max-sm:basis-full max-sm:justify-end">
+        {editable && slug && (
+          <IconButton
+            onClick={() => onEdit(slug)}
+            disabled={busy}
+            title="Edit"
+            aria-label={`Edit ${skill.name}`}
+            className="disabled:opacity-50"
+          >
+            <Pencil className="size-3.5" />
+          </IconButton>
+        )}
+        <IconButton
+          onClick={() => slug && onToggle(slug, skill.name, !enabled)}
+          disabled={busy || !slug}
+          title={enabled ? "Disable" : "Enable"}
+          aria-label={enabled ? `Disable ${skill.name}` : `Enable ${skill.name}`}
+          className={cn(
+            "disabled:opacity-50",
+            // Green means "in force", not "switched on": an enabled skill the
+            // loader dropped keeps the plain icon and the reasons line says why.
+            state.kind === "active" && "text-success hover:bg-success/10 hover:text-success",
+          )}
+        >
+          <Power className="size-3.5" />
+        </IconButton>
+        <IconButton
+          onClick={() => slug && onUninstall(skill)}
+          disabled={busy || !slug}
+          title={removal.confirm}
+          aria-label={removal.actionLabel}
+          className="hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+        >
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function HubRow({
+  s,
+  state,
+  busy,
+  onInstall,
+}: {
+  s: ClawHubSkill;
+  state: InstallState;
+  busy: boolean;
+  onInstall: (reference: string) => void;
+}) {
+  const reference = skillReference(s);
+  // As text under the reference, not a tooltip: a tooltip is invisible on
+  // touch and to a keyboard. "Uninstall, then install again" because
+  // `install_one` leaves a slug that is already present alone.
+  const note =
+    state.kind === "installed-unattributed"
+      ? "Installed, publisher not recorded. Uninstall it, then install it again to record one."
+      : state.kind === "other-publisher"
+        ? `Installed from @${state.owner}. Uninstall it first to switch publishers.`
+        : null;
+  return (
+    <li className="border-b border-border/60 px-4 py-3 last:border-b-0">
+      <div className="flex items-center gap-2">
+        <span title={s.displayName} className="min-w-0 truncate text-sm font-medium">
+          {s.displayName}
+        </span>
+        {s.official && (
+          <Badge variant="accent" className="shrink-0 text-[11px]">
+            official
+          </Badge>
+        )}
+        {s.version && (
+          <span className="shrink-0 text-[11px] text-muted-foreground">v{s.version}</span>
+        )}
+        <span className="ml-auto shrink-0">
+          {state.kind === "installed" || state.kind === "installed-unattributed" ? (
+            <Badge variant="success">installed</Badge>
+          ) : state.kind === "other-publisher" ? (
+            // The slug's directory holds someone else's copy; the gateway
+            // refuses to overwrite it, so Install would promise something
+            // that cannot happen.
+            <Badge variant="warning">@{state.owner} installed</Badge>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onInstall(reference)}
+              disabled={busy}
+            >
+              {busy ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
+              Install
+            </Button>
+          )}
+        </span>
+      </div>
+      <div className="mt-0.5 break-words font-mono text-[11px] text-muted-foreground">
+        {reference}
+      </div>
+      {note && <p className="mt-1 text-xs text-muted-foreground">{note}</p>}
+      {s.summary && (
+        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground/80" title={s.summary}>
+          {s.summary}
         </p>
       )}
-      {state.reasons.length > 0 && (
-        <p className="text-[11px] text-muted-foreground">
-          {state.kind === "disabled" ? "Would not load: " : "Not loaded: "}
-          {state.reasons.join("; ")}
-        </p>
-      )}
-      {(skill.tags?.length || skill.tools?.length) ? (
-        <div className="flex flex-wrap gap-1.5">
-          {skill.tags?.map((t) => (
-            <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
-          ))}
-          {skill.tools?.map((t) => (
-            <Badge key={t} variant="outline" className="font-mono text-[10px]">{t}</Badge>
-          ))}
+      {(s.stars != null || s.downloads != null) && (
+        <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
+          {s.stars != null && (
+            <span className="inline-flex items-center gap-1">
+              <Star className="size-3" /> {formatNumber(s.stars)}
+            </span>
+          )}
+          {s.downloads != null && (
+            <span className="inline-flex items-center gap-1">
+              <Download className="size-3" /> {formatNumber(s.downloads)}
+            </span>
+          )}
         </div>
-      ) : null}
-    </Card>
+      )}
+    </li>
   );
 }
