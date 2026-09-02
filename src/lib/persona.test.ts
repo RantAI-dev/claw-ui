@@ -11,6 +11,7 @@ import {
   kbBlockState,
   kbUnavailableCode,
   nearCap,
+  personaVerdict,
   sameSet,
   timeZoneOptions,
   trimForm,
@@ -105,6 +106,38 @@ describe("fieldErrors", () => {
 
   it("refuses a timezone the runtime would print verbatim", () => {
     expect(fieldErrors({ ...freshForm("UTC"), timezone: "Mars" }).timezone).toMatch(/IANA/);
+  });
+});
+
+describe("personaVerdict", () => {
+  it("opens with the warning on a fresh profile and names the next move", () => {
+    const v = personaVerdict({ profile: "default", preset: null, configured: false });
+    expect(v.tone).toBe("warn");
+    expect(v.headline).toBe("No persona saved yet");
+    expect(v.meta).toEqual(["profile default"]);
+    expect(v.detail).toMatch(/runs without a persona section/);
+  });
+
+  it("speaks as the saved name with the preset, tone, timezone and profile in the meta line", () => {
+    const v = personaVerdict({ ...SAVED, always_on_kbs: [] });
+    expect(v).toMatchObject({ headline: "Speaking as RantaiClaw", tone: "ok" });
+    expect(v.meta).toEqual(["default preset", "concise tone", "Asia/Jakarta", "profile default"]);
+    expect(v.detail).toBeUndefined();
+  });
+
+  it("counts the always-on bases in the detail", () => {
+    expect(personaVerdict({ ...SAVED, always_on_kbs: ["a"] }).detail).toBe(
+      "Always searches 1 knowledge base on chats from this console.",
+    );
+    expect(personaVerdict({ ...SAVED, always_on_kbs: ["a", "b"] }).detail).toBe(
+      "Always searches 2 knowledge bases on chats from this console.",
+    );
+  });
+
+  it("warns about a saved persona without a name", () => {
+    const v = personaVerdict({ ...SAVED, name: " " });
+    expect(v.tone).toBe("warn");
+    expect(v.headline).toBe("Persona saved without a name");
   });
 });
 

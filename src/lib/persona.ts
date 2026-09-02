@@ -125,6 +125,56 @@ export function nearCap(value: string, max: number): string | null {
   return value.length >= max - 20 ? `${value.length}/${max}` : null;
 }
 
+export interface PersonaVerdict {
+  headline: string;
+  tone: "ok" | "warn";
+  /** The mono meta line under the headline, cron-band style. */
+  meta: string[];
+  detail?: string;
+}
+
+/**
+ * The answer the page opens with: who is the agent on its next prompt?
+ * Derived from the SAVED persona only; edits below never move the band
+ * until they are saved, as on the other panels' verdicts.
+ */
+export function personaVerdict(p: Personality): PersonaVerdict {
+  if (isFresh(p)) {
+    return {
+      headline: "No persona saved yet",
+      tone: "warn",
+      meta: [`profile ${p.profile}`],
+      detail:
+        "The agent runs without a persona section until you save one; the form below holds the runtime defaults.",
+    };
+  }
+  const meta = [
+    p.preset ? `${p.preset} preset` : "",
+    p.tone?.trim() ? `${p.tone.trim()} tone` : "",
+    p.timezone?.trim() ?? "",
+    `profile ${p.profile}`,
+  ].filter(Boolean);
+  const name = p.name?.trim() ?? "";
+  if (!name) {
+    return {
+      headline: "Persona saved without a name",
+      tone: "warn",
+      meta,
+      detail: 'The prompt falls back to calling the operator "you"; give it a name below.',
+    };
+  }
+  const bases = Array.isArray(p.always_on_kbs) ? p.always_on_kbs.length : 0;
+  return {
+    headline: `Speaking as ${name}`,
+    tone: "ok",
+    meta,
+    detail:
+      bases > 0
+        ? `Always searches ${bases} knowledge ${bases === 1 ? "base" : "bases"} on chats from this console.`
+        : undefined,
+  };
+}
+
 export type KbUnavailable = "kb_disabled" | "kb_not_configured";
 
 /** The two gateway codes for a Knowledge Base that exists but cannot list groups. */

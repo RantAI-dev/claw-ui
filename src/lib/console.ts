@@ -169,8 +169,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   persona: {
     title: "Persona",
     eyebrow: "Voice & behavior",
-    blurb:
-      "The agent's name, role, tone and timezone as they enter every system prompt, and the knowledge bases every chat from this console searches.",
+    blurb: "Who the agent says it is on every system prompt, and the knowledge it always carries.",
   },
   config: {
     title: "Configuration",
