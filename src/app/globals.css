@@ -322,6 +322,7 @@
 .nav-item.active {
   background: oklch(var(--af) /6%);
   color: var(--foreground);
+  font-weight: 500;
 }
 .nav-item.active::before {
   content: "";
@@ -610,19 +611,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.topbar .crumb {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted-foreground);
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.topbar .crumb .chan-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-}
 .topbar-spacer {
   flex: 1;
 }
@@ -712,10 +700,10 @@
 .transcript {
   max-width: 780px;
   margin: 0 auto;
-  padding: 28px 28px 12px;
+  padding: 32px 28px 16px;
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 28px;
 }
 .turn {
   display: flex;
@@ -735,7 +723,7 @@
   border: 1px solid color-mix(in oklab, var(--brand-sky) 22%, transparent);
   color: var(--foreground);
   padding: 11px 14px;
-  border-radius: 14px 14px 4px 14px;
+  border-radius: 10px 10px 4px 10px;
   font-size: 14px;
   line-height: 1.55;
   letter-spacing: -0.005em;
@@ -782,7 +770,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 7px;
+  margin-bottom: 6px;
 }
 .bot-name b {
   font-size: 12.5px;
@@ -1173,9 +1161,13 @@
 }
 
 /* ============================ Composer ============================ */
+/* The command deck: the composer is the page's focal point, so it sits on its
+   own surface (rail-dark, a hairline above) instead of floating in the void. */
 .composer-wrap {
   flex: none;
-  padding: 14px 28px 20px;
+  padding: 12px 28px 16px;
+  background: color-mix(in oklab, var(--background) 92%, black);
+  border-top: 1px solid var(--border);
 }
 .composer-inner {
   max-width: 780px;
@@ -1193,7 +1185,10 @@
 }
 .composer:focus-within {
   border-color: color-mix(in oklab, var(--brand-sky) 55%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand-sky) 16%, transparent);
+  /* The identity motif (left stripe) marks the focused deck; inset, so no shift. */
+  box-shadow:
+    inset 2px 0 0 0 var(--brand-sky),
+    0 0 0 3px color-mix(in oklab, var(--brand-sky) 16%, transparent);
 }
 .composer textarea {
   width: 100%;
@@ -1226,12 +1221,21 @@
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--muted-foreground);
-  padding: 4px 8px;
+  height: 28px;
+  padding: 0 8px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
   transition: all var(--duration-fast);
   background: transparent;
+}
+/* Divides the attach cluster from the provider/model chips. */
+.composer-bar .bar-sep {
+  width: 1px;
+  height: 16px;
+  flex: none;
+  margin: 0 2px;
+  background: var(--border);
 }
 .cchip:hover {
   border-color: var(--border);
@@ -1527,12 +1531,12 @@
 /* The product's own mark, not a sparkle: the one thing on the empty screen
    that says whose agent this is. */
 .chat-empty .ce-mark {
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   object-fit: contain;
 }
 .chat-empty h2 {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 500;
   letter-spacing: -0.02em;
   margin: 0;
@@ -1545,7 +1549,7 @@
 .ce-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   max-width: 460px;
   margin-top: 6px;
@@ -1554,7 +1558,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--card);
-  padding: 10px 12px;
+  padding: 12px 14px;
   text-align: left;
   font-size: 12.5px;
   color: var(--muted-foreground);
@@ -1654,6 +1658,34 @@
 .kv-row .v.sky {
   color: var(--brand-sky);
 }
+.stat-mini-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.stat-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: oklch(var(--af) /1.5%);
+}
+.stat-mini b {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.stat-mini b.sky {
+  color: var(--brand-sky);
+}
+.stat-mini span {
+  font-size: 10.5px;
+  color: var(--muted-foreground);
+}
+
 .minis {
   display: flex;
   flex-direction: column;
@@ -2386,4 +2418,16 @@ pre.toml {
   height: auto;
   border-radius: 8px;
   margin: 0 0 11px;
+}
+
+/* Quality floor: anyone who asked their OS for less motion gets none. Spinners
+   render as static marks; nothing depends on an animation to be understood. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

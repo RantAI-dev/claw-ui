@@ -865,8 +865,13 @@ export function ConsoleShell({
                 const Icon = n.icon;
                 const count = navCount(n.id);
                 return (
+                  <React.Fragment key={n.id}>
+                    {/* Chat, then eleven operations routes under one quiet
+                        label: twelve equal rows read as a wall. */}
+                    {n.id === "status" && (
+                      <div className="nav-cap eyebrow">Operations</div>
+                    )}
                   <button
-                    key={n.id}
                     className={"nav-item" + (route === n.id ? " active" : "")}
                     onClick={() => {
                       setRoute(n.id);
@@ -880,6 +885,7 @@ export function ConsoleShell({
                       <span className="nav-count">{count}</span>
                     )}
                   </button>
+                  </React.Fragment>
                 );
               })}
             </nav>
@@ -1109,15 +1115,8 @@ export function ConsoleShell({
                   ? activeSession?.title || "Untitled session"
                   : "New conversation"}
               </h1>
-              {chat.sessionId && (
-                <span className="crumb">
-                  <span
-                    className="chan-dot"
-                    style={{ background: "var(--brand-sky)" }}
-                  />
-                  session {chat.sessionId.slice(0, 8)}
-                </span>
-              )}
+              {/* The session id lives in the context panel and the URL; a mono
+                  crumb next to the title read as debug output. */}
             </>
           ) : (
             <h1>{ROUTE_META[route].title}</h1>

@@ -524,6 +524,8 @@ export function ChatPane(props: ChatPaneProps) {
                 )}
               </div>
 
+              <span className="bar-sep" aria-hidden="true" />
+
               <span
                 className="cchip readonly"
                 title="Provider is set on the agent. Switch it in Configuration."

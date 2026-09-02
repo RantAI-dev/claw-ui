@@ -101,22 +101,24 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
             <b>This session</b>
             {data.sessionId && <span className="more">{data.sessionId.slice(0, 8)}</span>}
           </div>
-          <div className="kv">
-            <div className="kv-row">
-              <span className="k">turns</span>
-              <span className="v">{formatNumber(t.turns)}</span>
+          {/* The four numbers an operator glances at mid-conversation: designed
+              as data, not as a debug key/value dump. */}
+          <div className="stat-mini-grid">
+            <div className="stat-mini">
+              <b>{formatNumber(t.turns)}</b>
+              <span>turns</span>
             </div>
-            <div className="kv-row">
-              <span className="k">tokens</span>
-              <span className="v sky">{formatNumber(t.tokens)}</span>
+            <div className="stat-mini">
+              <b className="sky">{formatNumber(t.tokens)}</b>
+              <span>tokens</span>
             </div>
-            <div className="kv-row">
-              <span className="k">cost</span>
-              <span className="v">{formatUsd(t.cost)}</span>
+            <div className="stat-mini">
+              <b>{formatUsd(t.cost)}</b>
+              <span>cost</span>
             </div>
-            <div className="kv-row">
-              <span className="k">tool calls</span>
-              <span className="v">{formatNumber(t.toolCalls)}</span>
+            <div className="stat-mini">
+              <b>{formatNumber(t.toolCalls)}</b>
+              <span>tool calls</span>
             </div>
           </div>
         </div>
