@@ -4,6 +4,7 @@ import * as React from "react";
 import { Eye, EyeOff, Save } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
 import { maskConfigForDisplay, CONFIG_CHANGED } from "@/lib/console";
+import type { GatewayConfig } from "@/lib/types";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,22 +17,46 @@ export function ConfigPanel() {
   const [temp, setTemp] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [showRaw, setShowRaw] = React.useState(false);
+  const tempErrId = React.useId();
+  const tempHintId = React.useId();
 
   // Until the first successful GET /config, we have no temperature to edit
   // against. Writing then would save against a config we never read, so hold
   // Save disabled through the initial load and an initial-load failure.
   const notReady = cfg.loading || (!!cfg.error && !cfg.loaded);
 
+  // Seed the field from the saved config, but only while it is clean: a
+  // Refresh reloads the saved value, it does not overwrite work in progress
+  // (the seededRef pattern persona-panel uses).
+  const seededRef = React.useRef<GatewayConfig | null>(null);
   React.useEffect(() => {
-    if (cfg.data) {
+    if (!cfg.data || cfg.data === seededRef.current) return;
+    const prev = seededRef.current;
+    seededRef.current = cfg.data;
+    const prevSaved = prev?.default_temperature;
+    const clean = temp.trim() === "" || prev == null || Number(temp) === prevSaved;
+    if (clean)
       setTemp(cfg.data.default_temperature != null ? String(cfg.data.default_temperature) : "");
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.data]);
 
+  const savedTemp = cfg.data?.default_temperature ?? null;
+  const parsed = temp.trim() === "" ? null : Number(temp);
+  const rangeError =
+    parsed != null && (!Number.isFinite(parsed) || parsed < 0 || parsed > 2)
+      ? "Temperature is 0.0 to 2.0."
+      : null;
+  // An empty field is not a "clear": the API has no unset, so it disables Save
+  // and the hint names the runtime default instead. Only a valid number that
+  // differs from the saved one arms Save — the toast can then only say
+  // something true.
+  const dirty = parsed != null && !rangeError && parsed !== savedTemp;
+
   const save = async () => {
+    if (parsed == null || rangeError || !dirty) return;
     setBusy(true);
     try {
-      await api.setConfigModel({ temperature: temp ? Number(temp) : undefined });
+      await api.setConfigModel({ temperature: parsed });
       toast.success("Default temperature updated");
       cfg.refresh();
       // Invalidate the shell's load-time snapshots (right-rail temperature).
@@ -60,19 +85,38 @@ export function ConfigPanel() {
           loaded={cfg.loaded}
           onRefresh={cfg.refresh}
         >
-          <div className="flex flex-wrap items-center gap-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void save();
+            }}
+            className="flex flex-wrap items-center gap-2"
+          >
             <Input
               value={temp}
               onChange={(e) => setTemp(e.target.value)}
               placeholder="temperature"
               type="number"
-              step="0.1"
+              min={0}
+              max={2}
+              step={0.1}
+              aria-invalid={rangeError ? true : undefined}
+              aria-describedby={rangeError ? tempErrId : tempHintId}
               className="w-32"
             />
-            <Button size="sm" onClick={save} disabled={busy || notReady}>
+            <Button size="sm" type="submit" disabled={busy || notReady || !dirty}>
               <Save className="size-4" /> Save
             </Button>
-          </div>
+          </form>
+          {rangeError ? (
+            <p id={tempErrId} role="alert" className="mt-2 text-[11px] text-destructive">
+              {rangeError}
+            </p>
+          ) : (
+            <p id={tempHintId} className="mt-2 text-[11px] text-muted-foreground">
+              0.0 = deterministic, 2.0 = freewheeling. The runtime default is 0.7.
+            </p>
+          )}
           <p className="mt-3 text-[11px] text-muted-foreground">
             Choose the active provider and model in{" "}
             <span className="text-foreground">Providers</span>.
