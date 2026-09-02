@@ -50,7 +50,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("GraphLens", () => {
-  it("lists the busiest entities as buttons and selects one from the keyboard path", async () => {
+  it("lists the busiest entities in the side column; selecting swaps in the detail, Close swaps back", async () => {
     kbGraph.mockResolvedValue(graph(15));
     render(<GraphLens scope={{ kind: "all" }} />);
     const list = await screen.findByRole("list", { name: "Entities by links" });
@@ -59,12 +59,12 @@ describe("GraphLens", () => {
     expect(buttons[0].textContent).toContain("Platform");
     expect(buttons[0].textContent).toContain("15");
     expect(screen.getByText("and 3 more in the graph")).toBeTruthy();
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(buttons[0]);
-    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
-    // The detail panel opened for it: its Close button and its relationship count.
-    expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
+    // The detail replaces the list: its Close button and its relationship count.
+    expect(screen.queryByRole("list", { name: "Entities by links" })).toBeNull();
     expect(screen.getByText("Relationships · 14")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("list", { name: "Entities by links" })).toBeTruthy();
   });
 
   it("keeps the selection across a refresh of the same graph", async () => {
@@ -73,12 +73,13 @@ describe("GraphLens", () => {
     kbGraph.mockImplementation(() => Promise.resolve(graph(15)));
     render(<GraphLens scope={{ kind: "all" }} />);
     const list = await screen.findByRole("list", { name: "Entities by links" });
-    const button = within(list).getAllByRole("button")[0];
-    fireEvent.click(button);
-    expect(button.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(list).getAllByRole("button")[0]);
+    expect(screen.getByText("Relationships · 14")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Refresh graph" }));
     await waitFor(() => expect(kbGraph).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(button.getAttribute("aria-pressed")).toBe("true"));
+    // The detail stays open for the same entity; the list stays swapped out.
+    expect(screen.getByText("Relationships · 14")).toBeTruthy();
+    expect(screen.queryByRole("list", { name: "Entities by links" })).toBeNull();
     expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   });
 
@@ -97,7 +98,7 @@ describe("GraphLens", () => {
     render(<GraphLens scope={{ kind: "all" }} />);
     await screen.findByRole("list", { name: "Entities by links" });
     expect(
-      screen.getByText("Select an entity in the graph or in the list to see its relationships."),
+      screen.getByText("Select an entity here or in the graph to see its relationships."),
     ).toBeTruthy();
   });
 });

@@ -267,42 +267,6 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
                   ))}
                 </div>
               )}
-              <div className="rounded-lg border border-border bg-card/60 px-3 py-2">
-                <div className="eyebrow">Entities by links</div>
-                <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label="Entities by links">
-                  {topNodes.map((n) => {
-                    const on = selectedNode?.id === n.id;
-                    return (
-                      <li key={n.id}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedNode(n)}
-                          aria-pressed={on}
-                          className={cn(
-                            "inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10",
-                            on ? "border-accent/60 bg-accent/10" : "border-border hover:bg-secondary",
-                          )}
-                        >
-                          <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{ background: entityVar(n.entity_type) }}
-                            aria-hidden
-                          />
-                          <span className="font-medium">{n.name}</span>
-                          <span className="text-muted-foreground">
-                            · {n.entity_type} · {formatNumber(n.degree)}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-                {nodes.length > topNodes.length && (
-                  <p className="mt-1.5 text-[11px] text-muted-foreground">
-                    and {formatNumber(nodes.length - topNodes.length)} more in the graph
-                  </p>
-                )}
-              </div>
             </div>
 
             {/* Entity detail: grid stretch keeps this column at the graph row's height. */}
@@ -315,17 +279,63 @@ export function GraphLens({ scope, lockScope }: { scope: GraphScope; lockScope?:
                   onClose={() => setSelectedNode(null)}
                 />
               ) : (
-                <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-4 text-center">
-                  <Network className="size-6 text-muted-foreground" />
-                  <p className="text-xs text-muted-foreground">
-                    Select an entity in the graph or in the list to see its relationships.
-                  </p>
-                </div>
+                <EntityList nodes={nodes} topNodes={topNodes} onSelect={setSelectedNode} />
               )}
             </div>
           </div>
         )}
       </PanelFrame>
+    </div>
+  );
+}
+
+/**
+ * The side column before a selection: the same facts as the canvas, reachable
+ * without a pointer, busiest entities first. Selecting one swaps this list for
+ * the entity's detail; Close brings it back.
+ */
+function EntityList({
+  nodes,
+  topNodes,
+  onSelect,
+}: {
+  nodes: KbGraphNode[];
+  topNodes: KbGraphNode[];
+  onSelect: (n: KbGraphNode) => void;
+}) {
+  return (
+    <div className="flex h-full min-h-[200px] flex-col rounded-xl border border-border bg-card/60 p-3">
+      <div className="eyebrow">Entities by links</div>
+      <ul className="mt-2 flex flex-wrap content-start gap-1.5" aria-label="Entities by links">
+        {topNodes.map((n) => (
+          <li key={n.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(n)}
+              aria-pressed={false}
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[11px] transition-colors hover:bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10"
+            >
+              <span
+                className="size-2 shrink-0 rounded-full"
+                style={{ background: entityVar(n.entity_type) }}
+                aria-hidden
+              />
+              <span className="font-medium">{n.name}</span>
+              <span className="text-muted-foreground">
+                · {n.entity_type} · {formatNumber(n.degree)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {nodes.length > topNodes.length && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          and {formatNumber(nodes.length - topNodes.length)} more in the graph
+        </p>
+      )}
+      <p className="mt-auto pt-3 text-[11px] text-muted-foreground">
+        Select an entity here or in the graph to see its relationships.
+      </p>
     </div>
   );
 }

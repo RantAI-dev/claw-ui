@@ -38,18 +38,20 @@ import {
   DEFAULT_KB_PRESET,
   KB_PRESETS,
   SUPPORTED_UPLOADS,
-  countLine,
   deleteDocCopy,
   deleteGroupCopy,
   duplicateTitles,
   ingestNote,
   isPreset,
+  kbVerdict,
   tileInk,
   unlinkDocCopy,
+  type KbVerdict,
 } from "@/lib/kb";
 import { cn, relativeTime, formatNumber } from "@/lib/utils";
 import { getFileTypeIcon, formatFileSize } from "@/lib/file-type";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Input } from "@/components/ui/input";
@@ -57,7 +59,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
-import { EmptyState, IconButton, PanelFrame, RefreshButton } from "./shared";
+import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
 import { DocViewerDrawer } from "./doc-viewer-drawer";
 import { GraphLens } from "./graph-lens";
 import { KnowledgeSettingsCard, type KnowledgeStatusState } from "./knowledge-settings-card";
@@ -76,11 +78,9 @@ type LibraryView = "documents" | "graph";
 export function KbPanel() {
   // Gate on activation BEFORE mounting the library. The library lives in a
   // CHILD component (KbPanelBody) because hooks fire on mount regardless of
-  // what is rendered — a `useAsync(kbGroups)` in THIS component would fetch
-  // even while the early-return shows only the activation card. Caught by
-  // the live browser drive: the render was gated but the request was not
-  // (plan 106 requires no kb/groups call while off). Older gateways omit
-  // `enabled`; treat configured-as-enabled there.
+  // what is rendered: a `useAsync(kbGroups)` in THIS component would fetch
+  // even while the early-return shows only the activation card. Older gateways
+  // omit `enabled`; treat configured-as-enabled there.
   const kbStatus = useAsync(() => api.getKnowledge(), []);
   const kbEnabled = kbStatus.data
     ? (kbStatus.data.enabled ?? kbStatus.data.embedding_configured)
@@ -94,17 +94,57 @@ export function KbPanel() {
     );
   }
   if (!kbEnabled) {
-    // Activation screen only: no Documents/Graph chrome, no doomed fetches.
-    return <KnowledgeSettingsCard status={kbStatus} />;
+    // The verdict still opens the page; under it, only the activation card.
+    return (
+      <div className="max-w-[1120px] space-y-8">
+        {kbStatus.data && <KbBand verdict={kbVerdict(kbStatus.data, null)} />}
+        <div className="max-w-xl">
+          <KnowledgeSettingsCard status={kbStatus} />
+        </div>
+      </div>
+    );
   }
   return <KbPanelBody status={kbStatus} />;
+}
+
+/**
+ * The page opens with the answer: can the agent retrieve, and from what?
+ * Not a card; the whitespace around the band marks the focal point, as on
+ * Status, Channels, Providers, Schedules and Skills.
+ */
+function KbBand({ verdict }: { verdict: KbVerdict }) {
+  return (
+    <div>
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="inline-block size-2.5 rounded-full"
+          style={{
+            background: verdict.tone === "ok" ? "var(--accent-green)" : "var(--accent-orange)",
+          }}
+        />
+        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+      </div>
+      {verdict.meta.length > 0 && (
+        <p className="mt-1.5 font-mono text-xs text-muted-foreground">
+          {verdict.meta.map((m, i) => (
+            <React.Fragment key={m}>
+              {i > 0 && <span aria-hidden> · </span>}
+              <span>{m}</span>
+            </React.Fragment>
+          ))}
+        </p>
+      )}
+      {verdict.detail && <p className="mt-1.5 text-xs text-muted-foreground">{verdict.detail}</p>}
+    </div>
+  );
 }
 
 function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
   const groups = useAsync(() => api.kbGroups(), []);
   const [selected, setSelected] = React.useState<KbGroup | null>(null);
   const [view, setView] = React.useState<LibraryView>("documents");
-  // Set when a delete removes the element that had focus (a card's Delete, or
+  // Set when a delete removes the element that had focus (a row's Delete, or
   // the detail's), so the list can put focus on something that still exists.
   const focusListRef = React.useRef(false);
 
@@ -118,9 +158,33 @@ function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups.data]);
 
+  const refreshAll = () => {
+    groups.refresh();
+    status.refresh();
+  };
+
   return (
-    <div className="space-y-4">
-      <KnowledgeSettingsCard status={status} />
+    <div className="max-w-[1120px] space-y-8">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <PanelFrame
+            loading={groups.loading}
+            error={groups.error}
+            loaded={groups.loaded}
+            loadingLabel="Loading knowledge bases…"
+            onRefresh={groups.refresh}
+          >
+            {groups.data && status.data && (
+              <KbBand verdict={kbVerdict(status.data, groups.data)} />
+            )}
+          </PanelFrame>
+        </div>
+        {/* The detail and the graph carry their own refresh; two identical
+            Refresh buttons on one screen would race each other for meaning. */}
+        {view === "documents" && !selected && (
+          <RefreshButton onClick={refreshAll} spinning={groups.refreshing} />
+        )}
+      </div>
 
       <Segmented
         value={view}
@@ -158,7 +222,9 @@ function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
             }}
           />
         ) : (
-          <KbList groups={groups} onOpen={setSelected} focusOnMount={focusListRef} />
+          groups.data && (
+            <KbList groups={groups} status={status} onOpen={setSelected} focusOnMount={focusListRef} />
+          )
         )
       ) : (
         <GraphLens scope={selected ? { kind: "group", groupId: selected.id } : { kind: "all" }} />
@@ -171,47 +237,38 @@ function KbPanelBody({ status }: { status: KnowledgeStatusState }) {
 
 function KbList({
   groups,
+  status,
   onOpen,
   focusOnMount,
 }: {
   groups: ReturnType<typeof useAsync<KbGroup[]>>;
+  status: KnowledgeStatusState;
   onOpen: (g: KbGroup) => void;
   focusOnMount?: React.MutableRefObject<boolean>;
 }) {
-  const newButtonRef = React.useRef<HTMLButtonElement>(null);
+  const createNameRef = React.useRef<HTMLInputElement>(null);
   React.useEffect(() => {
     if (focusOnMount?.current) {
       focusOnMount.current = false;
-      newButtonRef.current?.focus();
+      createNameRef.current?.focus();
     }
   }, [focusOnMount]);
-  const [editorOpen, setEditorOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<KbGroup | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<KbGroup | null>(null);
   const [deleting, setDeleting] = React.useState(false);
-  // After a delete the confirm's opener is gone with the card. The Modal hands
+  // After a delete the confirm's opener is gone with the row. The Modal hands
   // focus back in its own effect cleanup; this effect runs after it in the same
   // flush (React cleans up children before it creates parent effects), so the
-  // one control still here ends up focused.
+  // form's Name field, which is always here, ends up focused.
   const focusNewAfterClose = React.useRef(false);
   React.useEffect(() => {
     if (focusNewAfterClose.current && !deleteTarget) {
       focusNewAfterClose.current = false;
-      newButtonRef.current?.focus();
+      createNameRef.current?.focus();
     }
   }, [deleteTarget]);
 
   const list = groups.data ?? [];
-  const totalDocs = list.reduce((sum, g) => sum + (g.document_count ?? 0), 0);
-
-  const openCreate = () => {
-    setEditing(null);
-    setEditorOpen(true);
-  };
-  const openEdit = (g: KbGroup) => {
-    setEditing(g);
-    setEditorOpen(true);
-  };
 
   const confirmDelete = async () => {
     if (!deleteTarget) return;
@@ -220,7 +277,7 @@ function KbList({
     try {
       await api.kbDeleteGroup(deleteTarget.id);
       toast.success(`Deleted “${name}”`);
-      // Refresh before closing the confirm: its opener (the card's Delete) is
+      // Refresh before closing the confirm: its opener (the row's Delete) is
       // gone by the time the Modal tries to hand focus back.
       await groups.refresh();
       focusNewAfterClose.current = true;
@@ -233,59 +290,64 @@ function KbList({
   };
 
   return (
-    <div className="space-y-4">
-      {/* Header: the page title comes from the ops header; this row is the count + actions.
-          The count waits for the list: "0 knowledge bases" before the data was a number
-          nobody had computed. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <span className="eyebrow">{groups.loaded ? countLine(list.length, totalDocs) : ""}</span>
-        <div className="flex items-center gap-2">
-          <RefreshButton onClick={groups.refresh} spinning={groups.refreshing} />
-          <Button ref={newButtonRef} size="sm" onClick={openCreate}>
-            <Plus className="size-4" /> New knowledge base
-          </Button>
-        </div>
-      </div>
-
-      <PanelFrame
-        loading={groups.loading}
-        error={groups.error}
-        loaded={groups.loaded}
-        onRefresh={groups.refresh}
-        loadingLabel="Loading knowledge bases…"
-      >
+    <div className="grid gap-8 lg:grid-cols-12">
+      {/* The 7/5 split gives the list the width to state its facts; creating a
+          base and the retrieval key compose in the narrow column. On phones
+          the list (the answer) comes first. */}
+      <div className="min-w-0 lg:col-span-7">
+        <SectionTitle>
+          Knowledge bases <span className="text-muted-foreground">· {list.length}</span>
+        </SectionTitle>
         {list.length === 0 ? (
           <EmptyState
             icon={<Database className="size-6" />}
-            title="No knowledge bases yet"
-            hint="A knowledge base is a group of documents the agent can retrieve from."
-            action={
-              <Button size="sm" onClick={openCreate}>
-                <Plus className="size-4" /> New knowledge base
-              </Button>
-            }
+            title="No knowledge bases yet."
+            hint="Create one with the form beside this list, then upload documents into it."
           />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
+          <Card className="divide-y divide-border">
             {list.map((g) => (
-              <KbCard
+              <KbRow
                 key={g.id}
                 group={g}
                 onOpen={() => onOpen(g)}
-                onEdit={() => openEdit(g)}
+                onEdit={() => setEditing(g)}
                 onDelete={() => setDeleteTarget(g)}
               />
             ))}
-          </div>
+          </Card>
         )}
-      </PanelFrame>
+      </div>
+
+      <div className="min-w-0 space-y-8 lg:col-span-5">
+        <div>
+          <SectionTitle>New knowledge base</SectionTitle>
+          <p className="text-xs text-muted-foreground">
+            A named collection of documents the agent retrieves from. The colour marks it
+            here and in the chat picker.
+          </p>
+          <KbCreateForm
+            nameRef={createNameRef}
+            onCreated={() => groups.refresh()}
+            className="mt-3"
+          />
+        </div>
+        <div>
+          <SectionTitle>Retrieval key</SectionTitle>
+          <p className="text-xs text-muted-foreground">
+            Document search runs on the embedding key; image uploads also need an OCR key.
+          </p>
+          <div className="mt-3">
+            <KnowledgeSettingsCard status={status} />
+          </div>
+        </div>
+      </div>
 
       <KbEditorModal
-        open={editorOpen}
         group={editing}
-        onClose={() => setEditorOpen(false)}
+        onClose={() => setEditing(null)}
         onSaved={() => {
-          setEditorOpen(false);
+          setEditing(null);
           groups.refresh();
         }}
       />
@@ -302,7 +364,10 @@ function KbList({
   );
 }
 
-function KbCard({
+/** One base as a row, cron-style: the colour dot, the name as the row's action,
+ *  the count as a quiet fact, the description one line with the full text on
+ *  its title. Rows keep their actions visible on every pointer. */
+function KbRow({
   group,
   onOpen,
   onEdit,
@@ -314,63 +379,45 @@ function KbCard({
   onDelete: () => void;
 }) {
   const docCount = group.document_count ?? 0;
-  // A card that is itself a button cannot hold buttons: Enter on its Edit used
-  // to open the base and cancel the editor. The name is the button, stretched
-  // over the card by its ::after; the actions are siblings layered above it,
-  // and they exist on every pointer (a phone has no hover).
   return (
-    <div className="group relative overflow-hidden rounded-xl border border-border bg-card p-4 transition-colors hover:border-accent/40 focus-within:border-accent/40">
-      <div className="flex items-start gap-3">
-        <div
-          className="flex size-11 shrink-0 items-center justify-center rounded-lg"
-          style={{ backgroundColor: group.color || DEFAULT_KB_COLOR, color: tileInk(group.color) }}
-          aria-hidden
-        >
-          <FolderOpen className="size-5" />
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-3">
+      <div className="min-w-0 flex-1 basis-48">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span
+            aria-hidden
+            className="inline-block size-2.5 shrink-0 rounded-full"
+            style={{ background: group.color || DEFAULT_KB_COLOR }}
+          />
+          <button
+            type="button"
+            onClick={onOpen}
+            title={group.name}
+            className="min-w-0 max-w-full cursor-pointer truncate text-left text-sm font-medium transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            {group.name}
+          </button>
+          <span className="shrink-0 text-[11px] text-muted-foreground">
+            {docCount} doc{docCount === 1 ? "" : "s"}
+          </span>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 pr-16">
-            <button
-              type="button"
-              onClick={onOpen}
-              title={group.name}
-              className="min-w-0 cursor-pointer truncate text-left text-sm font-semibold after:absolute after:inset-0 after:rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-            >
-              {group.name}
-            </button>
-            <Badge variant="secondary" className="shrink-0 text-[10px]">
-              {docCount} doc{docCount === 1 ? "" : "s"}
-            </Badge>
+        {group.description && (
+          <div
+            className="mt-0.5 break-words text-xs text-muted-foreground/80 sm:truncate"
+            title={group.description}
+          >
+            {group.description}
           </div>
-          {group.description ? (
-            <p
-              title={group.description}
-              className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground"
-            >
-              {group.description}
-            </p>
-          ) : (
-            <p className="mt-1 text-xs italic text-muted-foreground">No description</p>
-          )}
-        </div>
+        )}
       </div>
-
-      {/* After the content in the DOM so Tab reads name, then actions; the
-          absolute position keeps them at the top-right. */}
-      <div className="absolute right-2.5 top-2.5 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-        <IconButton
-          onClick={onEdit}
-          title="Edit"
-          aria-label={`Edit knowledge base ${group.name}`}
-          className="bg-background/90"
-        >
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 max-sm:basis-full max-sm:justify-end">
+        <IconButton onClick={onEdit} title="Edit" aria-label={`Edit knowledge base ${group.name}`}>
           <Pencil className="size-3.5" />
         </IconButton>
         <IconButton
           onClick={onDelete}
           title="Delete"
           aria-label={`Delete knowledge base ${group.name}`}
-          className="bg-background/90 hover:bg-destructive/10 hover:text-destructive"
+          className="hover:bg-destructive/10 hover:text-destructive"
         >
           <Trash2 className="size-3.5" />
         </IconButton>
@@ -379,16 +426,80 @@ function KbCard({
   );
 }
 
-function KbEditorModal({
-  open,
-  group,
-  onClose,
-  onSaved,
+/** The colour presets as a named radiogroup with arrow keys; a stored colour
+ *  outside the set is kept as "Current colour" so an edit never recolours. */
+function ColorSwatches({
+  value,
+  onChange,
+  currentColor,
+  labelId,
 }: {
-  open: boolean;
-  group: KbGroup | null;
-  onClose: () => void;
-  onSaved: () => void;
+  value: string;
+  onChange: (hex: string) => void;
+  currentColor?: string | null;
+  labelId: string;
+}) {
+  const swatches = React.useMemo(() => {
+    const list = KB_PRESETS.map((p) => ({ hex: p.hex, name: p.name }));
+    if (currentColor && !isPreset(currentColor)) {
+      list.unshift({ hex: currentColor, name: "Current colour" });
+    }
+    return list;
+  }, [currentColor]);
+  const refs = React.useRef<(HTMLButtonElement | null)[]>([]);
+  const checkedIndex = swatches.findIndex((c) => c.hex === value);
+  const onKey = (e: React.KeyboardEvent<HTMLButtonElement>, i: number) => {
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % swatches.length;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp")
+      next = (i - 1 + swatches.length) % swatches.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = swatches.length - 1;
+    if (next === null) return;
+    e.preventDefault();
+    onChange(swatches[next].hex);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div role="radiogroup" aria-labelledby={labelId} className="flex flex-wrap gap-2">
+      {swatches.map((c, i) => {
+        const checked = value === c.hex;
+        return (
+          <button
+            key={c.hex}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
+            type="button"
+            role="radio"
+            aria-checked={checked}
+            aria-label={c.name}
+            title={c.name}
+            tabIndex={checked || (checkedIndex < 0 && i === 0) ? 0 : -1}
+            onClick={() => onChange(c.hex)}
+            onKeyDown={(e) => onKey(e, i)}
+            className={cn(
+              "size-7 cursor-pointer rounded-full pointer-coarse:size-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+              checked && "ring-2 ring-ring ring-offset-2 ring-offset-card",
+            )}
+            style={{ backgroundColor: c.hex }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/** The page's one primary action, composed in the narrow column as on
+ *  Schedules: the form is on screen, not behind a button. */
+function KbCreateForm({
+  nameRef,
+  onCreated,
+  className,
+}: {
+  nameRef: React.RefObject<HTMLInputElement | null>;
+  onCreated: () => void;
+  className?: string;
 }) {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -398,36 +509,98 @@ function KbEditorModal({
   const descId = React.useId();
   const colorId = React.useId();
 
-  // The swatches, plus the stored colour first when it is not one of them, so
-  // editing never silently recolours a base.
-  const swatches = React.useMemo(() => {
-    const list = KB_PRESETS.map((p) => ({ hex: p.hex, name: p.name }));
-    if (group?.color && !isPreset(group.color)) {
-      list.unshift({ hex: group.color, name: "Current colour" });
+  const create = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    try {
+      await api.kbCreateGroup({
+        name: trimmed,
+        description: description.trim() || undefined,
+        color,
+      });
+      toast.success(`Created “${trimmed}”`);
+      setName("");
+      setDescription("");
+      setColor(DEFAULT_KB_PRESET);
+      onCreated();
+    } catch (e) {
+      toast.error(`Create failed: ${errMsg(e)}`);
+    } finally {
+      setSaving(false);
     }
-    return list;
-  }, [group?.color]);
-  const swatchRefs = React.useRef<(HTMLButtonElement | null)[]>([]);
-  const checkedIndex = swatches.findIndex((c) => c.hex === color);
-  const onSwatchKey = (e: React.KeyboardEvent<HTMLButtonElement>, i: number) => {
-    let next: number | null = null;
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (i + 1) % swatches.length;
-    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (i - 1 + swatches.length) % swatches.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = swatches.length - 1;
-    if (next === null) return;
-    e.preventDefault();
-    setColor(swatches[next].hex);
-    swatchRefs.current[next]?.focus();
   };
 
-  // Sync form when the modal opens for a (new or existing) KB.
+  return (
+    <Card className={cn("space-y-4 p-4", className)}>
+      <div className="space-y-1.5">
+        <label htmlFor={nameId} className="eyebrow">
+          Name
+        </label>
+        <Input
+          id={nameId}
+          ref={nameRef}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Product Docs"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && name.trim()) create();
+          }}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label htmlFor={descId} className="eyebrow">
+          Description
+        </label>
+        <Textarea
+          id={descId}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="What lives in this knowledge base? (optional)"
+          rows={2}
+        />
+      </div>
+      <div className="space-y-2">
+        <div id={colorId} className="eyebrow">
+          Color
+        </div>
+        <ColorSwatches value={color} onChange={setColor} labelId={colorId} />
+      </div>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={create} disabled={saving || !name.trim()}>
+          {saving ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+          Create
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function KbEditorModal({
+  group,
+  onClose,
+  onSaved,
+}: {
+  group: KbGroup | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const open = !!group;
+  const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [color, setColor] = React.useState(DEFAULT_KB_PRESET);
+  const [saving, setSaving] = React.useState(false);
+  const nameId = React.useId();
+  const descId = React.useId();
+  const colorId = React.useId();
+
+  // Sync the form when the modal opens for a base.
   React.useEffect(() => {
-    if (!open) return;
-    setName(group?.name ?? "");
-    setDescription(group?.description ?? "");
-    setColor(group?.color ?? DEFAULT_KB_PRESET);
-  }, [open, group]);
+    if (!group) return;
+    setName(group.name);
+    setDescription(group.description ?? "");
+    setColor(group.color ?? DEFAULT_KB_PRESET);
+  }, [group]);
 
   // A stable close handler: the Modal re-runs its first-focus effect whenever
   // `onClose` changes identity, and an inline arrow changed on every keystroke,
@@ -437,25 +610,17 @@ function KbEditorModal({
   }, [saving, onClose]);
 
   const save = async () => {
+    if (!group) return;
     const trimmed = name.trim();
     if (!trimmed) return;
     setSaving(true);
     try {
-      if (group) {
-        await api.kbUpdateGroup(group.id, {
-          name: trimmed,
-          description: description.trim(),
-          color,
-        });
-        toast.success("Knowledge base updated");
-      } else {
-        await api.kbCreateGroup({
-          name: trimmed,
-          description: description.trim() || undefined,
-          color,
-        });
-        toast.success(`Created “${trimmed}”`);
-      }
+      await api.kbUpdateGroup(group.id, {
+        name: trimmed,
+        description: description.trim(),
+        color,
+      });
+      toast.success("Knowledge base updated");
       onSaved();
     } catch (e) {
       toast.error(`Save failed: ${errMsg(e)}`);
@@ -468,12 +633,8 @@ function KbEditorModal({
     <Modal
       open={open}
       onClose={handleClose}
-      title={group ? "Edit knowledge base" : "New knowledge base"}
-      description={
-        group
-          ? "Update the name, description, and color."
-          : "Group related documents the agent can retrieve from."
-      }
+      title="Edit knowledge base"
+      description="Update the name, description, and color."
       footer={
         <>
           <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>
@@ -485,7 +646,7 @@ function KbEditorModal({
             ) : (
               <Check className="size-4" />
             )}
-            {group ? "Save changes" : "Create"}
+            Save changes
           </Button>
         </>
       }
@@ -522,32 +683,12 @@ function KbEditorModal({
           <div id={colorId} className="eyebrow">
             Color
           </div>
-          <div role="radiogroup" aria-labelledby={colorId} className="flex flex-wrap gap-2">
-            {swatches.map((c, i) => {
-              const checked = color === c.hex;
-              return (
-                <button
-                  key={c.hex}
-                  ref={(el) => {
-                    swatchRefs.current[i] = el;
-                  }}
-                  type="button"
-                  role="radio"
-                  aria-checked={checked}
-                  aria-label={c.name}
-                  title={c.name}
-                  tabIndex={checked || (checkedIndex < 0 && i === 0) ? 0 : -1}
-                  onClick={() => setColor(c.hex)}
-                  onKeyDown={(e) => onSwatchKey(e, i)}
-                  className={cn(
-                    "size-7 cursor-pointer rounded-full pointer-coarse:size-10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                    checked && "ring-2 ring-ring ring-offset-2 ring-offset-card",
-                  )}
-                  style={{ backgroundColor: c.hex }}
-                />
-              );
-            })}
-          </div>
+          <ColorSwatches
+            value={color}
+            onChange={setColor}
+            currentColor={group?.color}
+            labelId={colorId}
+          />
         </div>
       </div>
     </Modal>
@@ -843,189 +984,201 @@ function KbDetail({
           e.target.value = "";
         }}
       />
-      {/* Drop target. The outer div only catches drag and drop; the control is a
-          real button, so Enter and Space do exactly one thing and no wrapper key
-          handler can swallow the sibling "Upload images" button's activation. */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragOver(false);
-          void upload(e.dataTransfer.files);
-        }}
-        className={cn(
-          "rounded-xl border-2 border-dashed px-4 py-4 text-center transition-colors sm:py-5",
-          dragOver ? "border-accent bg-accent/5" : "border-border bg-muted/30",
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
-        >
-          <UploadCloud
-            className={cn("size-7 max-sm:hidden", dragOver ? "text-accent" : "text-muted-foreground")}
-            aria-hidden
-          />
-          <span className="text-sm font-medium">
-            Drop files here or <span className="text-accent">choose documents</span>
-          </span>
-          <span className="text-[11px] text-muted-foreground max-sm:hidden">
-            {SUPPORTED_UPLOADS} · max 20 MB · added to “{group.name}”
-          </span>
-        </button>
-        <div className="mt-2 flex justify-center">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => imageRef.current?.click()}
-            disabled={uploading}
-          >
-            <Upload className="size-3.5" /> Upload images instead
-          </Button>
-        </div>
-      </div>
+      {/* The 7/5 split: the documents (the answer) take the width; adding
+          documents composes in the narrow column. On phones the documents
+          come first. */}
+      <div className="grid gap-8 lg:grid-cols-12">
+        <div className="min-w-0 lg:col-span-7">
+          <SectionTitle>
+            Documents <span className="text-muted-foreground">· {docCount}</span>
+          </SectionTitle>
 
-      {/* Transient per-file upload progress */}
-      {uploads.length > 0 && (
-        <div className="space-y-1.5">
-          {uploads.map((u) => (
-            <div
-              key={u.id}
-              className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs"
-            >
-              {u.status === "uploading" && (
-                <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
-              )}
-              {u.status === "ready" && u.thin && (
-                <AlertTriangle className="size-3.5 shrink-0 text-warning" />
-              )}
-              {u.status === "ready" && !u.thin && (
-                <Check className="size-3.5 shrink-0 text-success" />
-              )}
-              {u.status === "error" && (
-                <X className="size-3.5 shrink-0 text-destructive" />
-              )}
-              <span className="min-w-0 flex-1 truncate font-medium">{u.name}</span>
-              <span
-                className={cn(
-                  "shrink-0",
-                  u.status === "error"
-                    ? "text-destructive"
-                    : "text-muted-foreground",
-                )}
-              >
-                {u.status === "uploading"
-                  ? "uploading…"
-                  : u.status === "ready"
-                    ? (u.note ?? "ready")
-                    : u.error || "failed"}
-              </span>
+          {/* Toolbar */}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="relative min-w-[160px] flex-1">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search documents"
+                placeholder="Search documents…"
+                className="pl-8"
+              />
             </div>
-          ))}
-        </div>
-      )}
+            <div className="relative">
+              <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as SortOption)}
+                aria-label="Sort documents"
+                className="pl-8 pr-7"
+              >
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="name">Name A–Z</option>
+                <option value="retrieved">Most retrieved</option>
+              </Select>
+            </div>
+            <Segmented
+              value={view}
+              onChange={setView}
+              options={[
+                { value: "grid", label: <LayoutGrid className="size-4" />, ariaLabel: "Grid view" },
+                { value: "list", label: <List className="size-4" />, ariaLabel: "List view" },
+              ]}
+            />
+          </div>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[180px] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search documents…"
-            className="pl-8"
-          />
-        </div>
-        <div className="relative">
-          <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortOption)}
-            aria-label="Sort documents"
-            className="pl-8 pr-7"
+          {/* Documents */}
+          <PanelFrame
+            loading={docs.loading}
+            error={docs.error}
+            loaded={docs.loaded}
+            onRefresh={docs.refresh}
+            loadingLabel="Loading documents…"
           >
-            <option value="newest">Newest</option>
-            <option value="oldest">Oldest</option>
-            <option value="name">Name A–Z</option>
-            <option value="retrieved">Most retrieved</option>
-          </Select>
+            {visible.length === 0 ? (
+              <DocsEmpty
+                query={search.trim()}
+                total={(docs.data ?? []).length}
+                onUpload={() => fileRef.current?.click()}
+              />
+            ) : view === "grid" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {visible.map((d) => (
+                  <DocCard
+                    key={d.id}
+                    doc={d}
+                    busy={working === d.id}
+                    onDelete={() => setDeleteDoc(d)}
+                    onUnlink={() => setUnlinkDoc(d)}
+                    onView={() => {
+                      setViewerDoc(d);
+                      setViewerTab("preview");
+                    }}
+                    onIntel={() => {
+                      setViewerDoc(d);
+                      setViewerTab("intelligence");
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-border">
+                {visible.map((d) => (
+                  <DocRow
+                    key={d.id}
+                    doc={d}
+                    busy={working === d.id}
+                    onDelete={() => setDeleteDoc(d)}
+                    onUnlink={() => setUnlinkDoc(d)}
+                    onView={() => {
+                      setViewerDoc(d);
+                      setViewerTab("preview");
+                    }}
+                    onIntel={() => {
+                      setViewerDoc(d);
+                      setViewerTab("intelligence");
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </PanelFrame>
         </div>
-        <Segmented
-          value={view}
-          onChange={setView}
-          options={[
-            { value: "grid", label: <LayoutGrid className="size-4" />, ariaLabel: "Grid view" },
-            { value: "list", label: <List className="size-4" />, ariaLabel: "List view" },
-          ]}
-        />
-      </div>
 
-      {/* Documents */}
-      <PanelFrame
-        loading={docs.loading}
-        error={docs.error}
-        loaded={docs.loaded}
-        onRefresh={docs.refresh}
-        loadingLabel="Loading documents…"
-      >
-        {visible.length === 0 ? (
-          <DocsEmpty
-            query={search.trim()}
-            total={(docs.data ?? []).length}
-            onUpload={() => fileRef.current?.click()}
-          />
-        ) : view === "grid" ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map((d) => (
-              <DocCard
-                key={d.id}
-                doc={d}
-                busy={working === d.id}
-                onDelete={() => setDeleteDoc(d)}
-                onUnlink={() => setUnlinkDoc(d)}
-                onView={() => {
-                  setViewerDoc(d);
-                  setViewerTab("preview");
-                }}
-                onIntel={() => {
-                  setViewerDoc(d);
-                  setViewerTab("intelligence");
-                }}
+        <div className="min-w-0 lg:col-span-5">
+          <SectionTitle>Add documents</SectionTitle>
+          {/* Drop target. The outer div only catches drag and drop; the control
+              is a real button, so Enter and Space do exactly one thing and no
+              wrapper key handler can swallow the sibling button's activation. */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              void upload(e.dataTransfer.files);
+            }}
+            className={cn(
+              "rounded-xl border-2 border-dashed px-4 py-4 text-center transition-colors",
+              dragOver ? "border-accent bg-accent/5" : "border-border bg-muted/30",
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex w-full cursor-pointer flex-col items-center gap-2 rounded-lg py-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default disabled:opacity-50"
+            >
+              <UploadCloud
+                className={cn("size-7 max-sm:hidden", dragOver ? "text-accent" : "text-muted-foreground")}
+                aria-hidden
               />
-            ))}
+              <span className="text-sm font-medium">
+                Drop files here or <span className="text-accent">choose documents</span>
+              </span>
+              <span className="text-[11px] text-muted-foreground max-sm:hidden">
+                {SUPPORTED_UPLOADS} · max 20 MB · added to “{group.name}”
+              </span>
+            </button>
+            <div className="mt-2 flex justify-center">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => imageRef.current?.click()}
+                disabled={uploading}
+              >
+                <Upload className="size-3.5" /> Upload images instead
+              </Button>
+            </div>
           </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border">
-            {visible.map((d) => (
-              <DocRow
-                key={d.id}
-                doc={d}
-                busy={working === d.id}
-                onDelete={() => setDeleteDoc(d)}
-                onUnlink={() => setUnlinkDoc(d)}
-                onView={() => {
-                  setViewerDoc(d);
-                  setViewerTab("preview");
-                }}
-                onIntel={() => {
-                  setViewerDoc(d);
-                  setViewerTab("intelligence");
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </PanelFrame>
+
+          {/* Transient per-file upload progress */}
+          {uploads.length > 0 && (
+            <div className="mt-3 space-y-1.5">
+              {uploads.map((u) => (
+                <div
+                  key={u.id}
+                  className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs"
+                >
+                  {u.status === "uploading" && (
+                    <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+                  )}
+                  {u.status === "ready" && u.thin && (
+                    <AlertTriangle className="size-3.5 shrink-0 text-warning" />
+                  )}
+                  {u.status === "ready" && !u.thin && (
+                    <Check className="size-3.5 shrink-0 text-success" />
+                  )}
+                  {u.status === "error" && (
+                    <X className="size-3.5 shrink-0 text-destructive" />
+                  )}
+                  <span className="min-w-0 flex-1 truncate font-medium">{u.name}</span>
+                  <span
+                    className={cn(
+                      "min-w-0",
+                      u.status === "error" ? "text-destructive" : "text-muted-foreground",
+                    )}
+                  >
+                    {u.status === "uploading"
+                      ? "uploading…"
+                      : u.status === "ready"
+                        ? (u.note ?? "ready")
+                        : u.error || "failed"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
 
       <KbEditorModal
-        open={editorOpen}
-        group={group}
+        group={editorOpen ? group : null}
         onClose={() => setEditorOpen(false)}
         onSaved={() => {
           setEditorOpen(false);
