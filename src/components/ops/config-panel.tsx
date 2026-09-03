@@ -1,9 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Eye, EyeOff, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
-import { maskConfigForDisplay, CONFIG_CHANGED } from "@/lib/console";
+import {
+  maskConfigForDisplay,
+  configVerdict,
+  CONFIG_CHANGED,
+  type ConfigVerdict,
+} from "@/lib/console";
 import type { GatewayConfig } from "@/lib/types";
 import { useAsync } from "@/hooks/use-async";
 import { Card } from "@/components/ui/card";
@@ -12,15 +17,51 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
+/**
+ * The page opens with the answer: what is the runtime tuned to right now? One
+ * verdict line for the sampling temperature (the page's one tunable), the
+ * provider/model/MCP context as one quiet metadata line under it. Not a card;
+ * the whitespace around the band marks the focal point, as on Status,
+ * Channels, Providers, Schedules, Skills, Knowledge Bases, Memory and
+ * Persona. The band always reads the SAVED config — edits below move it only
+ * through Save. The dot goes warning when the value on disk is one providers
+ * would reject (possible via older gateways or a hand-edited config.toml).
+ */
+function ConfigBand({ verdict }: { verdict: ConfigVerdict }) {
+  return (
+    <div className="min-w-0">
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="inline-block size-2.5 rounded-full"
+          style={{
+            background: verdict.tone === "ok" ? "var(--accent-green)" : "var(--accent-orange)",
+          }}
+        />
+        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+      </div>
+      {verdict.meta.length > 0 && (
+        <p className="mt-1.5 font-mono text-xs text-muted-foreground">
+          {verdict.meta.map((m, i) => (
+            <React.Fragment key={m}>
+              {i > 0 && <span aria-hidden> · </span>}
+              <span>{m}</span>
+            </React.Fragment>
+          ))}
+        </p>
+      )}
+      {verdict.detail && <p className="mt-1.5 text-xs text-muted-foreground">{verdict.detail}</p>}
+    </div>
+  );
+}
+
 export function ConfigPanel() {
   const cfg = useAsync(() => api.config(), []);
   const [temp, setTemp] = React.useState("");
   const [busy, setBusy] = React.useState(false);
-  const [showRaw, setShowRaw] = React.useState(false);
   const tempId = React.useId();
   const tempErrId = React.useId();
   const tempHintId = React.useId();
-  const rawId = React.useId();
 
   // Until the first successful GET /config, we have no temperature to edit
   // against. Writing then would save against a config we never read, so hold
@@ -71,103 +112,96 @@ export function ConfigPanel() {
   };
 
   return (
-    <div className="space-y-4">
-      <SectionTitle
-        action={
-          // The frame carries its own Retry until something has loaded; one
-          // control per action.
-          cfg.data ? <RefreshButton spinning={cfg.refreshing} onClick={cfg.refresh} /> : undefined
-        }
-      >
-        Configuration
-      </SectionTitle>
-      <Card className="space-y-3 p-4">
-        <label htmlFor={tempId} className="eyebrow block">
-          Default sampling temperature
-        </label>
-        {/* Guard the editable card: a failed initial GET /config shows a
-            load/error state (with Retry) instead of an empty box that reads as
-            "temperature unset" next to a live Save. `loaded` keeps the field on
-            screen when only a post-save refresh fails. */}
-        <PanelFrame
-          loading={cfg.loading}
-          loadingLabel="Loading config…"
-          error={cfg.error}
-          loaded={cfg.loaded}
-          onRefresh={cfg.refresh}
-        >
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void save();
-            }}
-            className="flex flex-wrap items-center gap-2"
-          >
-            <Input
-              id={tempId}
-              value={temp}
-              onChange={(e) => setTemp(e.target.value)}
-              type="number"
-              min={0}
-              max={2}
-              step={0.1}
-              aria-invalid={rangeError ? true : undefined}
-              aria-describedby={rangeError ? tempErrId : tempHintId}
-              className="w-32"
-            />
-            <Button size="sm" type="submit" disabled={busy || notReady || !dirty}>
-              <Save className="size-4" /> Save
-            </Button>
-          </form>
-          {rangeError ? (
-            <p id={tempErrId} role="alert" className="mt-2 text-[11px] text-destructive">
-              {rangeError}
-            </p>
-          ) : (
-            <p id={tempHintId} className="mt-2 text-[11px] text-muted-foreground">
-              0.0 = deterministic, 2.0 = freewheeling. The runtime default is 0.7.
-            </p>
-          )}
-          <p className="mt-3 text-[11px] text-muted-foreground">
-            Choose the active provider and model in{" "}
-            <a href="#providers" className="underline underline-offset-2 hover:text-foreground">
-              Providers
-            </a>
-            .
-          </p>
-        </PanelFrame>
-      </Card>
+    <div className="max-w-[1120px] space-y-8">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          {cfg.data && <ConfigBand verdict={configVerdict(cfg.data)} />}
+        </div>
+        <RefreshButton onClick={cfg.refresh} spinning={cfg.refreshing} />
+      </div>
 
-      {/* The disclosure exists only when there is something to disclose: during
-          an initial-load error it would only duplicate the frame's error box,
-          and on a refresh failure the card's strip is the one error surface
-          while the loaded dump stays readable. */}
-      {cfg.data != null && (
-        <div>
-          <button
-            type="button"
-            aria-expanded={showRaw}
-            aria-controls={rawId}
-            onClick={() => setShowRaw((v) => !v)}
-            className="flex min-h-8 cursor-pointer items-center gap-1.5 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-10"
-          >
-            {showRaw ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-            {showRaw ? "Hide" : "Show"} full config (secrets masked)
-          </button>
-          {showRaw && (
-            <div id={rawId}>
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Values this console recognizes as secrets show as ••••••••; the gateway
-                blanks the rest before sending, so an empty value can mean unset
-                or hidden.
+      <PanelFrame
+        loading={cfg.loading}
+        loadingLabel="Loading config…"
+        error={cfg.error}
+        loaded={cfg.loaded}
+        onRefresh={cfg.refresh}
+      >
+        {cfg.data && (
+          /* The 7/5 split gives the running config — the page's reference bulk —
+             a readable measure; the one tunable composes in the narrow column.
+             On one column the form comes first: the knob before the dump. */
+          <div className="grid gap-8 lg:grid-cols-12">
+            <div className="min-w-0 lg:order-2 lg:col-span-5">
+              <SectionTitle>Default sampling</SectionTitle>
+              <p className="text-xs text-muted-foreground">
+                The runtime falls back to this temperature when a request does not set its own.
               </p>
-              <pre className="mt-2 max-h-[60vh] overflow-auto rounded-lg border border-border bg-muted p-3 font-mono text-[11px] scrollbar-thin">
+              <Card className="mt-3 space-y-3 p-4">
+                <div className="space-y-1.5">
+                  <label htmlFor={tempId} className="eyebrow block">
+                    Temperature
+                  </label>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void save();
+                    }}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <Input
+                      id={tempId}
+                      value={temp}
+                      onChange={(e) => setTemp(e.target.value)}
+                      type="number"
+                      min={0}
+                      max={2}
+                      step={0.1}
+                      aria-invalid={rangeError ? true : undefined}
+                      aria-describedby={rangeError ? tempErrId : tempHintId}
+                      className="w-28"
+                    />
+                    <Button size="sm" type="submit" disabled={busy || notReady || !dirty}>
+                      <Save className="size-4" /> Save
+                    </Button>
+                  </form>
+                  {rangeError ? (
+                    <p id={tempErrId} role="alert" className="text-[11px] text-destructive">
+                      {rangeError}
+                    </p>
+                  ) : (
+                    <p id={tempHintId} className="text-[11px] text-muted-foreground">
+                      0.0 = deterministic, 2.0 = freewheeling. The runtime default is 0.7.
+                    </p>
+                  )}
+                </div>
+                <p className="border-t border-border/60 pt-3 text-[11px] text-muted-foreground">
+                  Choose the active provider and model in{" "}
+                  <a
+                    href="#providers"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    Providers
+                  </a>
+                  .
+                </p>
+              </Card>
+            </div>
+
+            <div className="min-w-0 lg:order-1 lg:col-span-7">
+              <SectionTitle>Running config</SectionTitle>
+              <p className="text-xs text-muted-foreground">
+                The gateway&apos;s live view of config.toml. Values this console recognizes as
+                secrets show as ••••••••; the gateway blanks the rest before sending, so an
+                empty value can mean unset or hidden.
+              </p>
+              <pre className="mt-3 max-h-[60vh] overflow-auto rounded-lg border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed scrollbar-thin">
                 {JSON.stringify(maskConfigForDisplay(cfg.data), null, 2)}
               </pre>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+      </PanelFrame>
     </div>
   );
 }

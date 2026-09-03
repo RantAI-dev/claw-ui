@@ -5,6 +5,7 @@ import {
   autonomyReadIsStale,
   nextCycledRung,
   maskConfigForDisplay,
+  configVerdict,
   resolveHashRoute,
 } from "./console";
 import { rungFromAutonomy } from "./autonomy";
@@ -151,5 +152,39 @@ describe("maskConfigForDisplay", () => {
     const original = { mcp_servers: { x: { args: ["--key", "v"] } } };
     maskConfigForDisplay(original);
     expect(original.mcp_servers.x.args).toEqual(["--key", "v"]);
+  });
+});
+
+describe("configVerdict", () => {
+  const base = {
+    default_provider: "ollama",
+    default_model: "stub:latest",
+    mcp_servers: { qa: {} },
+  };
+
+  it("reads the runtime default as the calm verdict", () => {
+    const v = configVerdict({ ...base, default_temperature: 0.7 });
+    expect(v.tone).toBe("ok");
+    expect(v.headline).toBe("Sampling at 0.7, the runtime default");
+    expect(v.meta).toEqual(["ollama", "stub:latest", "1 MCP server"]);
+    expect(v.detail).toBeNull();
+  });
+
+  it("drops the default suffix for a tuned value", () => {
+    expect(configVerdict({ ...base, default_temperature: 1.4 }).headline).toBe("Sampling at 1.4");
+  });
+
+  it("warns on a value providers would reject, with the fix named", () => {
+    const v = configVerdict({ ...base, default_temperature: 3 });
+    expect(v.tone).toBe("warn");
+    expect(v.headline).toBe("Sampling 3 is out of range");
+    expect(v.detail).toMatch(/0\.0 to 2\.0/);
+  });
+
+  it("warns when the gateway sends no temperature", () => {
+    const v = configVerdict({ mcp_servers: {} });
+    expect(v.tone).toBe("warn");
+    expect(v.headline).toBe("Sampling not reported");
+    expect(v.meta).toEqual(["0 MCP servers"]);
   });
 });
