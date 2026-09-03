@@ -314,6 +314,11 @@ export function SkillsPanel() {
                   icon={<Blocks className="size-6" />}
                   title="No skills installed yet."
                   hint="A skill is a set of standing instructions the agent follows. Write one, or install one from ClawHub."
+                  action={
+                    <Button size="sm" variant="outline" onClick={() => setTab("hub")}>
+                      Browse ClawHub
+                    </Button>
+                  }
                 />
               ) : (
                 <>
@@ -373,20 +378,14 @@ export function SkillsPanel() {
             </TabsContent>
 
             <TabsContent value="hub" className="max-w-3xl">
-                <div className="flex items-start justify-between gap-3">
-                  <p className="text-xs text-muted-foreground">
-                    Community skills. Installing stages code the agent reads, so pick
-                    publishers you trust.
-                  </p>
-                  <IconButton
-                    onClick={hubRefresh}
-                    title="Refresh the ClawHub list"
-                    aria-label="Refresh the ClawHub list"
-                  >
-                    <RefreshCw className={cn("size-3.5", hubLoading && "animate-spin")} />
-                  </IconButton>
-                </div>
-                <div className="relative mt-3">
+                <p className="text-xs text-muted-foreground">
+                  Community skills. Installing stages code the agent reads, so pick
+                  publishers you trust.
+                </p>
+                {/* The same tool-row shape as the installed filter: one
+                    windowed list, one narrow search, its refresh beside it. */}
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="relative min-w-0 max-w-sm flex-1">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     ref={hubSearchRef}
@@ -409,6 +408,14 @@ export function SkillsPanel() {
                       </IconButton>
                     )
                   )}
+                  </div>
+                  <IconButton
+                    onClick={hubRefresh}
+                    title="Refresh the ClawHub list"
+                    aria-label="Refresh the ClawHub list"
+                  >
+                    <RefreshCw className={cn("size-3.5", hubLoading && "animate-spin")} />
+                  </IconButton>
                 </div>
                 <div className="mt-3">
                   {hubError ? (
