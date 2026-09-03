@@ -543,7 +543,7 @@ function TelegramCard({
             </label>
             <Input
               id="tg-allowlist"
-              placeholder="Leave empty to deny all senders"
+              placeholder="Empty denies every sender"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />

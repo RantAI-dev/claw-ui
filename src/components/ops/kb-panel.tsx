@@ -620,7 +620,7 @@ function KbEditorModal({
         description: description.trim(),
         color,
       });
-      toast.success("Knowledge base updated");
+      toast.success("Knowledge base saved");
       onSaved();
     } catch (e) {
       toast.error(`Save failed: ${errMsg(e)}`);
