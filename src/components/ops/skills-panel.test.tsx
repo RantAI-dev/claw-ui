@@ -281,4 +281,21 @@ describe("SkillsPanel: ClawHub and feedback", () => {
     await screen.findByText("Installed from @steipete. Uninstall it first to switch publishers.");
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
   });
+
+  it("renders a windowful of the hub list and Show more extends it", async () => {
+    clawhub.mockImplementation(() =>
+      Promise.resolve({
+        items: Array.from({ length: 40 }, (_, i) =>
+          hubSkill({ slug: `sk-${i}`, displayName: `Hub Skill ${i}` }),
+        ),
+      }),
+    );
+    render(<SkillsPanel />);
+    const more = await screen.findByRole("button", { name: "Show 25 more" });
+    expect(screen.getByText("Hub Skill 14")).toBeTruthy();
+    expect(screen.queryByText("Hub Skill 15")).toBeNull();
+    fireEvent.click(more);
+    expect(screen.getByText("Hub Skill 39")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Show \d+ more$/ })).toBeNull();
+  });
 });
