@@ -28,6 +28,7 @@ import {
   type InstallState,
 } from "@/lib/clawhub";
 import { SKILLS_CHANGED } from "@/lib/console";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   countLine,
   removalCopy,
@@ -45,7 +46,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
 import { toast } from "sonner";
-import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import { EmptyState, IconButton, PanelFrame, RefreshButton, ShowMoreRow, useListWindow } from "./shared";
 import { SkillEditor } from "./skill-editor";
 
 /**
@@ -81,8 +82,7 @@ function SkillsBand({ verdict }: { verdict: SkillsVerdict }) {
   );
 }
 
-/** First windowful of the ClawHub browse list; "Show more" extends it. */
-const HUB_PAGE = 15;
+type SkillsTab = "installed" | "hub";
 
 export function SkillsPanel() {
   const installed = useAsync(() => api.skills(), []);
@@ -99,7 +99,7 @@ export function SkillsPanel() {
   const [hubNonce, setHubNonce] = React.useState(0);
   // The browse list can run long; render a windowful and let "Show more"
   // extend it. Search stays the primary way to reach a specific skill.
-  const [hubShown, setHubShown] = React.useState(HUB_PAGE);
+  const hubWindow = useListWindow(hub);
   const [working, setWorking] = React.useState<string | null>(null);
   const [pendingUninstall, setPendingUninstall] = React.useState<Skill | null>(null);
   const [ambiguous, setAmbiguous] = React.useState<{
@@ -134,7 +134,6 @@ export function SkillsPanel() {
         try {
           const { items } = await api.clawhub(hubQuery.trim() || undefined, { fresh });
           setHub(items);
-          setHubShown(HUB_PAGE);
         } catch (e) {
           // Not `describeApiError`: its 502 branch blames the gateway, and the
           // gateway is not on this path.
@@ -252,12 +251,24 @@ export function SkillsPanel() {
     setHubNonce((n) => n + 1);
   };
 
-  // "Search ClawHub instead": the one deliberate hand-off between the boxes.
+  // Which of the page's two jobs is on screen. Tabs, not columns: side by
+  // side, the page went long unevenly whenever one list outgrew the other.
+  const [tab, setTab] = React.useState<SkillsTab>("installed");
+
+  // "Search ClawHub instead": the one deliberate hand-off between the tabs.
+  // Focus waits for the hub panel to exist — the inactive tab is not rendered.
   const hubSearchRef = React.useRef<HTMLInputElement>(null);
+  const [hubFocusPending, setHubFocusPending] = React.useState(false);
+  React.useEffect(() => {
+    if (hubFocusPending && tab === "hub") {
+      hubSearchRef.current?.focus();
+      setHubFocusPending(false);
+    }
+  }, [hubFocusPending, tab]);
   const handOffToHub = () => {
     setHubQuery(installedQuery);
-    hubSearchRef.current?.scrollIntoView({ block: "center" });
-    hubSearchRef.current?.focus();
+    setTab("hub");
+    setHubFocusPending(true);
   };
 
   return (
@@ -285,20 +296,29 @@ export function SkillsPanel() {
           </div>
         </div>
 
-        {/* The 7/5 split gives the installed list the width to state its
-            facts; writing a skill and fetching one compose in the narrow
-            column. On phones the list (the answer) comes first. */}
+        {/* Two tabs, one job each: what the agent follows, what it could
+            fetch. Side by side, the page went long unevenly whenever one
+            list outgrew the other. */}
         {installed.data && (
-          <div className="grid gap-8 lg:grid-cols-12">
-            <div className="min-w-0 lg:col-span-7">
-              <SectionTitle>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as SkillsTab)}>
+            <TabsList>
+              <TabsTrigger value="installed">
                 Installed <span className="text-muted-foreground">· {skills.length}</span>
-              </SectionTitle>
+              </TabsTrigger>
+              <TabsTrigger value="hub">Browse ClawHub</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="installed" className="max-w-3xl">
               {skills.length === 0 ? (
                 <EmptyState
                   icon={<Blocks className="size-6" />}
                   title="No skills installed yet."
                   hint="A skill is a set of standing instructions the agent follows. Write one, or install one from ClawHub."
+                  action={
+                    <Button size="sm" variant="outline" onClick={() => setTab("hub")}>
+                      Browse ClawHub
+                    </Button>
+                  }
                 />
               ) : (
                 <>
@@ -355,28 +375,17 @@ export function SkillsPanel() {
                   )}
                 </>
               )}
-            </div>
+            </TabsContent>
 
-            <div className="min-w-0 lg:col-span-5">
-              <div>
-                <SectionTitle
-                  action={
-                    <IconButton
-                      onClick={hubRefresh}
-                      title="Refresh the ClawHub list"
-                      aria-label="Refresh the ClawHub list"
-                    >
-                      <RefreshCw className={cn("size-3.5", hubLoading && "animate-spin")} />
-                    </IconButton>
-                  }
-                >
-                  ClawHub
-                </SectionTitle>
+            <TabsContent value="hub" className="max-w-3xl">
                 <p className="text-xs text-muted-foreground">
                   Community skills. Installing stages code the agent reads, so pick
                   publishers you trust.
                 </p>
-                <div className="relative mt-3">
+                {/* The same tool-row shape as the installed filter: one
+                    windowed list, one narrow search, its refresh beside it. */}
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="relative min-w-0 max-w-sm flex-1">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     ref={hubSearchRef}
@@ -399,6 +408,14 @@ export function SkillsPanel() {
                       </IconButton>
                     )
                   )}
+                  </div>
+                  <IconButton
+                    onClick={hubRefresh}
+                    title="Refresh the ClawHub list"
+                    aria-label="Refresh the ClawHub list"
+                  >
+                    <RefreshCw className={cn("size-3.5", hubLoading && "animate-spin")} />
+                  </IconButton>
                 </div>
                 <div className="mt-3">
                   {hubError ? (
@@ -429,7 +446,7 @@ export function SkillsPanel() {
                   ) : hub ? (
                     <Card className="p-0">
                       <ul>
-                        {hub.slice(0, hubShown).map((h) => (
+                        {hub.slice(0, hubWindow.shown).map((h) => (
                           <HubRow
                             key={skillReference(h)}
                             s={h}
@@ -439,20 +456,16 @@ export function SkillsPanel() {
                           />
                         ))}
                       </ul>
-                      {hub.length > hubShown && (
-                        <button
-                          className="w-full cursor-pointer border-t border-border/60 px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                          onClick={() => setHubShown((s) => s + 30)}
-                        >
-                          Show {hub.length - hubShown} more
-                        </button>
-                      )}
+                      <ShowMoreRow
+                        remaining={hub.length - hubWindow.shown}
+                        onClick={hubWindow.showMore}
+                        className="border-t border-border/60"
+                      />
                     </Card>
                   ) : null}
                 </div>
-              </div>
-            </div>
-          </div>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
 
