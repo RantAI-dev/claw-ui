@@ -77,7 +77,10 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
         <div>
           <div className="rsec-title">
             <span className="cdot" style={{ background: "var(--accent-green)" }} />
-            <b>Channels online</b>
+            {/* `GET /channels` reports what is configured, not what is running
+                (the Channels panel joins runtime health for that), so this
+                block must not claim "online". */}
+            <b>Channels configured</b>
             <span className="more">{data.channels.length}</span>
           </div>
           {data.channels.length > 0 ? (
@@ -86,7 +89,7 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
                 <div className="mini" key={c}>
                   <span className="chan-dot" style={{ background: channelDot(c) }} />
                   <span className="m-name">{c}</span>
-                  <span className="m-proto">on</span>
+                  <span className="m-proto">set up</span>
                 </div>
               ))}
             </div>
