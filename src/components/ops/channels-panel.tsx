@@ -11,15 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
-import { PanelFrame, RefreshButton } from "./shared";
-import {
-  allowlistToastTitle,
-  channelState,
-  channelsVerdict,
-  configuredRows,
-  type ChannelState,
-  type ChannelsVerdict,
-} from "@/lib/channels";
+import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import { CHANNEL_CATALOG, allowlistToastTitle, channelState, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
 import { cn } from "@/lib/utils";
@@ -244,6 +237,7 @@ export function ChannelsPanel() {
       {data && cfg.loaded && (
         <div className="grid gap-8 lg:grid-cols-12">
           <div className="lg:col-span-7">
+            <SectionTitle>Telegram</SectionTitle>
             <TelegramCard
               connected={tgConnected}
               state={tgState}
@@ -255,14 +249,21 @@ export function ChannelsPanel() {
           <div className="space-y-8 lg:col-span-5">
             <ApprovalsCard boundary={approvalBoundary(cfg.data)} />
 
-            <Card className="p-0">
-              <div className="border-b border-border/60 px-4 py-3 text-sm font-medium">Other channels</div>
-              <p className="px-4 py-3 text-xs text-muted-foreground">
+            <div>
+              <SectionTitle>Other channels</SectionTitle>
+              <p className="text-xs text-muted-foreground">
                 Set up with <code>rantaiclaw setup</code> or in config.toml; this console
                 manages Telegram.
               </p>
+              {rows.length === 0 && (
+                <Card className="mt-3 p-4 text-xs text-muted-foreground">
+                  None configured yet. {CHANNEL_CATALOG.length - 1} more channels are
+                  available.
+                </Card>
+              )}
               {rows.length > 0 && (
-                  <ul className="border-t border-border/60">
+                <Card className="mt-3 p-0">
+                  <ul>
                     {rows.map((r) => (
                       <li
                         key={r.key}
@@ -292,8 +293,9 @@ export function ChannelsPanel() {
                       </li>
                     ))}
                   </ul>
+                </Card>
               )}
-            </Card>
+            </div>
           </div>
         </div>
       )}
@@ -345,9 +347,9 @@ function ReachabilityBand({ verdict }: { verdict: ChannelsVerdict }) {
  */
 function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousTools: boolean } }) {
   return (
-    <Card className="p-0">
-      <div className="border-b border-border/60 px-4 py-3 text-sm font-medium">Approvals</div>
-      <div className="p-4 text-xs">
+    <div>
+      <SectionTitle>Approvals</SectionTitle>
+      <Card className="p-4 text-xs">
         {boundary.autonomousTools ? (
           <div className="flex items-start gap-2 font-medium text-destructive">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -372,8 +374,8 @@ function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousT
             ))}
           </div>
         )}
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 }
 
@@ -508,15 +510,14 @@ function TelegramCard({
   return (
     <>
     <Card className="p-0">
-      {/* Header strip: the channel's own dot (the colour the right rail uses
-          for it) beside the name and its state. */}
+      {/* Status strip: the channel's own dot (the colour the right rail uses
+          for it) beside its state; the section title above carries the name. */}
       <div className="flex flex-wrap items-center gap-2.5 border-b border-border/60 px-4 py-3">
         <span
           aria-hidden
           className="inline-block size-2 rounded-full"
           style={{ background: channelDot("telegram") }}
         />
-        <span className="text-sm font-medium">Telegram</span>
         <Badge variant={state.tone}>{state.label}</Badge>
       </div>
       <div className="space-y-2 p-4">
