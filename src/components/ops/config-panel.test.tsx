@@ -149,47 +149,55 @@ describe("ConfigPanel save honesty", () => {
 });
 
 describe("ConfigPanel masked viewer", () => {
-  it("exposes aria-expanded and reveals the masked dump without credentials", async () => {
+  it("renders the masked running config as first-class content, without credentials", async () => {
     const { container } = await renderLoaded();
-    const toggle = screen.getByRole("button", { name: /full config/ }) as HTMLButtonElement;
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
     const pre = container.querySelector("pre")!;
     expect(pre.textContent).toContain("\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022");
     expect(pre.textContent).not.toContain("sk-arg-9999");
+    expect(pre.textContent).not.toContain("sk-test-9999");
     expect(pre.textContent).not.toContain("sk-test-12345");
+    // The caption that explains masked vs blanked sits with the dump.
+    expect(screen.getByText(/blanks the rest/).textContent).toContain("unset or hidden");
   });
 
-  it("renders no disclosure until config data exists", async () => {
+  it("shows the frame's error and no dump when the load fails", async () => {
     config.mockRejectedValue(new Error("down"));
-    render(<ConfigPanel />);
+    const { container } = render(<ConfigPanel />);
     await screen.findByText("Couldn't load this panel");
-    expect(screen.queryByRole("button", { name: /full config/ })).toBeNull();
+    expect(container.querySelector("pre")).toBeNull();
   });
 });
 
 describe("ConfigPanel surface craft", () => {
   it("labels the field on the shared scale, with no tracked-uppercase relic", async () => {
     const { container } = await renderLoaded();
-    const byLabel = screen.getByLabelText("Default sampling temperature") as HTMLInputElement;
+    const byLabel = screen.getByLabelText("Temperature") as HTMLInputElement;
     expect(byLabel.getAttribute("type")).toBe("number");
     expect(byLabel.placeholder).toBe("");
     expect(container.querySelector(".tracking-wider")).toBeNull();
   });
 
-  it("titles the section Configuration, not Config", async () => {
+  it("opens with the sampling verdict and composes Running config + Default sampling", async () => {
     await renderLoaded();
-    expect(screen.getByRole("heading", { name: "Configuration" })).toBeTruthy();
+    expect(screen.getByText("Sampling at 0.7, the runtime default")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Running config" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Default sampling" })).toBeTruthy();
     expect(screen.queryByText("Config")).toBeNull();
   });
 
-  it("names its loading state and shows Refresh only once data exists", async () => {
+  it("opens with a warning verdict when the saved value is out of range", async () => {
+    config.mockResolvedValue({ ...structuredClone(CONFIG), default_temperature: 3 });
+    render(<ConfigPanel />);
+    await screen.findByText("Sampling 3 is out of range");
+    expect(screen.getByText(/Save an in-range value/)).toBeTruthy();
+  });
+
+  it("names its loading state", async () => {
     let resolveConfig!: (v: unknown) => void;
     config.mockReturnValue(new Promise((r) => (resolveConfig = r)));
-    render(<ConfigPanel />);
+    const { container } = render(<ConfigPanel />);
     await screen.findByText("Loading config…");
-    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(container.querySelector("pre")).toBeNull();
     resolveConfig(structuredClone(CONFIG));
     await screen.findByRole("spinbutton");
     expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();

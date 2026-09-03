@@ -174,7 +174,7 @@ export const ROUTE_META: Record<Route, { title: string; eyebrow: string; blurb: 
   config: {
     title: "Configuration",
     eyebrow: "Live config",
-    blurb: "Tune the default sampling temperature and inspect the running config with secrets masked.",
+    blurb: "The live sampling default, and the config the gateway is actually running.",
   },
 };
 
@@ -329,6 +329,63 @@ export function initials(name: string): string {
   if (parts.length === 0) return "AI";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** The Configuration band's verdict: the saved sampling value, judged. */
+export type ConfigVerdict = {
+  tone: "ok" | "warn";
+  headline: string;
+  meta: string[];
+  detail: string | null;
+};
+
+/**
+ * Derive the Configuration page's opening verdict from the saved config. The
+ * 0.7 in the headline mirrors the runtime's serde default
+ * (`schema.rs default_temperature_value`); the out-of-range case is reachable
+ * through older gateways (no write-boundary validate before v0.26) or a
+ * hand-edited config.toml, and is exactly what the operator must fix first.
+ */
+export function configVerdict(cfg: {
+  default_temperature?: number | null;
+  default_provider?: string;
+  mcp_servers?: Record<string, unknown>;
+  [key: string]: unknown;
+}): ConfigVerdict {
+  const provider =
+    typeof cfg.default_provider === "string" && cfg.default_provider ? cfg.default_provider : null;
+  const model =
+    typeof cfg.default_model === "string" && cfg.default_model ? cfg.default_model : null;
+  const mcp =
+    cfg.mcp_servers && typeof cfg.mcp_servers === "object"
+      ? Object.keys(cfg.mcp_servers).length
+      : 0;
+  const meta = [provider, model, `${mcp} MCP server${mcp === 1 ? "" : "s"}`].filter(
+    (m): m is string => m != null,
+  );
+  const t = cfg.default_temperature;
+  if (t == null) {
+    return {
+      tone: "warn",
+      headline: "Sampling not reported",
+      meta,
+      detail: "This gateway sent no default temperature.",
+    };
+  }
+  if (!Number.isFinite(t) || t < 0 || t > 2) {
+    return {
+      tone: "warn",
+      headline: `Sampling ${t} is out of range`,
+      meta,
+      detail: "Providers reject temperatures outside 0.0 to 2.0. Save an in-range value to fix it.",
+    };
+  }
+  return {
+    tone: "ok",
+    headline: t === 0.7 ? `Sampling at ${t}, the runtime default` : `Sampling at ${t}`,
+    meta,
+    detail: null,
+  };
 }
 
 const MASK = "••••••••";
