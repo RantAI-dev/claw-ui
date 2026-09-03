@@ -100,7 +100,7 @@ export function ConfigPanel() {
     setBusy(true);
     try {
       await api.setConfigModel({ temperature: parsed });
-      toast.success("Default temperature updated");
+      toast.success("Default temperature saved");
       cfg.refresh();
       // Invalidate the shell's load-time snapshots (right-rail temperature).
       window.dispatchEvent(new Event(CONFIG_CHANGED));

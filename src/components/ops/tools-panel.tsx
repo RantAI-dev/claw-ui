@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import { PanelFrame, RefreshButton } from "./shared";
 
 type AutonomyBody = Parameters<typeof api.setAutonomy>[0];
 type FlagKey = "block_high_risk_commands" | "require_approval_for_medium_risk" | "workspace_only";
@@ -37,6 +37,37 @@ const SAFETY_FLAGS: { key: FlagKey; label: string }[] = [
 ];
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+
+/** The page opens with the answer: the rung in force, wearing its own dot
+ *  colour, and the size of the surface it governs. The blurb stays with the
+ *  rung picker below, so the words appear once. */
+function ToolsBand({
+  preset,
+  autoCount,
+  allowCount,
+}: {
+  preset: { label: string; dot: string };
+  autoCount: number;
+  allowCount: number;
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2.5">
+        <span
+          aria-hidden
+          className="inline-block size-2.5 rounded-full"
+          style={{ background: preset.dot }}
+        />
+        <p className="text-xl font-medium tracking-tight">{preset.label} autonomy</p>
+      </div>
+      <p className="mt-1.5 font-mono text-xs text-muted-foreground">
+        {autoCount} {autoCount === 1 ? "tool" : "tools"} auto-approved
+        <span aria-hidden> · </span>
+        {allowCount} shell {allowCount === 1 ? "command" : "commands"} allowed
+      </p>
+    </div>
+  );
+}
 
 export function ToolsPanel() {
   const cfg = useAsync(() => api.config(), []);
@@ -192,18 +223,27 @@ export function ToolsPanel() {
   };
 
   return (
-    <div className="space-y-5">
-      <SectionTitle action={<RefreshButton onClick={cfg.refresh} spinning={cfg.refreshing} />}>
-        Policy
-      </SectionTitle>
-      <PanelFrame
-        loading={cfg.loading}
-        loadingLabel="Loading policy…"
-        error={cfg.error}
-        loaded={cfg.loaded}
-        onRefresh={cfg.refresh}
-      >
-        <div className="space-y-5">
+    <div className="max-w-[1120px] space-y-8">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <PanelFrame
+            loading={cfg.loading}
+            loadingLabel="Loading policy…"
+            error={cfg.error}
+            loaded={cfg.loaded}
+            onRefresh={cfg.refresh}
+          >
+            {cfg.data && (
+              <ToolsBand preset={preset} autoCount={autoApprove.length} allowCount={allowed.length} />
+            )}
+          </PanelFrame>
+        </div>
+        <RefreshButton onClick={cfg.refresh} spinning={cfg.refreshing} />
+      </div>
+
+      {cfg.data && (
+        <div className="grid gap-8 lg:grid-cols-12">
+          <div className="min-w-0 space-y-8 lg:col-span-7">
           {/* Autonomy level */}
           <div>
             <h4 className="eyebrow mb-2">Autonomy level</h4>
@@ -320,6 +360,9 @@ export function ToolsPanel() {
             </div>
           </div>
 
+          </div>
+
+          <div className="min-w-0 space-y-8 lg:col-span-5">
           {/* Rate & cost caps */}
           <div>
             <h4 className="eyebrow mb-2">Rate &amp; cost caps</h4>
@@ -405,8 +448,9 @@ export function ToolsPanel() {
               </div>
             </div>
           )}
+          </div>
         </div>
-      </PanelFrame>
+      )}
     </div>
   );
 }

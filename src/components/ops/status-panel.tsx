@@ -145,6 +145,13 @@ export function StatusPanel() {
     refreshStatusRaw();
     refreshCfg();
   }, [refreshStatusRaw, refreshCfg]);
+  // The page button refreshes everything on the page (usage included); the
+  // rung broadcast above stays narrow, and doctor stays on Re-run checks.
+  const refreshInsights = insights.refresh;
+  const refreshPage = React.useCallback(() => {
+    refreshStatus();
+    refreshInsights();
+  }, [refreshStatus, refreshInsights]);
   React.useEffect(() => {
     window.addEventListener(AUTONOMY_CHANGED, refreshStatus);
     return () => window.removeEventListener(AUTONOMY_CHANGED, refreshStatus);
@@ -226,7 +233,7 @@ export function StatusPanel() {
             {s && <HealthBand runtime={s.runtime} />}
           </PanelFrame>
         </div>
-        <RefreshButton onClick={refreshStatus} spinning={status.refreshing || cfg.refreshing} />
+        <RefreshButton onClick={refreshPage} spinning={status.refreshing || cfg.refreshing || insights.refreshing} />
       </div>
 
       <div className="grid gap-8 lg:grid-cols-12">
@@ -304,11 +311,7 @@ export function StatusPanel() {
           )}
 
           <div>
-            <SectionTitle
-              action={<RefreshButton onClick={insights.refresh} spinning={insights.refreshing} />}
-            >
-              Usage
-            </SectionTitle>
+            <SectionTitle>Usage</SectionTitle>
             <PanelFrame
               loading={insights.loading}
               error={insights.error}

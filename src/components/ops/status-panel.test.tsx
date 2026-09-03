@@ -187,6 +187,17 @@ describe("StatusPanel behaviour", () => {
     expect(insights).toHaveBeenCalledTimes(1);
   });
 
+  it("has one page Refresh, and it re-reads usage too", async () => {
+    render(<StatusPanel />);
+    await waitFor(() => expect(insights).toHaveBeenCalledTimes(1));
+    // getByRole (not getAll): a second "Refresh" on the page is a regression.
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(insights).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(status).toHaveBeenCalledTimes(2));
+    // Doctor still belongs to Re-run checks alone.
+    expect(doctor).toHaveBeenCalledTimes(1);
+  });
+
   it("collapses a gateway outage into one block with one Retry", async () => {
     status.mockRejectedValue(new Error("gateway down"));
     doctor.mockRejectedValue(new Error("gateway down"));
@@ -210,11 +221,9 @@ describe("StatusPanel behaviour", () => {
     render(<StatusPanel />);
     await screen.findByText("Runtime");
     status.mockReturnValue(new Promise(() => {}));
-    const refresh = screen.getAllByRole("button", { name: "Refresh" })[0];
+    const refresh = screen.getByRole("button", { name: "Refresh" });
     fireEvent.click(refresh);
     await waitFor(() => expect((refresh as HTMLButtonElement).disabled).toBe(true));
-    // The usage button is untouched by a health refresh.
-    expect((screen.getAllByRole("button", { name: "Refresh" })[1] as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("says what it is loading", async () => {
