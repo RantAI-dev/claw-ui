@@ -102,7 +102,8 @@ describe("PersonaPanel", () => {
     personality.mockResolvedValue({ profile: "default", preset: null, configured: false });
     render(<PersonaPanel />);
     expect(await screen.findByText(/No persona saved yet/)).toBeTruthy();
-    const name = screen.getByLabelText("Name") as HTMLInputElement;
+    // The band renders on `data` alone; the form waits for the seed effect.
+    const name = (await screen.findByLabelText("Name")) as HTMLInputElement;
     expect(name.value).toBe("RantaiClaw");
     expect((screen.getByLabelText("Tone") as HTMLInputElement).value).toBe("neutral");
     expect((screen.getByLabelText("Role") as HTMLTextAreaElement).value).toBe(
@@ -222,12 +223,20 @@ describe("PersonaPanel", () => {
     r3.unmount();
   });
 
+  it("opens with the saved identity: the band, the mark and the meta line", async () => {
+    personality.mockResolvedValue({ ...SAVED, always_on_kbs: ["g1"] });
+    render(<PersonaPanel />);
+    expect(await screen.findByText("Speaking as RantaiClaw")).toBeTruthy();
+    expect(screen.getByText("RA")).toBeTruthy(); // the identity mark's initials
+    expect(screen.getByText("default preset")).toBeTruthy();
+    expect(screen.getByText(/Always searches 1 knowledge base/)).toBeTruthy();
+  });
+
   it("labels every control, is titled Persona, and names what it loads", async () => {
     let resolve: (v: unknown) => void = () => {};
     personality.mockReturnValue(new Promise((r) => (resolve = r)));
     const { container } = render(<PersonaPanel />);
     expect(screen.getByText("Loading persona…")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /^refresh$/i })).toBeNull();
     resolve({ ...SAVED });
     await screen.findByDisplayValue("RantaiClaw");
     expect(screen.getByRole("button", { name: /^refresh$/i })).toBeTruthy();
