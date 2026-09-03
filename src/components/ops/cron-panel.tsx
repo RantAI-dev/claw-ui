@@ -41,7 +41,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
-import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle, ShowMoreRow, useListWindow } from "./shared";
 
 const POLL_MS = 15000;
 const CRON_OFF = "Cron is off (cron.enabled=false)";
@@ -190,6 +190,8 @@ const STATE_BADGE: Partial<Record<ReturnType<typeof jobState>, { word: string; v
 
 export function CronPanel() {
   const { data, loading, error, refresh, refreshing, loaded } = useAsync(() => api.cron(), []);
+  // The jobs list can run long; render a windowful and extend on demand.
+  const jobsWindow = useListWindow(data);
   const [jobKind, setJobKind] = React.useState<"agent" | "shell">("agent");
   const [prompt, setPrompt] = React.useState("");
   const [command, setCommand] = React.useState("");
@@ -369,7 +371,7 @@ export function CronPanel() {
             ) : (
               <>
                 <Card className="divide-y divide-border">
-                  {data.jobs.map((j) => {
+                  {data.jobs.slice(0, jobsWindow.shown).map((j) => {
                     const label = jobLabel(j);
                     const state = jobState(j, now);
                     const pastOneOff = state === "ran-once" || state === "missed";
@@ -504,6 +506,10 @@ export function CronPanel() {
                       </div>
                     );
                   })}
+                  <ShowMoreRow
+                    remaining={data.jobs.length - jobsWindow.shown}
+                    onClick={jobsWindow.showMore}
+                  />
                 </Card>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Jobs fire from the RantaiClaw daemon (<code>rantaiclaw daemon</code>), not from
@@ -846,6 +852,8 @@ function EditCronModal({
 /** Durable run history for a job (replaces the ephemeral run toast). */
 function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => void }) {
   const [runs, setRuns] = React.useState<CronRun[] | null>(null);
+  // Up to 50 runs arrive; show a windowful.
+  const runsWindow = useListWindow(runs);
   const [error, setError] = React.useState<string | null>(null);
   // The rows arrive after the dialog opened (and focused its X), so first
   // focus moves to the first row once there is one.
@@ -880,7 +888,7 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
         {runs != null && runs.length === 0 && (
           <p className="text-xs text-muted-foreground">No runs yet. Run now records the first.</p>
         )}
-        {runs?.map((r, i) => (
+        {runs?.slice(0, runsWindow.shown).map((r, i) => (
           <details key={r.id} className="rounded border border-border px-2.5 py-2">
             <summary
               ref={i === 0 ? firstRow : undefined}
@@ -905,6 +913,13 @@ function CronRunsModal({ job, onClose }: { job: CronJob | null; onClose: () => v
             )}
           </details>
         ))}
+        {runs && (
+          <ShowMoreRow
+            remaining={runs.length - runsWindow.shown}
+            onClick={runsWindow.showMore}
+            className="rounded border border-border"
+          />
+        )}
       </div>
     </Modal>
   );
