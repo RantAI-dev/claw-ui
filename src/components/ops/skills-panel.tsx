@@ -65,7 +65,7 @@ function SkillsBand({ verdict }: { verdict: SkillsVerdict }) {
             background: verdict.tone === "ok" ? "var(--accent-green)" : "var(--accent-orange)",
           }}
         />
-        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+        <h2 className="text-xl font-medium tracking-tight">{verdict.headline}</h2>
       </div>
       {verdict.meta.length > 0 && (
         <p className="mt-1.5 font-mono text-xs text-muted-foreground">

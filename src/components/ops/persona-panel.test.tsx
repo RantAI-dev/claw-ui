@@ -246,6 +246,9 @@ describe("PersonaPanel", () => {
     expect(screen.getByRole("heading", { level: 3, name: "Persona" })).toBeTruthy();
     expect(screen.queryByText(/Personality/)).toBeNull();
     expect(container.querySelector(".tracking-wider")).toBeNull();
-    expect(container.querySelectorAll("label.eyebrow").length).toBe(6);
+    // Field labels moved off the CAPS eyebrow scale (caps mark form field-
+    // GROUPS; per-field labels read sentence-case like every other panel).
+    expect(container.querySelectorAll("label.eyebrow").length).toBe(0);
+    expect(container.querySelectorAll("label.text-muted-foreground").length).toBe(6);
   });
 });

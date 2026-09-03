@@ -41,7 +41,7 @@ function HealthBand({ runtime }: { runtime: unknown }) {
   if (!health) {
     return (
       <div>
-        <p className="text-xl font-medium tracking-tight">Gateway reachable</p>
+        <h2 className="text-xl font-medium tracking-tight">Gateway reachable</h2>
         <p className="mt-1.5 text-xs text-muted-foreground">
           This gateway did not send a health snapshot.
         </p>
@@ -75,7 +75,7 @@ function HealthBand({ runtime }: { runtime: unknown }) {
           className="inline-block size-2.5 rounded-full"
           style={{ background: healthy ? "var(--accent-green)" : "var(--destructive)" }}
         />
-        <p className="text-xl font-medium tracking-tight">{verdict}</p>
+        <h2 className="text-xl font-medium tracking-tight">{verdict}</h2>
       </div>
       {meta && <p className="mt-1.5 font-mono text-xs text-muted-foreground">{meta}</p>}
       {single?.lastError && (
@@ -284,7 +284,9 @@ export function StatusPanel() {
                           <span className="text-[11px] text-muted-foreground">{r.category}</span>
                         </div>
                         <p className="text-xs text-muted-foreground">{r.message}</p>
-                        {r.hint && <p className="mt-0.5 text-[11px] text-accent">{r.hint}</p>}
+                        {/* Muted, not accent: accent is the console's link color and this line
+                            is not interactive. */}
+                        {r.hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{r.hint}</p>}
                       </div>
                     </li>
                   ))}
