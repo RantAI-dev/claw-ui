@@ -22,6 +22,23 @@ export default function LoginPage() {
     setIdled(new URLSearchParams(window.location.search).get("reason") === "idle");
   }, []);
 
+  // With the login gate off there is nothing to sign in to; a live form here
+  // would take credentials it can never accept.
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/status")
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled && j?.enabled === false) router.replace("/chat");
+      })
+      .catch(() => {
+        /* status unknown: leave the form usable */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -63,7 +80,7 @@ export default function LoginPage() {
           <Image src={brand.logo} alt={brand.name} width={40} height={40} className="rounded-lg" priority unoptimized />
           <h1 className="text-base font-semibold">{brand.productName}</h1>
           <p className="text-xs text-muted-foreground">
-            {idled ? "Signed out after a stretch of inactivity" : "Enter your password to continue"}
+            {idled ? "Signed out after a stretch of inactivity" : "Enter your username and password to continue"}
           </p>
         </div>
         <form onSubmit={submit} className="space-y-3">
