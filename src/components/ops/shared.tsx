@@ -270,3 +270,42 @@ export function SectionTitle({
     </div>
   );
 }
+
+/**
+ * Windowed rendering for a list that can run long: show the first `first`
+ * rows and let ShowMoreRow extend the window. Snaps back whenever `resetKey`
+ * changes (a refetch, a new query) so a shorter result never inherits an
+ * old, larger window.
+ */
+export function useListWindow(resetKey: unknown, first = 15) {
+  const [shown, setShown] = React.useState(first);
+  React.useEffect(() => setShown(first), [resetKey, first]);
+  const showMore = React.useCallback(() => setShown((n) => n + 30), []);
+  return { shown, showMore };
+}
+
+/** The row under a windowed list that extends it; renders nothing when the
+ *  whole list is on screen. */
+export function ShowMoreRow({
+  remaining,
+  onClick,
+  className,
+}: {
+  remaining: number;
+  onClick: () => void;
+  className?: string;
+}) {
+  if (remaining <= 0) return null;
+  return (
+    <button
+      type="button"
+      className={cn(
+        "w-full cursor-pointer px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        className,
+      )}
+      onClick={onClick}
+    >
+      Show {remaining} more
+    </button>
+  );
+}

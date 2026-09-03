@@ -103,6 +103,9 @@ afterEach(() => {
 
 const filterBox = () => screen.getByRole("textbox", { name: "Filter installed skills" });
 const searchBox = () => screen.getByRole("textbox", { name: "Search ClawHub" });
+/** The hub lives behind its tab now; open it before touching hub UI. */
+const openHub = async () =>
+  fireEvent.click(await screen.findByRole("tab", { name: "Browse ClawHub" }));
 
 describe("SkillsPanel: the verdict band", () => {
   it("answers ok when everything installed is in force", async () => {
@@ -190,14 +193,17 @@ describe("SkillsPanel: two boxes that cannot leak", () => {
   it("searches ClawHub without filtering the installed list", async () => {
     render(<SkillsPanel />);
     await screen.findByText("Kopi Pagi");
+    await openHub();
     fireEvent.change(searchBox(), { target: { value: "zz" } });
     await waitFor(() => expect(clawhub.mock.calls.some((c) => c[0] === "zz")).toBe(true), {
       timeout: 2000,
     });
+    expect(await screen.findByText("No ClawHub skills match “zz”.")).toBeTruthy();
+    // Back on Installed: the hub term never leaked into the filter.
+    fireEvent.click(screen.getByRole("tab", { name: /Installed/ }));
     expect(screen.getByText("Kopi Pagi")).toBeTruthy();
     expect(screen.getByText("weather")).toBeTruthy();
     expect((filterBox() as HTMLInputElement).value).toBe("");
-    expect(await screen.findByText("No ClawHub skills match “zz”.")).toBeTruthy();
   });
 
   it("hands the term over only through 'Search ClawHub instead'", async () => {
@@ -253,6 +259,7 @@ describe("SkillsPanel: ClawHub and feedback", () => {
       ),
     );
     render(<SkillsPanel />);
+    await openHub();
     await screen.findByText(
       "ClawHub could not be reached from the console's server (fetch failed). Check its network access, then retry.",
     );
@@ -268,6 +275,7 @@ describe("SkillsPanel: ClawHub and feedback", () => {
     );
     installSkill.mockImplementation(() => Promise.reject(new ApiError("x", 502, {})));
     render(<SkillsPanel />);
+    await openHub();
     fireEvent.click(await screen.findByRole("button", { name: "Install" }));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
     expect(String(toastError.mock.calls[0][0])).toMatch(/Install failed: The gateway is unreachable/);
@@ -278,6 +286,7 @@ describe("SkillsPanel: ClawHub and feedback", () => {
       Promise.resolve({ items: [hubSkill({ ownerHandle: "paudyyin" })] }),
     );
     render(<SkillsPanel />);
+    await openHub();
     await screen.findByText("Installed from @steipete. Uninstall it first to switch publishers.");
     expect(screen.queryByRole("button", { name: "Install" })).toBeNull();
   });
@@ -291,6 +300,7 @@ describe("SkillsPanel: ClawHub and feedback", () => {
       }),
     );
     render(<SkillsPanel />);
+    await openHub();
     const more = await screen.findByRole("button", { name: "Show 25 more" });
     expect(screen.getByText("Hub Skill 14")).toBeTruthy();
     expect(screen.queryByText("Hub Skill 15")).toBeNull();
