@@ -500,7 +500,13 @@
   font-size: 12.5px;
   letter-spacing: 0.02em;
   color: var(--background);
-  background: linear-gradient(150deg, var(--brand-sky), var(--brand-deep-blue));
+  /* The dark stop is lifted toward sky: ink initials on the raw deep-blue
+     corner sat at ~2.6:1 (WCAG AA needs 4.5:1 for 13px glyphs). */
+  background: linear-gradient(
+    150deg,
+    var(--brand-sky),
+    color-mix(in oklab, var(--brand-deep-blue) 50%, var(--brand-sky))
+  );
   position: relative;
 }
 .agent-ava .live {
@@ -2166,6 +2172,10 @@ pre.toml {
 @media (hover: none) {
   .sess-x {
     opacity: 1;
+  }
+  /* ⇧⇥ / ⏎ chord hints describe keys a touch screen does not have. */
+  .composer-hint {
+    display: none;
   }
 }
 @media (pointer: coarse) {

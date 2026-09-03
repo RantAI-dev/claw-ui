@@ -22,9 +22,20 @@ function argsTarget(args: unknown): string {
   }
 }
 
+/** The gateway reports a user denial as a failed call with this marker; to
+ *  the person who clicked Deny it is a stop, not an error. Shared by the
+ *  per-row status and the header summary. */
+function toolFailed(t: ToolCall): boolean {
+  const denied = /\[denied by user\]/.test(t.outputPreview || "");
+  return !!t.done && t.ok === false && !(t.cancelled || denied);
+}
+
 /** One quiet collapsible "Activity · N tools" disclosure for a turn's tool calls. */
 const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: ToolCall[]; defaultOpen: boolean }) {
-  const [open, setOpen] = React.useState(defaultOpen);
+  const failedCount = tools.filter(toolFailed).length;
+  // A turn with a failed tool opens its traces: a collapsed "✓ done" over an
+  // error is how failures get missed.
+  const [open, setOpen] = React.useState(defaultOpen || failedCount > 0);
   const running = tools.some((t) => !t.done);
 
   return (
@@ -40,6 +51,10 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
             <Badge variant="accent" className="px-1.5 py-0.5 text-[11px]">
               <span className="size-1.5 animate-pulse rounded-full bg-current" /> Running
             </Badge>
+          ) : failedCount > 0 ? (
+            <span className="act-sub inline-flex items-center gap-1 text-destructive">
+              <AlertTriangle className="size-3" /> {failedCount} failed
+            </span>
           ) : (
             <span className="act-sub inline-flex items-center gap-1 text-success">
               <Check className="size-3" /> done
@@ -51,12 +66,9 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
         <div className="act-list">
           {tools.map((t) => {
             const Ico = toolIcon(t.name);
-            // The gateway reports a user denial as a failed call with this
-            // marker; to the person who clicked Deny it is a stop, not an error.
             const denied = /\[denied by user\]/.test(t.outputPreview || "");
             const stopped = t.cancelled || denied;
-            const failed = t.done && t.ok === false && !stopped;
-            const status = !t.done ? "run" : stopped ? "stopped" : failed ? "err" : "ok";
+            const status = !t.done ? "run" : stopped ? "stopped" : toolFailed(t) ? "err" : "ok";
             return (
               <div className="act-row" key={t.id}>
                 <div className="act-ico">
@@ -89,7 +101,12 @@ const Activity = React.memo(function Activity({ tools, defaultOpen }: { tools: T
  *  wall of red text. */
 function TurnError({ message }: { message: string }) {
   const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
-  const headline = lines[0] || "The turn failed.";
+  // Gateway first lines often trail into the detail that follows ("… failed.
+  // Attempts:"). The headline is the first full sentence; a dangling
+  // lead-in like "Attempts:" reads as truncation, so it stays in the details.
+  const first = lines[0] || "The turn failed.";
+  const sentence = first.match(/^.*?[.!?](?=\s|$)/);
+  const headline = sentence ? sentence[0] : first.replace(/:\s*$/, "");
   const detail = lines.slice(1).join("\n");
   return (
     <div className="turn-error" role="alert">

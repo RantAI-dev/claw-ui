@@ -320,7 +320,7 @@ function ReachabilityBand({ verdict }: { verdict: ChannelsVerdict }) {
           className="inline-block size-2.5 rounded-full"
           style={{ background: VERDICT_DOT[verdict.tone] }}
         />
-        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+        <h2 className="text-xl font-medium tracking-tight">{verdict.headline}</h2>
       </div>
       {verdict.meta && (
         <p className="mt-1.5 font-mono text-xs text-muted-foreground">{verdict.meta}</p>
@@ -544,7 +544,7 @@ function TelegramCard({
             </label>
             <Input
               id="tg-allowlist"
-              placeholder="Empty denies every sender"
+              placeholder="123456789, @rantaiclaw_user"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />
@@ -593,7 +593,7 @@ function TelegramCard({
             </label>
             <Input
               id="tg-users"
-              placeholder="Empty denies every sender"
+              placeholder="123456789, @rantaiclaw_user"
               value={users}
               onChange={(e) => setUsers(e.target.value)}
             />

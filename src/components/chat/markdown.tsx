@@ -32,9 +32,17 @@ function CodeBlock({ className, children }: { className?: string; children: Reac
 
   return (
     <div className="group relative my-3 overflow-hidden rounded-lg border border-border bg-muted">
-      <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-        <span className="font-mono text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
+        <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
           {lang}
+          {/* A ```ui fence is the console's own generative-UI format; in
+              Markdown mode it would otherwise read as an unexplained JSON
+              wall. Say where the rendered version lives. */}
+          {lang === "ui" && (
+            <span className="ml-2 font-sans normal-case">
+              interactive block · set Chat rendering to Generative UI in Tweaks to render it
+            </span>
+          )}
         </span>
         <button
           onClick={copy}

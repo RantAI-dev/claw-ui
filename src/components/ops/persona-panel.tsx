@@ -67,7 +67,7 @@ function PersonaBand({ verdict, mark }: { verdict: PersonaVerdict; mark: string 
               background: verdict.tone === "ok" ? "var(--accent-green)" : "var(--accent-orange)",
             }}
           />
-          <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+          <h2 className="text-xl font-medium tracking-tight">{verdict.headline}</h2>
         </div>
         {verdict.meta.length > 0 && (
           <p className="mt-1.5 font-mono text-xs text-muted-foreground">
@@ -107,7 +107,7 @@ function Field({
   const counter = value !== undefined && max !== undefined ? nearCap(value, max) : null;
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="eyebrow flex items-baseline justify-between">
+      <label htmlFor={id} className="flex items-baseline justify-between text-xs text-muted-foreground">
         {label}
         {counter && (
           <span className="ml-auto font-normal normal-case tracking-normal" aria-hidden="true">

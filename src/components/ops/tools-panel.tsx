@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { PanelFrame, RefreshButton } from "./shared";
+import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
 type AutonomyBody = Parameters<typeof api.setAutonomy>[0];
 type FlagKey = "block_high_risk_commands" | "require_approval_for_medium_risk" | "workspace_only";
@@ -58,7 +58,7 @@ function ToolsBand({
           className="inline-block size-2.5 rounded-full"
           style={{ background: preset.dot }}
         />
-        <p className="text-xl font-medium tracking-tight">{preset.label} autonomy</p>
+        <h2 className="text-xl font-medium tracking-tight">{preset.label} autonomy</h2>
       </div>
       <p className="mt-1.5 font-mono text-xs text-muted-foreground">
         {autoCount} {autoCount === 1 ? "tool" : "tools"} auto-approved
@@ -246,7 +246,7 @@ export function ToolsPanel() {
           <div className="min-w-0 space-y-8 lg:col-span-7">
           {/* Autonomy level */}
           <div>
-            <h4 className="eyebrow mb-2">Autonomy level</h4>
+            <SectionTitle>Autonomy level</SectionTitle>
             <div role="group" aria-label="Autonomy level" className="flex flex-wrap gap-2">
               {AUTONOMY.map((p) => (
                 // The colour rides on the dot, a tint and a hairline; the text
@@ -274,7 +274,7 @@ export function ToolsPanel() {
 
           {/* Per-tool auto-approve */}
           <div>
-            <h4 className="eyebrow mb-1">Tool policy</h4>
+            <SectionTitle>Tool policy</SectionTitle>
             <p className="mb-2 text-xs text-muted-foreground">
               Under Smart a tool runs without the prompt when it is auto-approved; an always-ask
               entry, then the rung, come first.
@@ -319,7 +319,7 @@ export function ToolsPanel() {
 
           {/* Shell allowlist */}
           <div>
-            <h4 className="eyebrow mb-2">Shell allowlist · {allowed.length}</h4>
+            <SectionTitle>Shell allowlist · {allowed.length}</SectionTitle>
             {allowed.length > 0 && (
               <div className="allow-chips mb-2.5">
                 {allowed.map((c) => (
@@ -365,7 +365,7 @@ export function ToolsPanel() {
           <div className="min-w-0 space-y-8 lg:col-span-5">
           {/* Rate & cost caps */}
           <div>
-            <h4 className="eyebrow mb-2">Rate &amp; cost caps</h4>
+            <SectionTitle>Rate &amp; cost caps</SectionTitle>
             <div className="flex flex-wrap items-end gap-3">
               <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
                 actions / hour
@@ -411,7 +411,7 @@ export function ToolsPanel() {
 
           {/* Safety flags */}
           <div>
-            <h4 className="eyebrow mb-2">Safety flags</h4>
+            <SectionTitle>Safety flags</SectionTitle>
             <Card className="divide-y divide-border">
               {SAFETY_FLAGS.map(({ key, label }) => {
                 const on = a[key] === true;
@@ -438,7 +438,7 @@ export function ToolsPanel() {
           {/* Forbidden paths */}
           {forbidden.length > 0 && (
             <div>
-              <h4 className="eyebrow mb-2">Forbidden paths · {forbidden.length} (read-only)</h4>
+              <SectionTitle>Forbidden paths · {forbidden.length} (read-only)</SectionTitle>
               <div className="flex flex-wrap gap-1.5">
                 {forbidden.map((p) => (
                   <Badge key={p} variant="outline" className="font-mono text-muted-foreground">

@@ -39,9 +39,9 @@ function McpBand({ names }: { names: string[] }) {
           className="inline-block size-2.5 rounded-full"
           style={{ background: n > 0 ? "var(--accent-green)" : "var(--accent-orange)" }}
         />
-        <p className="text-xl font-medium tracking-tight">
+        <h2 className="text-xl font-medium tracking-tight">
           {n === 0 ? "No MCP servers yet" : `${n} MCP ${n === 1 ? "server" : "servers"} configured`}
-        </p>
+        </h2>
       </div>
       {n > 0 && (
         <p className="mt-1.5 font-mono text-xs text-muted-foreground">
@@ -152,7 +152,7 @@ export function McpPanel() {
                           <Badge variant="secondary" className="text-[10px]">stdio</Badge>
                         </div>
                         <div className="truncate font-mono text-[11px] text-muted-foreground" title={cmd}>
-                          {cmd || "—"}
+                          {cmd || "no command recorded"}
                         </div>
                       </div>
                       <IconButton
@@ -179,7 +179,7 @@ export function McpPanel() {
             </p>
             <Card className="mt-3 space-y-3 p-4">
               <label className="block">
-                <span className="eyebrow mb-1 block">Name</span>
+                <span className="mb-1 block text-xs text-muted-foreground">Name</span>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -189,7 +189,7 @@ export function McpPanel() {
                 />
               </label>
               <label className="block">
-                <span className="eyebrow mb-1 block">Command</span>
+                <span className="mb-1 block text-xs text-muted-foreground">Command</span>
                 <Input
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
@@ -199,7 +199,7 @@ export function McpPanel() {
                 />
               </label>
               <label className="block">
-                <span className="eyebrow mb-1 block">Arguments</span>
+                <span className="mb-1 block text-xs text-muted-foreground">Arguments</span>
                 <Input
                   value={args}
                   onChange={(e) => setArgs(e.target.value)}

@@ -36,7 +36,7 @@ vi.mock("sonner", () => ({
   },
 }));
 
-import { ProvidersPanel } from "./providers-panel";
+import { ProvidersPanel, resetProvidersDraft } from "./providers-panel";
 
 const CATALOG = {
   providers: [
@@ -71,6 +71,9 @@ const MODELS: Record<string, { models: string[]; default: string }> = {
 };
 
 beforeEach(() => {
+  // The panel keeps a dirty draft in module state across unmounts (deliberate
+  // in the app); between tests it is pollution.
+  resetProvidersDraft();
   for (const fn of [providers, secrets, status, providerModels, refreshProviderModels, setConfigModel, setSecrets, toastSuccess, toastError]) {
     fn.mockReset();
   }

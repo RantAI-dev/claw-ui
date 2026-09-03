@@ -290,15 +290,19 @@ describe("ToolsPanel names, focus targets and labels", () => {
     expect(x.className).toContain("chip-x");
   });
 
-  it("says what it is loading and sets every section label on the eyebrow scale", async () => {
+  it("says what it is loading and titles every section with SectionTitle", async () => {
     let resolve!: (v: unknown) => void;
     config.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
     render(<ToolsPanel />);
     expect(await screen.findByText("Loading policy…")).toBeTruthy();
     act(() => resolve({ autonomy: server }));
     await screen.findByText(/Prompt only for writes/);
-    for (const h of screen.getAllByRole("heading", { level: 4 })) {
-      expect(h.className).toContain("eyebrow");
+    // Section headers share the console-wide SectionTitle (h3, sentence case);
+    // the CAPS eyebrow scale is reserved for form field-groups.
+    const sections = screen.getAllByRole("heading", { level: 3 });
+    expect(sections.length).toBe(6);
+    for (const h of sections) {
+      expect(h.className).not.toContain("eyebrow");
     }
     expect(screen.getByText(/Applies to the next tool call, in chat and on channels/)).toBeTruthy();
     expect(screen.queryByText(/restart/)).toBeNull();
