@@ -81,6 +81,9 @@ function SkillsBand({ verdict }: { verdict: SkillsVerdict }) {
   );
 }
 
+/** First windowful of the ClawHub browse list; "Show more" extends it. */
+const HUB_PAGE = 15;
+
 export function SkillsPanel() {
   const installed = useAsync(() => api.skills(), []);
   // Two lists, two boxes: the filter belongs to the installed column, the
@@ -94,6 +97,9 @@ export function SkillsPanel() {
   // Bumped by Refresh. ClawHub failing is the case that most needs a retry, and
   // the error state had no way to ask for one.
   const [hubNonce, setHubNonce] = React.useState(0);
+  // The browse list can run long; render a windowful and let "Show more"
+  // extend it. Search stays the primary way to reach a specific skill.
+  const [hubShown, setHubShown] = React.useState(HUB_PAGE);
   const [working, setWorking] = React.useState<string | null>(null);
   const [pendingUninstall, setPendingUninstall] = React.useState<Skill | null>(null);
   const [ambiguous, setAmbiguous] = React.useState<{
@@ -128,6 +134,7 @@ export function SkillsPanel() {
         try {
           const { items } = await api.clawhub(hubQuery.trim() || undefined, { fresh });
           setHub(items);
+          setHubShown(HUB_PAGE);
         } catch (e) {
           // Not `describeApiError`: its 502 branch blames the gateway, and the
           // gateway is not on this path.
@@ -268,7 +275,14 @@ export function SkillsPanel() {
               {installed.data && <SkillsBand verdict={skillsVerdict(skills)} />}
             </PanelFrame>
           </div>
-          <RefreshButton onClick={installed.refresh} spinning={installed.refreshing} />
+          <div className="flex shrink-0 items-center gap-2">
+            {/* The page's one primary action, reachable without scanning past
+                the list it creates for. */}
+            <Button ref={writeRef} size="sm" onClick={() => setEditor({ mode: "create" })}>
+              <Plus className="size-3.5" /> Write a skill
+            </Button>
+            <RefreshButton onClick={installed.refresh} spinning={installed.refreshing} />
+          </div>
         </div>
 
         {/* The 7/5 split gives the installed list the width to state its
@@ -343,24 +357,7 @@ export function SkillsPanel() {
               )}
             </div>
 
-            <div className="min-w-0 space-y-8 lg:col-span-5">
-              <div>
-                <SectionTitle>Write your own</SectionTitle>
-                <p className="text-xs text-muted-foreground">
-                  A SKILL.md the agent follows: a name, the sentence that tells the
-                  model when to use it, and the steps.
-                </p>
-                {/* The page's one primary action. */}
-                <Button
-                  ref={writeRef}
-                  size="sm"
-                  className="mt-3"
-                  onClick={() => setEditor({ mode: "create" })}
-                >
-                  <Plus className="size-3.5" /> Write a skill
-                </Button>
-              </div>
-
+            <div className="min-w-0 lg:col-span-5">
               <div>
                 <SectionTitle
                   action={
@@ -432,7 +429,7 @@ export function SkillsPanel() {
                   ) : hub ? (
                     <Card className="p-0">
                       <ul>
-                        {hub.map((h) => (
+                        {hub.slice(0, hubShown).map((h) => (
                           <HubRow
                             key={skillReference(h)}
                             s={h}
@@ -442,6 +439,14 @@ export function SkillsPanel() {
                           />
                         ))}
                       </ul>
+                      {hub.length > hubShown && (
+                        <button
+                          className="w-full cursor-pointer border-t border-border/60 px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          onClick={() => setHubShown((s) => s + 30)}
+                        >
+                          Show {hub.length - hubShown} more
+                        </button>
+                      )}
                     </Card>
                   ) : null}
                 </div>

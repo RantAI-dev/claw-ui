@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
-import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
+import { PanelFrame, RefreshButton } from "./shared";
 import {
   allowlistToastTitle,
   channelState,
@@ -255,15 +255,14 @@ export function ChannelsPanel() {
           <div className="space-y-8 lg:col-span-5">
             <ApprovalsCard boundary={approvalBoundary(cfg.data)} />
 
-            <div>
-              <SectionTitle>Other channels</SectionTitle>
-              <p className="text-xs text-muted-foreground">
+            <Card className="p-0">
+              <div className="border-b border-border/60 px-4 py-3 text-sm font-medium">Other channels</div>
+              <p className="px-4 py-3 text-xs text-muted-foreground">
                 Set up with <code>rantaiclaw setup</code> or in config.toml; this console
                 manages Telegram.
               </p>
               {rows.length > 0 && (
-                <Card className="mt-3 p-0">
-                  <ul>
+                  <ul className="border-t border-border/60">
                     {rows.map((r) => (
                       <li
                         key={r.key}
@@ -293,9 +292,8 @@ export function ChannelsPanel() {
                       </li>
                     ))}
                   </ul>
-                </Card>
               )}
-            </div>
+            </Card>
           </div>
         </div>
       )}
@@ -347,9 +345,9 @@ function ReachabilityBand({ verdict }: { verdict: ChannelsVerdict }) {
  */
 function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousTools: boolean } }) {
   return (
-    <div>
-      <SectionTitle>Approvals</SectionTitle>
-      <Card className="p-4 text-xs">
+    <Card className="p-0">
+      <div className="border-b border-border/60 px-4 py-3 text-sm font-medium">Approvals</div>
+      <div className="p-4 text-xs">
         {boundary.autonomousTools ? (
           <div className="flex items-start gap-2 font-medium text-destructive">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden />
@@ -374,8 +372,8 @@ function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousT
             ))}
           </div>
         )}
-      </Card>
-    </div>
+      </div>
+    </Card>
   );
 }
 

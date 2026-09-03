@@ -866,11 +866,10 @@ export function ConsoleShell({
                 const count = navCount(n.id);
                 return (
                   <React.Fragment key={n.id}>
-                    {/* Chat, then eleven operations routes under one quiet
-                        label: twelve equal rows read as a wall. */}
-                    {n.id === "status" && (
-                      <div className="nav-cap eyebrow">Operations</div>
-                    )}
+                    {/* Chat, then eleven operations routes. The break is
+                        whitespace, not a caption: one labelled group over an
+                        unlabelled sibling read as noise. */}
+                    {n.id === "status" && <div className="nav-cap" aria-hidden="true" />}
                   <button
                     className={"nav-item" + (route === n.id ? " active" : "")}
                     onClick={() => {
