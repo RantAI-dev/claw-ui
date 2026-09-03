@@ -40,7 +40,7 @@ function ProvidersBand({ verdict }: { verdict: ProvidersVerdict }) {
             background: verdict.tone === "ok" ? "var(--accent-green)" : "var(--accent-orange)",
           }}
         />
-        <p className="text-xl font-medium tracking-tight">{verdict.headline}</p>
+        <h2 className="text-xl font-medium tracking-tight">{verdict.headline}</h2>
       </div>
       {verdict.meta.length > 0 && (
         <p className="mt-1.5 font-mono text-xs text-muted-foreground">
@@ -57,21 +57,36 @@ function ProvidersBand({ verdict }: { verdict: ProvidersVerdict }) {
   );
 }
 
+/** A dirty draft survives leaving the route: rail navigation unmounts the
+ *  panel, and a half-done provider switch (or a pasted key) silently vanished.
+ *  Module state only, never storage; dropped when the form unmounts clean. */
+let draftCache: { provider: string; model: string; key: string; url: string } | null = null;
+
+/** Test hook: module state would otherwise leak one test's dirty draft into
+ *  the next mount. Production never calls this. */
+export function resetProvidersDraft() {
+  draftCache = null;
+}
+
 export function ProvidersPanel() {
   const catalog = useAsync(() => api.providers(), []);
   const secrets = useAsync(() => api.secrets(), []);
   const info = useAsync(() => api.status(), []);
-  const [provider, setProvider] = React.useState("");
-  const [model, setModel] = React.useState("");
-  const [key, setKey] = React.useState("");
-  const [url, setUrl] = React.useState("");
+  const [provider, setProvider] = React.useState(draftCache?.provider ?? "");
+  const [model, setModel] = React.useState(draftCache?.model ?? "");
+  const [key, setKey] = React.useState(draftCache?.key ?? "");
+  const [url, setUrl] = React.useState(draftCache?.url ?? "");
   const [busy, setBusy] = React.useState(false);
+  // While a restored draft is on screen the server-seeding effects below must
+  // not overwrite it; a fresh mount seeds from the server as before.
+  const restored = React.useRef(draftCache != null);
   // Explicit clear flow (distinct from blank-Save, which means "keep"): these
   // send an empty string, the gateway's clear-on-empty signal.
   const [pendingClear, setPendingClear] = React.useState<null | "key" | "url">(null);
   const [clearing, setClearing] = React.useState(false);
 
   React.useEffect(() => {
+    if (restored.current) return;
     if (secrets.data?.provider) setProvider(secrets.data.provider);
     // Mirror the server's value even when it is absent. A truthy guard here only
     // ever filled the field and never emptied it, so a base URL that the gateway
@@ -80,6 +95,7 @@ export function ProvidersPanel() {
     setUrl(secrets.data?.api_url ?? "");
   }, [secrets.data?.provider, secrets.data?.api_url]);
   React.useEffect(() => {
+    if (restored.current) return;
     if (info.data?.model) setModel(info.data.model);
   }, [info.data?.model]);
 
@@ -92,6 +108,18 @@ export function ProvidersPanel() {
   };
   const c = changes({ provider, model, key, url }, server);
   const dirty = isDirty(c);
+
+  // Snapshot for the unmount write: keep the draft only while it is dirty.
+  const draftRef = React.useRef({ provider, model, key, url, dirty });
+  draftRef.current = { provider, model, key, url, dirty };
+  React.useEffect(
+    () => () => {
+      const d = draftRef.current;
+      draftCache = d.dirty ? { provider: d.provider, model: d.model, key: d.key, url: d.url } : null;
+    },
+    [],
+  );
+
   const nextMeta = providers?.find((p) => p.id === provider);
   const activeMeta = providers?.find((p) => p.id === server.provider);
   const nextLabel = providerLabel(provider, providers);
