@@ -30,6 +30,13 @@ jobs:
           cache: "npm"
       - run: npm ci
 
+      # The console's auth boundary — login gate, CSRF, host allowlist and the
+      # server-side attachment of the gateway token — is a framework feature, so
+      # patch currency on Next is a security control here, not hygiene. This step
+      # is what keeps that true after the 16.3.4 bump.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
       - name: Typecheck
         run: npx tsc --noEmit
 
