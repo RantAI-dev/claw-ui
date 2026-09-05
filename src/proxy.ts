@@ -77,6 +77,15 @@ export default async function proxy(req: NextRequest) {
   const isApi = pathname.startsWith("/api/");
   const authPath = pathname === "/login" || pathname.startsWith("/api/auth");
 
+  // The container healthcheck's probe. It sat behind both the login gate and
+  // the gateway-unreachable short-circuit, so with login on it answered 401 and
+  // with the gateway down it answered 502 — and an orchestrator restarted a
+  // perfectly healthy console forever. The route reports liveness and gateway
+  // reachability SEPARATELY (`{ok, gateway}`), which is only useful if it can
+  // answer while the gateway is down. It exposes nothing else, and the
+  // unexpected-host check above still applies to it.
+  if (pathname === "/api/health") return NextResponse.next();
+
   // The login gate fails closed while the gateway cannot be asked whether login
   // is on (see auth-required.ts). Left alone, an outage surfaced as
   // "misconfigured: RANTAICLAW_UI_SECRET" on a dev launcher or as a login page

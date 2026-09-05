@@ -61,6 +61,33 @@ describe("proxy host gate", () => {
   });
 });
 
+describe("proxy and the container healthcheck", () => {
+  // The probe sat behind both the login matcher and the gateway-unreachable
+  // short-circuit, so an orchestrator restarted a healthy console forever.
+  it("lets the health probe through while the gateway is down", async () => {
+    vi.mocked(gatewayUnreachable).mockResolvedValueOnce(true);
+    const res = await proxy(req("/api/health"));
+    expect(res.status).not.toBe(502);
+    expect(res.status).toBe(200);
+  });
+
+  it("lets the health probe through with login enabled", async () => {
+    const { authEnabled } = await import("@/lib/auth");
+    vi.mocked(authEnabled).mockResolvedValueOnce(true);
+    const res = await proxy(req("/api/health"));
+    expect(res.status).not.toBe(401);
+    expect(res.status).toBe(200);
+  });
+
+  it("still applies the unexpected-host gate to the health probe", async () => {
+    // ...Once: `clearAllMocks` clears calls, not implementations, so a sticky
+    // `mockReturnValue` here would leak into the next describe block.
+    vi.mocked(isUnexpectedHost).mockReturnValueOnce(true);
+    const res = await proxy(req("/api/health"));
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("proxy while the gateway is unreachable", () => {
   // The login gate fails closed without a gateway; that used to read as a UI
   // misconfiguration (dev) or a login page (shipped). The cause is the gateway.

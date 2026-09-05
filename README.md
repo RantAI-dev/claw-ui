@@ -29,6 +29,13 @@ OpenClaw-style ops panels.
 Hardened for self-hosting: server-side proxy (token never reaches the browser), CSP + security
 headers, standalone Docker image, health endpoint, graceful gateway-down handling.
 
+**The released tarball binds loopback.** Next's standalone server defaults to `0.0.0.0`; the
+packaged `server.js` sets `HOSTNAME` to `127.0.0.1` unless you set it yourself. The console
+holds the gateway bearer token and its login gate is off unless the gateway enables it, so
+reaching it from another machine should be a decision, not a default. To expose it
+deliberately, set `HOSTNAME=0.0.0.0` (what the Docker image does) — and enable the login gate
+first (`rantaiclaw setup login`).
+
 ## Architecture
 
 ```
