@@ -13,6 +13,10 @@ export interface ChatRequest {
    *  non-authoritative context and does not persist it with the user message,
    *  so it never compounds across turns. */
   context?: string;
+  /** How this client will render the answer. Applied by the gateway to the
+   *  prompt for THIS turn only and never persisted — a rendering preference is
+   *  not something the user typed. Omit for markdown. */
+  render_mode?: "gui";
 }
 
 /**

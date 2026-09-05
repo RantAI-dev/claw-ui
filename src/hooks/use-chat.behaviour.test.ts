@@ -68,6 +68,34 @@ describe("useChat", () => {
     expect(String(lastReq!.message)).not.toContain("SECRET_DOC_TEXT");
   });
 
+  it("sends the render mode as a field instead of decorating the message", async () => {
+    const { result } = renderHook(() => useChat({ renderMode: "gui" }));
+
+    act(() => {
+      void result.current.send("show me the numbers");
+    });
+    await waitFor(() => expect(lastReq).not.toBeNull());
+
+    expect(lastReq!.render_mode).toBe("gui");
+    // The gateway persists `message` verbatim. Appending the instruction to it
+    // stored the instruction as part of the user's turn and replayed it on
+    // every later turn — including after the user switched back to markdown.
+    expect(String(lastReq!.message)).toBe("show me the numbers");
+    expect(String(lastReq!.message)).not.toContain("RENDER MODE");
+  });
+
+  it("sends no render mode in markdown", async () => {
+    const { result } = renderHook(() => useChat({ renderMode: "md" }));
+
+    act(() => {
+      void result.current.send("plain question");
+    });
+    await waitFor(() => expect(lastReq).not.toBeNull());
+
+    expect(lastReq!.render_mode).toBeUndefined();
+    expect(String(lastReq!.message)).toBe("plain question");
+  });
+
   it("sends only the new turn — the gateway owns conversation history", async () => {
     const { result } = renderHook(() => useChat({}));
 
