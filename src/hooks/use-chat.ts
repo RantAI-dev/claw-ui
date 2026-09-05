@@ -9,7 +9,7 @@ import type {
   SessionMessage,
   ToolCall,
 } from "@/lib/types";
-import { GUI_INSTRUCTION, stripDecorations } from "@/lib/decorations";
+import { stripDecorations } from "@/lib/decorations";
 
 /** A tool call paused awaiting the user's in-browser approve/deny decision. */
 export interface PendingApproval {
@@ -142,17 +142,6 @@ export function useChat(opts: UseChatOptions) {
     (id: string, fn: (m: ChatMessage) => ChatMessage) => {
       setMessages((prev) => prev.map((m) => (m.id === id ? fn(m) : m)));
     },
-    [],
-  );
-
-  // Decorate the SENT message (not the displayed one) with the GUI spec in gui mode.
-  // Appended after the user's text so the first line — and thus the gateway's
-  // session title — stays the real question.
-  const decorate = React.useCallback(
-    (text: string) =>
-      optsRef.current.renderMode === "gui"
-        ? `${text}\n\n${GUI_INSTRUCTION}`
-        : text,
     [],
   );
 
@@ -326,6 +315,13 @@ export function useChat(opts: UseChatOptions) {
             // server-side as reference material), not glued into `message`, so
             // it never enters the persisted transcript or replayed history.
             context: context.trim() ? context : undefined,
+            // Same reason, for the same field's sake: the gateway persists
+            // `message` verbatim, so the generative-UI instruction used to be
+            // stored as part of the user's turn and replayed on every later
+            // turn — including after the user switched back to markdown. The
+            // gateway owns the instruction now; this only names the mode.
+            render_mode:
+              optsRef.current.renderMode === "gui" ? "gui" : undefined,
           },
           onEvent,
           controller.signal,
@@ -383,12 +379,12 @@ export function useChat(opts: UseChatOptions) {
         if (epoch !== epochRef.current) return;
         // KB context is threaded separately (structured field), not folded into
         // the message, so it never enters the persisted transcript.
-        await runAssistant(decorate(trimmed), sources, context);
+        await runAssistant(trimmed, sources, context);
       } finally {
         if (epoch === epochRef.current) inFlightRef.current = false;
       }
     },
-    [isStreaming, runAssistant, decorate, retrieve],
+    [isStreaming, runAssistant, retrieve],
   );
 
   /** Approve or deny the pending tool call; resumes the paused stream.
@@ -429,11 +425,11 @@ export function useChat(opts: UseChatOptions) {
       });
       const { context, sources } = await retrieve(lastUser.content);
       if (epoch !== epochRef.current) return;
-      await runAssistant(decorate(lastUser.content), sources, context);
+      await runAssistant(lastUser.content, sources, context);
     } finally {
       if (epoch === epochRef.current) inFlightRef.current = false;
     }
-  }, [isStreaming, messages, runAssistant, decorate, retrieve]);
+  }, [isStreaming, messages, runAssistant, retrieve]);
 
   const stop = React.useCallback(() => {
     abortRef.current?.abort();

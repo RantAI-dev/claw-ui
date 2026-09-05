@@ -1,9 +1,19 @@
-/** Decorations the console adds to the SENT message, and how to take them back off.
+/** Decorations the console USED to add to the SENT message, and how to take
+ * them back off.
  *
- * Shared by the chat hook (which adds them) and the transcript export (which
- * must not show them). The gateway persists `body.message` verbatim, so
- * anything appended here is stored in the transcript and comes back on reload
- * and on export — which is why the strip has two consumers rather than one.
+ * Nothing is appended to `message` any more. KB context rides the structured
+ * `context` field, the gateway owns conversation history, and the generative-UI
+ * instruction is selected by `render_mode` — the gateway applies it to the
+ * prompt for that turn and never persists it.
+ *
+ * The constants and the strip stay because the gateway persists `body.message`
+ * verbatim, so turns stored by older console versions still carry these markers
+ * and must render and export cleanly. Rewriting stored history to tidy it is
+ * deliberately not done.
+ *
+ * `GUI_INSTRUCTION` is now a COPY of the gateway's `GUI_RENDER_INSTRUCTION`,
+ * kept only to recognise those older turns. It is no longer what the model is
+ * told — do not re-add it to an outgoing message.
  */
 
 export const GUI_INSTRUCTION = [
