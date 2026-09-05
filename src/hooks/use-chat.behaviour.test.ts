@@ -68,6 +68,46 @@ describe("useChat", () => {
     expect(String(lastReq!.message)).not.toContain("SECRET_DOC_TEXT");
   });
 
+  it("sends only the new turn — the gateway owns conversation history", async () => {
+    const { result } = renderHook(() => useChat({}));
+
+    // Turn one.
+    act(() => {
+      void result.current.send("first question");
+    });
+    await waitFor(() => expect(onEventCb).not.toBeNull());
+    act(() => {
+      onEventCb!({ type: "chunk", text: "first answer" });
+      onEventCb!({
+        type: "done",
+        text: "first answer",
+        cancelled: false,
+        session_id: "s1",
+      });
+    });
+    act(() => {
+      resolveStream?.();
+    });
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+
+    // Turn two.
+    lastReq = null;
+    act(() => {
+      void result.current.send("second question");
+    });
+    await waitFor(() => expect(lastReq).not.toBeNull());
+
+    const sent = String(lastReq!.message);
+    expect(sent).toContain("second question");
+    // The console used to prepend a transcript of prior turns. The gateway
+    // replays a continued session's stored messages itself, so sending it too
+    // doubled the history AND — because the gateway persists the message
+    // verbatim — stored the blob inside the user message to be replayed again.
+    expect(sent).not.toContain("<<<CONVERSATION_SO_FAR>>>");
+    expect(sent).not.toContain("first question");
+    expect(sent).not.toContain("first answer");
+  });
+
   it("queues two approval requests and resolves them in order", async () => {
     const { result } = renderHook(() => useChat({}));
     act(() => {

@@ -9,6 +9,7 @@ import type {
   SessionMessage,
   ToolCall,
 } from "@/lib/types";
+import { GUI_INSTRUCTION, stripDecorations } from "@/lib/decorations";
 
 /** A tool call paused awaiting the user's in-browser approve/deny decision. */
 export interface PendingApproval {
@@ -67,104 +68,9 @@ export interface UseChatOptions {
 // chooses Generative UI rendering. Appending (vs prepending) keeps the user's
 // own first line intact, so the gateway's derived session title stays clean.
 // Keeps the gateway/agent untouched.
-const GUI_INSTRUCTION = [
-  "[RENDER MODE: GENERATIVE UI]",
-  "When a structured, data-heavy, or interactive answer would help, include ONE fenced code block with language `ui` holding a JSON array of components (plus optional prose around it). Otherwise reply normally in markdown.",
-  "Components: ",
-  '{"type":"heading","text":"..."}, {"type":"text","text":"markdown"}, {"type":"divider"},',
-  '{"type":"card","title":"...","tone":"sky|green|amber|red|purple","children":[...nested components...]},',
-  '{"type":"metrics","items":[{"label":"p95","value":"41ms","tone":"green"}]},',
-  '{"type":"keyvalue","items":[{"k":"model","v":"..."}]},',
-  '{"type":"table","columns":["A","B"],"rows":[["1","2"]]},',
-  '{"type":"list","items":["..."]}, {"type":"badges","items":[{"label":"OK","tone":"green"}]},',
-  '{"type":"callout","tone":"amber","text":"..."},',
-  '{"type":"choices","prompt":"Pick one","options":[{"label":"Yes","value":"yes"}]}.',
-  "Keep the JSON strictly valid. `choices` options send their value back as the next user message.",
-  "---",
-  "",
-].join("\n");
 
-// KB context + prior-conversation history are wrapped in these sentinels in the
-// SENT message so they can be stripped from the displayed bubble on history
-// reload (both are rebuilt fresh each turn and must never resurface as user text).
-const KB_OPEN = "<<<KB_CONTEXT>>>";
-const KB_CLOSE = "<<<END_KB_CONTEXT>>>";
-const HIST_OPEN = "<<<CONVERSATION_SO_FAR>>>";
-const HIST_CLOSE = "<<<END_CONVERSATION>>>";
 
-const MAX_HISTORY_MSGS = 8; // last ~4 exchanges
-const MAX_HISTORY_CHARS = 1500; // per message, to bound the request body size
 
-/** Build a compact transcript of recent turns so the (stateless) gateway agent
- *  gets conversation memory. A stopped turn is dropped WHOLE (assistant + its
- *  paired user message) and a failed assistant reply is dropped (its user
- *  question is kept), so an abandoned/errored topic never bleeds into the next
- *  prompt. Returns "" when there is no prior turn. Exported for unit tests. */
-/** Remove `[IMAGE:…]` markers from text. The gateway counts these as image
- *  inputs even when they appear inside a history text block, so a marker the
- *  model once emitted (e.g. image-ish syntax) would otherwise be re-embedded by
- *  `buildHistory` and hard-fail every following turn on a provider without
- *  vision — a conversation that can only be cleared with a New chat. The web
- *  console never sends real image markers (uploads go to the KB), so a marker
- *  here is always a stray artifact and safe to drop. */
-function stripImageMarkers(s: string): string {
-  return s.replace(/\[IMAGE:[^\]]*\]/g, "");
-}
-
-export function buildHistory(prior: ChatMessage[]): string {
-  const kept: ChatMessage[] = [];
-  for (const m of prior) {
-    if (m.role !== "user" && m.role !== "assistant") continue;
-    if (m.role === "assistant") {
-      if (m.cancelled) {
-        // Abandoned turn: drop it AND its paired user message so the cancelled
-        // topic does not resurface as context in the next request.
-        if (kept.length && kept[kept.length - 1].role === "user") kept.pop();
-        continue;
-      }
-      // Failed reply carries no useful answer; drop it but keep the user's
-      // question (a valid antecedent they may retry).
-      if (m.error) continue;
-    }
-    kept.push(m);
-  }
-  if (kept.length === 0) return "";
-  return kept
-    .slice(-MAX_HISTORY_MSGS)
-    .map((m) => {
-      const who = m.role === "user" ? "User" : "Assistant";
-      const content = stripImageMarkers(m.content);
-      const body =
-        content.length > MAX_HISTORY_CHARS
-          ? `${content.slice(0, MAX_HISTORY_CHARS)}…`
-          : content;
-      return `${who}: ${body}`;
-    })
-    .join("\n");
-}
-
-/** Append prior-conversation history after the user's text. */
-function withHistory(text: string, history: string): string {
-  return history.trim()
-    ? `${text}\n\n${HIST_OPEN}\n(earlier messages in this conversation, for context)\n${history}\n${HIST_CLOSE}`
-    : text;
-}
-
-/** Strip appended decorations (history + KB context + GUI instruction) for display. */
-function stripDecorations(content: string): string {
-  let c = content;
-  if (c.endsWith(GUI_INSTRUCTION))
-    c = c.slice(0, c.length - GUI_INSTRUCTION.length);
-  c = c.replace(
-    new RegExp(`\\n*${KB_OPEN}\\n[\\s\\S]*?\\n${KB_CLOSE}`, "g"),
-    "",
-  );
-  c = c.replace(
-    new RegExp(`\\n*${HIST_OPEN}\\n[\\s\\S]*?\\n${HIST_CLOSE}`, "g"),
-    "",
-  );
-  return c.replace(/\s+$/, "");
-}
 
 /** Mark any still-running tool chip as finished — used when a turn ends without
  *  a `tool_call_end` (cancelled/aborted, or a dropped end frame) so the Activity
@@ -462,8 +368,6 @@ export function useChat(opts: UseChatOptions) {
       inFlightRef.current = true;
       const epoch = epochRef.current;
       try {
-        // Prior turns (before this one) → conversation memory for the stateless gateway.
-        const history = buildHistory(messagesRef.current);
         setMessages((prev) => [
           ...prev,
           {
@@ -479,11 +383,7 @@ export function useChat(opts: UseChatOptions) {
         if (epoch !== epochRef.current) return;
         // KB context is threaded separately (structured field), not folded into
         // the message, so it never enters the persisted transcript.
-        await runAssistant(
-          decorate(withHistory(trimmed, history)),
-          sources,
-          context,
-        );
+        await runAssistant(decorate(trimmed), sources, context);
       } finally {
         if (epoch === epochRef.current) inFlightRef.current = false;
       }
@@ -521,9 +421,6 @@ export function useChat(opts: UseChatOptions) {
     inFlightRef.current = true;
     const epoch = epochRef.current;
     try {
-      // History = turns before the one being regenerated.
-      const at = messages.lastIndexOf(lastUser);
-      const history = buildHistory(at === -1 ? [] : messages.slice(0, at));
       // Drop everything after the last user message (keyed on the object ref so
       // it's correct even if `prev` differs from this render's snapshot).
       setMessages((prev) => {
@@ -532,11 +429,7 @@ export function useChat(opts: UseChatOptions) {
       });
       const { context, sources } = await retrieve(lastUser.content);
       if (epoch !== epochRef.current) return;
-      await runAssistant(
-        decorate(withHistory(lastUser.content, history)),
-        sources,
-        context,
-      );
+      await runAssistant(decorate(lastUser.content), sources, context);
     } finally {
       if (epoch === epochRef.current) inFlightRef.current = false;
     }
