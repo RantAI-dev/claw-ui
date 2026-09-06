@@ -65,7 +65,8 @@ export function rungFromAutonomy(a: AutonomyLike): Rung {
   if (l === "readonly") return "strict";
   if (l === "full") return "off";
   const ask = list(a?.always_ask);
-  const manual = ask.includes(WILDCARD) || BUILTIN_TOOLS.every((t) => ask.includes(t));
+  const manual =
+    ask.includes(WILDCARD) || BUILTIN_TOOLS.every((t) => ask.includes(t));
   return manual ? "manual" : "smart";
 }
 
@@ -85,7 +86,10 @@ export interface AutonomyPayload {
  * default) and drops only the wildcard and the built-ins. Strict and Off are
  * unambiguous from the level and leave the lists as the operator has them.
  */
-export function rungToAutonomyPayload(rung: string, current: AutonomyLike): AutonomyPayload {
+export function rungToAutonomyPayload(
+  rung: string,
+  current: AutonomyLike,
+): AutonomyPayload {
   switch (rung) {
     case "manual":
       return { level: "supervised", always_ask: [WILDCARD], auto_approve: [] };
@@ -165,9 +169,32 @@ export function commandBasename(input: string): string {
 
 /** Mirrors RantAIClaw `approval/permissions.rs` DANGEROUS. */
 export const HIGH_RISK_COMMANDS: readonly string[] = [
-  "rm", "dd", "mkfs", "sudo", "su", "chmod", "chown", "mount", "umount", "shutdown",
-  "reboot", "halt", "poweroff", "curl", "wget", "nc", "ncat", "netcat", "bash", "sh", "zsh",
-  "python", "python3", "perl", "ruby", "node",
+  "rm",
+  "dd",
+  "mkfs",
+  "sudo",
+  "su",
+  "chmod",
+  "chown",
+  "mount",
+  "umount",
+  "shutdown",
+  "reboot",
+  "halt",
+  "poweroff",
+  "curl",
+  "wget",
+  "nc",
+  "ncat",
+  "netcat",
+  "bash",
+  "sh",
+  "zsh",
+  "python",
+  "python3",
+  "perl",
+  "ruby",
+  "node",
 ];
 
 export function isHighRiskCommand(base: string): boolean {
@@ -176,42 +203,44 @@ export function isHighRiskCommand(base: string): boolean {
 
 export interface CapsDraft {
   actions: string;
-  cost: string;
 }
 
 export interface CapsStored {
   actions: number | null;
-  cents: number | null;
 }
 
 export interface CapsChanges {
-  /** The two numbers a Save writes; null when nothing changed or the draft is invalid. */
-  write: { max_actions_per_hour: number; max_cost_per_day_cents: number } | null;
+  /** The number a Save writes; null when nothing changed or the draft is invalid. */
+  write: { max_actions_per_hour: number } | null;
   /** The draft differs from what is stored (a blank field over a stored value counts). */
   dirty: boolean;
   error: string | null;
 }
 
-/** The field values for a stored config (dollars for the cost cap). */
+/**
+ * The field value for a stored config.
+ *
+ * The cost cap is gone. `autonomy.max_cost_per_day_cents` was a money ceiling
+ * the backend never enforced — this panel said so on its own label — and it has
+ * been replaced by `[cost] max_tokens_per_day`, which is enforced before every
+ * turn and is not editable from here.
+ */
 export function capsSeed(stored: CapsStored): CapsDraft {
   return {
     actions: stored.actions != null ? String(stored.actions) : "",
-    cost: stored.cents != null ? String(stored.cents / 100) : "",
   };
 }
 
 export function capsChanges(draft: CapsDraft, stored: CapsStored): CapsChanges {
   const at = draft.actions.trim();
-  const ct = draft.cost.trim();
   const actions = at === "" ? NaN : Math.round(Number(at));
-  const cents = ct === "" ? NaN : Math.round(Number(ct) * 100);
-  const dirty = actions !== stored.actions || cents !== stored.cents;
+  const dirty = actions !== stored.actions;
   let error: string | null = null;
-  if (at === "" || ct === "") error = "Enter both caps";
-  else if (!Number.isFinite(actions) || actions < 1) error = "Actions per hour must be at least 1";
-  else if (!Number.isFinite(cents) || cents < 0) error = "Cost per day must be 0 or more";
+  if (at === "") error = "Enter an actions cap";
+  else if (!Number.isFinite(actions) || actions < 1)
+    error = "Actions per hour must be at least 1";
   return {
-    write: dirty && !error ? { max_actions_per_hour: actions, max_cost_per_day_cents: cents } : null,
+    write: dirty && !error ? { max_actions_per_hour: actions } : null,
     dirty,
     error,
   };
