@@ -144,8 +144,18 @@ describe("useChat", () => {
     await waitFor(() => expect(onEventCb).not.toBeNull());
 
     act(() => {
-      onEventCb!({ type: "approval_request", id: "a1", tool: "shell", args: {} });
-      onEventCb!({ type: "approval_request", id: "a2", tool: "http", args: {} });
+      onEventCb!({
+        type: "approval_request",
+        id: "a1",
+        tool: "shell",
+        args: {},
+      });
+      onEventCb!({
+        type: "approval_request",
+        id: "a2",
+        tool: "http",
+        args: {},
+      });
     });
     expect(result.current.pendingApproval?.id).toBe("a1");
 
@@ -163,13 +173,88 @@ describe("useChat", () => {
     await waitFor(() => expect(onEventCb).not.toBeNull());
 
     act(() => {
-      onEventCb!({ type: "approval_request", id: "x1", tool: "shell", args: {} });
+      onEventCb!({
+        type: "approval_request",
+        id: "x1",
+        tool: "shell",
+        args: {},
+      });
     });
     expect(result.current.pendingApproval?.id).toBe("x1");
 
     act(() => {
-      onEventCb!({ type: "approval_resolved", id: "x1", approved: false, timed_out: true });
+      onEventCb!({
+        type: "approval_resolved",
+        id: "x1",
+        approved: false,
+        timed_out: true,
+      });
     });
     expect(result.current.pendingApproval).toBeNull();
+  });
+
+  // The gateway sends a `usage` event only when the provider reported one, and
+  // several backends never do. Summing to 0 and rendering it made "nobody told
+  // us" indistinguishable from a measurement — and a turn that consumed zero
+  // tokens does not exist.
+  it("reports no totals when no provider reported usage", async () => {
+    const { result } = renderHook(() => useChat({}));
+
+    act(() => {
+      void result.current.send("a question");
+    });
+    await waitFor(() => expect(onEventCb).not.toBeNull());
+    act(() => {
+      onEventCb!({ type: "chunk", text: "an answer" });
+      onEventCb!({
+        type: "done",
+        text: "an answer",
+        cancelled: false,
+        session_id: "s1",
+      });
+    });
+    act(() => {
+      resolveStream?.();
+    });
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+
+    expect(result.current.totals.tokens).toBeNull();
+    expect(result.current.totals.cost).toBeNull();
+    // Locally counted, so these stay real zeros / real counts.
+    expect(result.current.totals.turns).toBe(1);
+    expect(result.current.totals.toolCalls).toBe(0);
+  });
+
+  // The load-bearing other half: a reported count still sums to a number.
+  it("sums the totals a provider did report", async () => {
+    const { result } = renderHook(() => useChat({}));
+
+    act(() => {
+      void result.current.send("a question");
+    });
+    await waitFor(() => expect(onEventCb).not.toBeNull());
+    act(() => {
+      onEventCb!({
+        type: "usage",
+        model: "test-model",
+        prompt: 120,
+        completion: 34,
+        total: 154,
+        cost_usd: 0,
+      });
+      onEventCb!({
+        type: "done",
+        text: "an answer",
+        cancelled: false,
+        session_id: "s1",
+      });
+    });
+    act(() => {
+      resolveStream?.();
+    });
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+
+    expect(result.current.totals.tokens).toBe(154);
+    expect(result.current.totals.cost).toBe(0);
   });
 });
