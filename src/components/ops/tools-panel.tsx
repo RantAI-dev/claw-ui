@@ -27,16 +27,29 @@ import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 
 type AutonomyBody = Parameters<typeof api.setAutonomy>[0];
-type FlagKey = "block_high_risk_commands" | "require_approval_for_medium_risk" | "workspace_only";
+type FlagKey =
+  | "block_high_risk_commands"
+  | "require_approval_for_medium_risk"
+  | "workspace_only";
 
 /** The three booleans `PUT /config/autonomy` accepts, as switches with a sentence each. */
 const SAFETY_FLAGS: { key: FlagKey; label: string }[] = [
-  { key: "block_high_risk_commands", label: "Block high-risk shell commands even when allowlisted" },
-  { key: "require_approval_for_medium_risk", label: "Prompt for medium-risk shell commands" },
-  { key: "workspace_only", label: "Confine file writes and command paths to the workspace" },
+  {
+    key: "block_high_risk_commands",
+    label: "Block high-risk shell commands even when allowlisted",
+  },
+  {
+    key: "require_approval_for_medium_risk",
+    label: "Prompt for medium-risk shell commands",
+  },
+  {
+    key: "workspace_only",
+    label: "Confine file writes and command paths to the workspace",
+  },
 ];
 
-const list = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+const list = (v: unknown): string[] =>
+  Array.isArray(v) ? (v as string[]) : [];
 
 /** The page opens with the answer: the rung in force, wearing its own dot
  *  colour, and the size of the surface it governs. The blurb stays with the
@@ -58,7 +71,9 @@ function ToolsBand({
           className="inline-block size-2.5 rounded-full"
           style={{ background: preset.dot }}
         />
-        <h2 className="text-xl font-medium tracking-tight">{preset.label} autonomy</h2>
+        <h2 className="text-xl font-medium tracking-tight">
+          {preset.label} autonomy
+        </h2>
       </div>
       <p className="mt-1.5 font-mono text-xs text-muted-foreground">
         {autoCount} {autoCount === 1 ? "tool" : "tools"} auto-approved
@@ -82,8 +97,10 @@ export function ToolsPanel() {
   const a: GatewayAutonomy = live ?? cfg.data?.autonomy ?? {};
 
   const stored = {
-    actions: typeof a.max_actions_per_hour === "number" ? a.max_actions_per_hour : null,
-    cents: typeof a.max_cost_per_day_cents === "number" ? a.max_cost_per_day_cents : null,
+    actions:
+      typeof a.max_actions_per_hour === "number"
+        ? a.max_actions_per_hour
+        : null,
   };
   const autoApprove = list(a.auto_approve);
   // The gateway's list can already hold a duplicate (it stores the basename
@@ -109,7 +126,7 @@ export function ToolsPanel() {
   // focused button drops keyboard focus to the body mid-write.
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
   const [cmd, setCmd] = React.useState("");
-  const [caps, setCaps] = React.useState<CapsDraft>({ actions: "", cost: "" });
+  const [caps, setCaps] = React.useState<CapsDraft>({ actions: "" });
   const capsDirty = React.useRef(false);
   const [, bump] = React.useReducer((n: number) => n + 1, 0);
 
@@ -121,8 +138,10 @@ export function ToolsPanel() {
     if (!stored || capsDirty.current) return;
     setCaps(
       capsSeed({
-        actions: typeof stored.max_actions_per_hour === "number" ? stored.max_actions_per_hour : null,
-        cents: typeof stored.max_cost_per_day_cents === "number" ? stored.max_cost_per_day_cents : null,
+        actions:
+          typeof stored.max_actions_per_hour === "number"
+            ? stored.max_actions_per_hour
+            : null,
       }),
     );
   }, [cfg.data]);
@@ -154,7 +173,9 @@ export function ToolsPanel() {
   };
 
   const setRung = async (id: string, label: string) => {
-    const r = await patch("rung", rungToAutonomyPayload(id, a), { broadcast: true });
+    const r = await patch("rung", rungToAutonomyPayload(id, a), {
+      broadcast: true,
+    });
     if (r) toast.success(`Autonomy set to ${label}`);
   };
 
@@ -196,7 +217,9 @@ export function ToolsPanel() {
   };
 
   const removeCmd = async (c: string) => {
-    const r = await patch(`chip:${c}`, { allowed_commands: allowed.filter((x) => x !== c) });
+    const r = await patch(`chip:${c}`, {
+      allowed_commands: allowed.filter((x) => x !== c),
+    });
     if (r) toast.success(`Removed ${c} from the allowlist`);
   };
 
@@ -216,9 +239,7 @@ export function ToolsPanel() {
     capsDirty.current = false;
     bump();
     toast.success(
-      `Caps saved: ${cc.write.max_actions_per_hour} actions per hour, $${(
-        cc.write.max_cost_per_day_cents / 100
-      ).toFixed(2)} per day (cost is reporting only)`,
+      `Cap saved: ${cc.write.max_actions_per_hour} actions per hour`,
     );
   };
 
@@ -234,7 +255,11 @@ export function ToolsPanel() {
             onRefresh={cfg.refresh}
           >
             {cfg.data && (
-              <ToolsBand preset={preset} autoCount={autoApprove.length} allowCount={allowed.length} />
+              <ToolsBand
+                preset={preset}
+                autoCount={autoApprove.length}
+                allowCount={allowed.length}
+              />
             )}
           </PanelFrame>
         </div>
@@ -244,210 +269,230 @@ export function ToolsPanel() {
       {cfg.data && (
         <div className="grid gap-8 lg:grid-cols-12">
           <div className="min-w-0 space-y-8 lg:col-span-7">
-          {/* Autonomy level */}
-          <div>
-            <SectionTitle>Autonomy level</SectionTitle>
-            <div role="group" aria-label="Autonomy level" className="flex flex-wrap gap-2">
-              {AUTONOMY.map((p) => (
-                // The colour rides on the dot, a tint and a hairline; the text
-                // stays on the foreground (coloured text was 2.5:1 for purple).
-                <button
-                  key={p.id}
-                  type="button"
-                  className="rung"
-                  aria-pressed={p.id === rung}
-                  aria-busy={busyKey === "rung"}
-                  style={{ ["--rung" as string]: p.dot } as React.CSSProperties}
-                  onClick={() => setRung(p.id, p.label)}
-                >
-                  <i className="dot" aria-hidden />
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">{preset.blurb}</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Applies to the next tool call, in chat and on channels. Changing the rung also
-              revokes every &ldquo;Always&rdquo; grant.
-            </p>
-          </div>
-
-          {/* Per-tool auto-approve */}
-          <div>
-            <SectionTitle>Tool policy</SectionTitle>
-            <p className="mb-2 text-xs text-muted-foreground">
-              Under Smart a tool runs without the prompt when it is auto-approved; an always-ask
-              entry, then the rung, come first.
-            </p>
-            <Card className="divide-y divide-border">
-              {hasWildcard(a) && (
-                <div className="px-3 py-2.5 text-[11px] text-muted-foreground">
-                  Every tool prompts (Manual): the always-ask list is the wildcard.
-                </div>
-              )}
-              {toolRows(a).map((tool) => {
-                const auto = autoApprove.includes(tool);
-                // The word is the runtime's decision for this tool in this
-                // config (level, then always-ask, then auto-approve); the
-                // switch is disabled when it would not change that.
-                const outcome = toolOutcome(tool, a);
-                const effective = autoApproveEffective(tool, a);
-                return (
-                  <div key={tool} className="flex items-center gap-3 px-3 py-2.5">
-                    <span className="font-mono text-[13px]">{tool}</span>
-                    <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
-                      {outcome}
-                    </span>
-                    <button
-                      type="button"
-                      className={"switch" + (auto ? " on" : "")}
-                      onClick={() => toggleTool(tool)}
-                      aria-busy={busyKey === `tool:${tool}`}
-                      disabled={!effective}
-                      role="switch"
-                      aria-checked={auto}
-                      aria-label={`Auto-approve ${tool}`}
-                      title={outcome}
-                    >
-                      <i />
-                    </button>
-                  </div>
-                );
-              })}
-            </Card>
-          </div>
-
-          {/* Shell allowlist */}
-          <div>
-            <SectionTitle>Shell allowlist · {allowed.length}</SectionTitle>
-            {allowed.length > 0 && (
-              <div className="allow-chips mb-2.5">
-                {allowed.map((c) => (
-                  <Badge key={c} variant="secondary" className="allow-chip gap-1.5 font-mono">
-                    {c}
-                    <button
-                      type="button"
-                      onClick={() => removeCmd(c)}
-                      aria-busy={busyKey === `chip:${c}`}
-                      aria-label={`Remove ${c}`}
-                      className="chip-x"
-                    >
-                      <X className="size-3" aria-hidden />
-                    </button>
-                  </Badge>
+            {/* Autonomy level */}
+            <div>
+              <SectionTitle>Autonomy level</SectionTitle>
+              <div
+                role="group"
+                aria-label="Autonomy level"
+                className="flex flex-wrap gap-2"
+              >
+                {AUTONOMY.map((p) => (
+                  // The colour rides on the dot, a tint and a hairline; the text
+                  // stays on the foreground (coloured text was 2.5:1 for purple).
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="rung"
+                    aria-pressed={p.id === rung}
+                    aria-busy={busyKey === "rung"}
+                    style={
+                      { ["--rung" as string]: p.dot } as React.CSSProperties
+                    }
+                    onClick={() => setRung(p.id, p.label)}
+                  >
+                    <i className="dot" aria-hidden />
+                    {p.label}
+                  </button>
                 ))}
               </div>
-            )}
-            <div className="flex gap-2">
-              <Input
-                value={cmd}
-                onChange={(e) => setCmd(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") addCmd();
-                }}
-                aria-label="Command to allow"
-                placeholder="add a command, e.g. docker"
-                className="max-w-60"
-              />
-              <Button
-                size="sm"
-                onClick={addCmd}
-                aria-busy={busyKey === "allow"}
-                disabled={!commandBasename(cmd)}
-              >
-                <Plus className="size-4" /> Add
-              </Button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {preset.blurb}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Applies to the next tool call, in chat and on channels. Changing
+                the rung also revokes every &ldquo;Always&rdquo; grant.
+              </p>
             </div>
-          </div>
 
+            {/* Per-tool auto-approve */}
+            <div>
+              <SectionTitle>Tool policy</SectionTitle>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Under Smart a tool runs without the prompt when it is
+                auto-approved; an always-ask entry, then the rung, come first.
+              </p>
+              <Card className="divide-y divide-border">
+                {hasWildcard(a) && (
+                  <div className="px-3 py-2.5 text-[11px] text-muted-foreground">
+                    Every tool prompts (Manual): the always-ask list is the
+                    wildcard.
+                  </div>
+                )}
+                {toolRows(a).map((tool) => {
+                  const auto = autoApprove.includes(tool);
+                  // The word is the runtime's decision for this tool in this
+                  // config (level, then always-ask, then auto-approve); the
+                  // switch is disabled when it would not change that.
+                  const outcome = toolOutcome(tool, a);
+                  const effective = autoApproveEffective(tool, a);
+                  return (
+                    <div
+                      key={tool}
+                      className="flex items-center gap-3 px-3 py-2.5"
+                    >
+                      <span className="font-mono text-[13px]">{tool}</span>
+                      <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+                        {outcome}
+                      </span>
+                      <button
+                        type="button"
+                        className={"switch" + (auto ? " on" : "")}
+                        onClick={() => toggleTool(tool)}
+                        aria-busy={busyKey === `tool:${tool}`}
+                        disabled={!effective}
+                        role="switch"
+                        aria-checked={auto}
+                        aria-label={`Auto-approve ${tool}`}
+                        title={outcome}
+                      >
+                        <i />
+                      </button>
+                    </div>
+                  );
+                })}
+              </Card>
+            </div>
+
+            {/* Shell allowlist */}
+            <div>
+              <SectionTitle>Shell allowlist · {allowed.length}</SectionTitle>
+              {allowed.length > 0 && (
+                <div className="allow-chips mb-2.5">
+                  {allowed.map((c) => (
+                    <Badge
+                      key={c}
+                      variant="secondary"
+                      className="allow-chip gap-1.5 font-mono"
+                    >
+                      {c}
+                      <button
+                        type="button"
+                        onClick={() => removeCmd(c)}
+                        aria-busy={busyKey === `chip:${c}`}
+                        aria-label={`Remove ${c}`}
+                        className="chip-x"
+                      >
+                        <X className="size-3" aria-hidden />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  value={cmd}
+                  onChange={(e) => setCmd(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addCmd();
+                  }}
+                  aria-label="Command to allow"
+                  placeholder="add a command, e.g. docker"
+                  className="max-w-60"
+                />
+                <Button
+                  size="sm"
+                  onClick={addCmd}
+                  aria-busy={busyKey === "allow"}
+                  disabled={!commandBasename(cmd)}
+                >
+                  <Plus className="size-4" /> Add
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className="min-w-0 space-y-8 lg:col-span-5">
-          {/* Rate & cost caps */}
-          <div>
-            <SectionTitle>Rate &amp; cost caps</SectionTitle>
-            <div className="flex flex-wrap items-end gap-3">
-              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-                actions / hour
-                <Input
-                  type="number"
-                  min="1"
-                  value={caps.actions}
-                  onChange={(e) => editCaps("actions", e.target.value)}
-                  className="h-8 w-28"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
-                cost / day, reporting only
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={caps.cost}
-                  onChange={(e) => editCaps("cost", e.target.value)}
-                  className="h-8 w-28"
-                />
-              </label>
-              {/* aria-disabled, not disabled: a clean Save keeps focus after a save
-                  lands (the button goes clean while it is the focused element). */}
-              <Button
-                size="sm"
-                onClick={saveCaps}
-                aria-disabled={!cc.dirty}
-                aria-busy={busyKey === "caps"}
-                className="aria-disabled:opacity-50"
-              >
-                Save caps
-              </Button>
-              <span className="text-xs text-muted-foreground" aria-live="polite">
-                {cc.dirty ? "Unsaved changes" : null}
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              The actions cap stops a runaway loop. The cost cap is recorded for reporting and is
-              not enforced.
-            </p>
-          </div>
-
-          {/* Safety flags */}
-          <div>
-            <SectionTitle>Safety flags</SectionTitle>
-            <Card className="divide-y divide-border">
-              {SAFETY_FLAGS.map(({ key, label }) => {
-                const on = a[key] === true;
-                return (
-                  <div key={key} className="flex items-center gap-3 px-3 py-2.5">
-                    <span className="min-w-0 flex-1 text-[13px]">{label}</span>
-                    <button
-                      type="button"
-                      className={"switch" + (on ? " on" : "")}
-                      onClick={() => toggleFlag(key, label)}
-                      aria-busy={busyKey === `flag:${key}`}
-                      role="switch"
-                      aria-checked={on}
-                      aria-label={label}
-                    >
-                      <i />
-                    </button>
-                  </div>
-                );
-              })}
-            </Card>
-          </div>
-
-          {/* Forbidden paths */}
-          {forbidden.length > 0 && (
+            {/* Rate cap */}
             <div>
-              <SectionTitle>Forbidden paths · {forbidden.length} (read-only)</SectionTitle>
-              <div className="flex flex-wrap gap-1.5">
-                {forbidden.map((p) => (
-                  <Badge key={p} variant="outline" className="font-mono text-muted-foreground">
-                    {p}
-                  </Badge>
-                ))}
+              <SectionTitle>Rate cap</SectionTitle>
+              <div className="flex flex-wrap items-end gap-3">
+                <label className="flex flex-col gap-1 text-[11px] text-muted-foreground">
+                  actions / hour
+                  <Input
+                    type="number"
+                    min="1"
+                    value={caps.actions}
+                    onChange={(e) => editCaps("actions", e.target.value)}
+                    className="h-8 w-28"
+                  />
+                </label>
+                {/* aria-disabled, not disabled: a clean Save keeps focus after a save
+                  lands (the button goes clean while it is the focused element). */}
+                <Button
+                  size="sm"
+                  onClick={saveCaps}
+                  aria-disabled={!cc.dirty}
+                  aria-busy={busyKey === "caps"}
+                  className="aria-disabled:opacity-50"
+                >
+                  Save cap
+                </Button>
+                <span
+                  className="text-xs text-muted-foreground"
+                  aria-live="polite"
+                >
+                  {cc.dirty ? "Unsaved changes" : null}
+                </span>
               </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                The actions cap stops a runaway loop. Spend is capped
+                separately, in tokens, by <code>[cost] max_tokens_per_day</code>{" "}
+                in <code>config.toml</code> — it is enforced before every turn
+                and is not editable here.
+              </p>
             </div>
-          )}
+
+            {/* Safety flags */}
+            <div>
+              <SectionTitle>Safety flags</SectionTitle>
+              <Card className="divide-y divide-border">
+                {SAFETY_FLAGS.map(({ key, label }) => {
+                  const on = a[key] === true;
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-3 px-3 py-2.5"
+                    >
+                      <span className="min-w-0 flex-1 text-[13px]">
+                        {label}
+                      </span>
+                      <button
+                        type="button"
+                        className={"switch" + (on ? " on" : "")}
+                        onClick={() => toggleFlag(key, label)}
+                        aria-busy={busyKey === `flag:${key}`}
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={label}
+                      >
+                        <i />
+                      </button>
+                    </div>
+                  );
+                })}
+              </Card>
+            </div>
+
+            {/* Forbidden paths */}
+            {forbidden.length > 0 && (
+              <div>
+                <SectionTitle>
+                  Forbidden paths · {forbidden.length} (read-only)
+                </SectionTitle>
+                <div className="flex flex-wrap gap-1.5">
+                  {forbidden.map((p) => (
+                    <Badge
+                      key={p}
+                      variant="outline"
+                      className="font-mono text-muted-foreground"
+                    >
+                      {p}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

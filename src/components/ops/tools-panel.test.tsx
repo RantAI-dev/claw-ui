@@ -1,6 +1,13 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { AUTONOMY_CHANGED } from "@/lib/console";
 import type { GatewayAutonomy } from "@/lib/types";
 
@@ -65,19 +72,28 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const saveCaps = () => screen.getByRole("button", { name: "Save caps" });
-const actionsField = () => screen.getByLabelText("actions / hour") as HTMLInputElement;
+const saveCaps = () => screen.getByRole("button", { name: "Save cap" });
+const actionsField = () =>
+  screen.getByLabelText("actions / hour") as HTMLInputElement;
 
 describe("ToolsPanel rung and rows", () => {
   it("reads a fresh install as Smart and lists ssh/pty as always-prompt rows", async () => {
     render(<ToolsPanel />);
-    expect(await screen.findByText("Prompt only for writes & system changes. Recommended.")).toBeTruthy();
-    const ssh = screen.getByRole("switch", { name: "Auto-approve ssh" }) as HTMLButtonElement;
+    expect(
+      await screen.findByText(
+        "Prompt only for writes & system changes. Recommended.",
+      ),
+    ).toBeTruthy();
+    const ssh = screen.getByRole("switch", {
+      name: "Auto-approve ssh",
+    }) as HTMLButtonElement;
     expect(ssh.disabled).toBe(true);
     expect(ssh.title).toBe("always prompts");
-    expect(screen.getByRole("switch", { name: "Auto-approve file_read" }).getAttribute("title")).toBe(
-      "runs without asking",
-    );
+    expect(
+      screen
+        .getByRole("switch", { name: "Auto-approve file_read" })
+        .getAttribute("title"),
+    ).toBe("runs without asking");
     expect(screen.queryByText(/follows level default/)).toBeNull();
   });
 
@@ -88,10 +104,16 @@ describe("ToolsPanel rung and rows", () => {
     await screen.findByText(/Prompt only for writes/);
     fireEvent.click(screen.getByRole("button", { name: "Manual" }));
     await waitFor(() =>
-      expect(setAutonomy).toHaveBeenCalledWith({ level: "supervised", always_ask: ["*"], auto_approve: [] }),
+      expect(setAutonomy).toHaveBeenCalledWith({
+        level: "supervised",
+        always_ask: ["*"],
+        auto_approve: [],
+      }),
     );
     await waitFor(() => expect(heard).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/Every tool prompts \(Manual\)/)).toBeTruthy();
+    expect(
+      await screen.findByText(/Every tool prompts \(Manual\)/),
+    ).toBeTruthy();
     for (const sw of screen.getAllByRole("switch", { name: /Auto-approve/ })) {
       expect((sw as HTMLButtonElement).disabled).toBe(true);
     }
@@ -115,9 +137,13 @@ describe("ToolsPanel rung and rows", () => {
     await screen.findByText(/Prompt only for writes/);
     fireEvent.click(screen.getByRole("switch", { name: "Auto-approve shell" }));
     await waitFor(() =>
-      expect(setAutonomy).toHaveBeenCalledWith({ auto_approve: ["file_read", "memory_recall", "shell"] }),
+      expect(setAutonomy).toHaveBeenCalledWith({
+        auto_approve: ["file_read", "memory_recall", "shell"],
+      }),
     );
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("shell: runs without asking"));
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("shell: runs without asking"),
+    );
   });
 });
 
@@ -146,21 +172,26 @@ describe("ToolsPanel caps", () => {
     expect(screen.getByText("Unsaved changes")).toBeTruthy();
   });
 
-  it("saves both caps, names them, and goes clean again", async () => {
+  it("saves the actions cap, names it, and goes clean again", async () => {
     render(<ToolsPanel />);
     await screen.findByText(/Prompt only for writes/);
     await waitFor(() => expect(actionsField().value).toBe("200"));
     fireEvent.change(actionsField(), { target: { value: "300" } });
     fireEvent.click(saveCaps());
+    // Exactly one key. The gateway still accepts `max_cost_per_day_cents` for
+    // one release; sending it back would keep a value the backend no longer
+    // reads alive in every operator's config.
     await waitFor(() =>
-      expect(setAutonomy).toHaveBeenCalledWith({ max_actions_per_hour: 300, max_cost_per_day_cents: 500 }),
+      expect(setAutonomy).toHaveBeenCalledWith({ max_actions_per_hour: 300 }),
     );
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith(
-        "Caps saved: 300 actions per hour, $5.00 per day (cost is reporting only)",
+        "Cap saved: 300 actions per hour",
       ),
     );
-    await waitFor(() => expect(saveCaps().getAttribute("aria-disabled")).toBe("true"));
+    await waitFor(() =>
+      expect(saveCaps().getAttribute("aria-disabled")).toBe("true"),
+    );
     expect(screen.queryByText("Unsaved changes")).toBeNull();
   });
 
@@ -170,26 +201,37 @@ describe("ToolsPanel caps", () => {
     await waitFor(() => expect(actionsField().value).toBe("200"));
     fireEvent.change(actionsField(), { target: { value: "0" } });
     fireEvent.click(saveCaps());
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Actions per hour must be at least 1"));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        "Actions per hour must be at least 1",
+      ),
+    );
     expect(setAutonomy).not.toHaveBeenCalled();
   });
 
-  it("labels the cost cap as reporting only", async () => {
+  // The money cap was never enforced by the backend and has been replaced by a
+  // token ceiling that is. Editing a number nothing reads is worse than not
+  // offering it, so the field is gone and the copy points at what does apply.
+  it("no longer offers a cost cap, and says where spend is capped instead", async () => {
     render(<ToolsPanel />);
-    expect(await screen.findByLabelText("cost / day, reporting only")).toBeTruthy();
-    expect(screen.getByText(/is not enforced/)).toBeTruthy();
+    await screen.findByText(/Prompt only for writes/);
+    expect(screen.queryByLabelText("cost / day, reporting only")).toBeNull();
+    expect(screen.getByText(/max_tokens_per_day/)).toBeTruthy();
   });
 });
 
 describe("ToolsPanel allowlist", () => {
-  const input = () => screen.getByLabelText("Command to allow") as HTMLInputElement;
+  const input = () =>
+    screen.getByLabelText("Command to allow") as HTMLInputElement;
 
   it("compares by basename and says so when the entry is already there", async () => {
     render(<ToolsPanel />);
     await screen.findByText(/Prompt only for writes/);
     fireEvent.change(input(), { target: { value: "/usr/bin/git" } });
     fireEvent.keyDown(input(), { key: "Enter" });
-    await waitFor(() => expect(toastMessage).toHaveBeenCalledWith("git is already allowed"));
+    await waitFor(() =>
+      expect(toastMessage).toHaveBeenCalledWith("git is already allowed"),
+    );
     expect(setAutonomy).not.toHaveBeenCalled();
   });
 
@@ -199,12 +241,18 @@ describe("ToolsPanel allowlist", () => {
     fireEvent.change(input(), { target: { value: "/opt/bin/docker" } });
     fireEvent.keyDown(input(), { key: "Enter" });
     await waitFor(() =>
-      expect(setAutonomy).toHaveBeenCalledWith({ allowed_commands: ["git", "npm", "ls", "docker"] }),
+      expect(setAutonomy).toHaveBeenCalledWith({
+        allowed_commands: ["git", "npm", "ls", "docker"],
+      }),
     );
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Allowed docker (the basename of /opt/bin/docker)"),
+      expect(toastSuccess).toHaveBeenCalledWith(
+        "Allowed docker (the basename of /opt/bin/docker)",
+      ),
     );
-    expect(await screen.findByRole("button", { name: "Remove docker" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Remove docker" }),
+    ).toBeTruthy();
   });
 
   it("warns for a high-risk command", async () => {
@@ -212,17 +260,29 @@ describe("ToolsPanel allowlist", () => {
     await screen.findByText(/Prompt only for writes/);
     fireEvent.change(input(), { target: { value: "rm" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    await waitFor(() => expect(toastWarning).toHaveBeenCalledWith(expect.stringMatching(/^Allowed rm\. High-risk/)));
+    await waitFor(() =>
+      expect(toastWarning).toHaveBeenCalledWith(
+        expect.stringMatching(/^Allowed rm\. High-risk/),
+      ),
+    );
   });
 
   it("shows a duplicated stored entry once and removes it with a toast", async () => {
     server = { ...server, allowed_commands: ["git", "git", "ls"] };
     render(<ToolsPanel />);
     await screen.findByText(/Prompt only for writes/);
-    expect(screen.getAllByRole("button", { name: "Remove git" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Remove git" })).toHaveLength(
+      1,
+    );
     fireEvent.click(screen.getByRole("button", { name: "Remove git" }));
-    await waitFor(() => expect(setAutonomy).toHaveBeenCalledWith({ allowed_commands: ["ls"] }));
-    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Removed git from the allowlist"));
+    await waitFor(() =>
+      expect(setAutonomy).toHaveBeenCalledWith({ allowed_commands: ["ls"] }),
+    );
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(
+        "Removed git from the allowlist",
+      ),
+    );
   });
 });
 
@@ -231,35 +291,63 @@ describe("ToolsPanel flags and feedback", () => {
     render(<ToolsPanel />);
     await screen.findByText(/Prompt only for writes/);
     expect(screen.queryByText("block high-risk")).toBeNull();
-    const block = screen.getByRole("switch", { name: "Block high-risk shell commands even when allowlisted" });
+    const block = screen.getByRole("switch", {
+      name: "Block high-risk shell commands even when allowlisted",
+    });
     expect(block.getAttribute("aria-checked")).toBe("false");
     expect(
-      screen.getByRole("switch", { name: "Prompt for medium-risk shell commands" }).getAttribute("aria-checked"),
+      screen
+        .getByRole("switch", { name: "Prompt for medium-risk shell commands" })
+        .getAttribute("aria-checked"),
     ).toBe("true");
     fireEvent.click(block);
-    await waitFor(() => expect(setAutonomy).toHaveBeenCalledWith({ block_high_risk_commands: true }));
     await waitFor(() =>
-      expect(toastSuccess).toHaveBeenCalledWith("Block high-risk shell commands even when allowlisted: on"),
+      expect(setAutonomy).toHaveBeenCalledWith({
+        block_high_risk_commands: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith(
+        "Block high-risk shell commands even when allowlisted: on",
+      ),
     );
   });
 
   it("marks only the control being written busy, and never disables it", async () => {
     let resolve!: (v: GatewayAutonomy) => void;
-    setAutonomy.mockImplementationOnce(() => new Promise<GatewayAutonomy>((r) => (resolve = r)));
+    setAutonomy.mockImplementationOnce(
+      () => new Promise<GatewayAutonomy>((r) => (resolve = r)),
+    );
     render(<ToolsPanel />);
     await screen.findByText(/Prompt only for writes/);
     fireEvent.click(screen.getByRole("switch", { name: "Auto-approve shell" }));
     await waitFor(() => expect(setAutonomy).toHaveBeenCalledTimes(1));
-    const shell = () => screen.getByRole("switch", { name: "Auto-approve shell" }) as HTMLButtonElement;
+    const shell = () =>
+      screen.getByRole("switch", {
+        name: "Auto-approve shell",
+      }) as HTMLButtonElement;
     expect(shell().getAttribute("aria-busy")).toBe("true");
     expect(shell().disabled).toBe(false);
-    expect(screen.getByRole("button", { name: "Manual" }).getAttribute("aria-busy")).toBe("false");
-    expect(screen.getByRole("switch", { name: "Auto-approve file_write" }).getAttribute("aria-busy")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Manual" }).getAttribute("aria-busy"),
+    ).toBe("false");
+    expect(
+      screen
+        .getByRole("switch", { name: "Auto-approve file_write" })
+        .getAttribute("aria-busy"),
+    ).toBe("false");
     // A second click on the busy control is ignored, not queued.
     fireEvent.click(shell());
     expect(setAutonomy).toHaveBeenCalledTimes(1);
-    act(() => resolve({ ...server, auto_approve: [...(server.auto_approve ?? []), "shell"] }));
-    await waitFor(() => expect(shell().getAttribute("aria-busy")).toBe("false"));
+    act(() =>
+      resolve({
+        ...server,
+        auto_approve: [...(server.auto_approve ?? []), "shell"],
+      }),
+    );
+    await waitFor(() =>
+      expect(shell().getAttribute("aria-busy")).toBe("false"),
+    );
   });
 
   it("toasts the failure and keeps the page when a write fails", async () => {
@@ -267,8 +355,14 @@ describe("ToolsPanel flags and feedback", () => {
     render(<ToolsPanel />);
     await screen.findByText(/Prompt only for writes/);
     fireEvent.click(screen.getByRole("switch", { name: "Auto-approve shell" }));
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Update failed: boom"));
-    expect(screen.getByRole("switch", { name: "Auto-approve shell" }).getAttribute("aria-checked")).toBe("false");
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Update failed: boom"),
+    );
+    expect(
+      screen
+        .getByRole("switch", { name: "Auto-approve shell" })
+        .getAttribute("aria-checked"),
+    ).toBe("false");
   });
 });
 
@@ -304,7 +398,11 @@ describe("ToolsPanel names, focus targets and labels", () => {
     for (const h of sections) {
       expect(h.className).not.toContain("eyebrow");
     }
-    expect(screen.getByText(/Applies to the next tool call, in chat and on channels/)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Applies to the next tool call, in chat and on channels/,
+      ),
+    ).toBeTruthy();
     expect(screen.queryByText(/restart/)).toBeNull();
   });
 });
