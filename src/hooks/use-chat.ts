@@ -69,19 +69,26 @@ export interface UseChatOptions {
 // own first line intact, so the gateway's derived session title stays clean.
 // Keeps the gateway/agent untouched.
 
-
-
-
 /** Mark any still-running tool chip as finished — used when a turn ends without
  *  a `tool_call_end` (cancelled/aborted, or a dropped end frame) so the Activity
  *  disclosure doesn't pulse "Running" forever. */
 /** Close out calls still marked running when the turn ends. A turn that was
  *  stopped or denied marks them `cancelled` so the chip reads "stopped", not
  *  "err" (nothing failed) or "ok" (nothing ran). */
-function finalizeToolCalls(tools?: ToolCall[], cancelled = false): ToolCall[] | undefined {
+function finalizeToolCalls(
+  tools?: ToolCall[],
+  cancelled = false,
+): ToolCall[] | undefined {
   if (!tools?.length) return tools;
   return tools.map((t) =>
-    t.done ? t : { ...t, done: true, ok: t.ok ?? false, cancelled: cancelled || undefined },
+    t.done
+      ? t
+      : {
+          ...t,
+          done: true,
+          ok: t.ok ?? false,
+          cancelled: cancelled || undefined,
+        },
   );
 }
 
@@ -93,7 +100,9 @@ export function useChat(opts: UseChatOptions) {
   // so a second request that arrives before the first is answered is not lost
   // (it used to overwrite the first, which was then auto-denied at the gateway
   // deadline with no UI trace). The head is what the modal shows.
-  const [approvalQueue, setApprovalQueue] = React.useState<PendingApproval[]>([]);
+  const [approvalQueue, setApprovalQueue] = React.useState<PendingApproval[]>(
+    [],
+  );
   const pendingApproval = approvalQueue[0] ?? null;
   // Stable id used to scope KB attachments + retrieval per chat, AND sent as
   // `session_id` on the first turn so the gateway adopts it (RantAIClaw #289).
@@ -183,7 +192,8 @@ export function useChat(opts: UseChatOptions) {
       // setSessionId/approval updates are not, so gate them on this epoch +
       // controller (matching the `finally` teardown's own guard).
       const epoch = epochRef.current;
-      const owns = () => epoch === epochRef.current && abortRef.current === controller;
+      const owns = () =>
+        epoch === epochRef.current && abortRef.current === controller;
 
       const onEvent = (ev: ChatEvent) => {
         switch (ev.type) {
@@ -290,7 +300,10 @@ export function useChat(opts: UseChatOptions) {
               ...m,
               streaming: false,
               cancelled: ev.cancelled || m.cancelled,
-              toolCalls: finalizeToolCalls(m.toolCalls, !!(ev.cancelled || m.cancelled)),
+              toolCalls: finalizeToolCalls(
+                m.toolCalls,
+                !!(ev.cancelled || m.cancelled),
+              ),
               content:
                 m.content || (ev.cancelled ? "_(stopped)_" : ev.text || ""),
             }));
@@ -402,8 +415,15 @@ export function useChat(opts: UseChatOptions) {
         // The resolve POST failed (transient blip). Restore the prompt so the user
         // can retry, rather than silently letting the gateway's deadline auto-DENY
         // an intended approve. Only restore while the same turn is still live.
-        if (prev && prev.id === id && epoch === epochRef.current && abortRef.current)
-          setApprovalQueue((q) => (q.some((a) => a.id === id) ? q : [prev, ...q]));
+        if (
+          prev &&
+          prev.id === id &&
+          epoch === epochRef.current &&
+          abortRef.current
+        )
+          setApprovalQueue((q) =>
+            q.some((a) => a.id === id) ? q : [prev, ...q],
+          );
       }
     },
     [],
@@ -480,14 +500,20 @@ export function useChat(opts: UseChatOptions) {
   );
 
   // Thread-level token/cost totals for the context panel.
+  //
+  // `tokens` and `cost` are null when no message in the thread carried usage:
+  // the gateway sends a usage event only when the provider reported one, and
+  // several backends never do. Summing to 0 and rendering it made "nobody told
+  // us" look like a measured zero — a turn that consumed no tokens does not
+  // exist. `turns` and `toolCalls` are counted locally and are real zeros.
   const totals = React.useMemo(() => {
-    let tokens = 0;
-    let cost = 0;
+    let tokens: number | null = null;
+    let cost: number | null = null;
     let toolCalls = 0;
     for (const m of messages) {
       if (m.usage) {
-        tokens += m.usage.total || 0;
-        cost += m.usage.cost_usd || 0;
+        tokens = (tokens ?? 0) + (m.usage.total || 0);
+        cost = (cost ?? 0) + (m.usage.cost_usd || 0);
       }
       toolCalls += m.toolCalls?.length || 0;
     }

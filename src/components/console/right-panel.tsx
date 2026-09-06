@@ -16,10 +16,22 @@ export interface RightPanelData {
   channels: string[];
   skills: string[];
   sessionId: string | null;
-  totals: { turns: number; tokens: number; cost: number; toolCalls: number };
+  /** `tokens` and `cost` are null when no provider in the thread reported usage. */
+  totals: {
+    turns: number;
+    tokens: number | null;
+    cost: number | null;
+    toolCalls: number;
+  };
 }
 
-export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: { data: RightPanelData; onCollapse?: () => void }) {
+export const RightPanel = React.memo(function RightPanel({
+  data,
+  onCollapse,
+}: {
+  data: RightPanelData;
+  onCollapse?: () => void;
+}) {
   const auto = autonomyPreset(data.autonomy);
   const t = data.totals;
 
@@ -29,7 +41,11 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
         <PanelRight className="size-[15px] text-muted-foreground" />
         <div className="eyebrow">Session Context</div>
         {onCollapse && (
-          <button className="icon-btn ml-auto" onClick={onCollapse} title="Collapse panel">
+          <button
+            className="icon-btn ml-auto"
+            onClick={onCollapse}
+            title="Collapse panel"
+          >
             <PanelRightClose />
           </button>
         )}
@@ -43,7 +59,9 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
           <div className="kv">
             <div className="kv-row">
               <span className="k">model</span>
-              <span className="v">{data.model ? data.model.split("/").pop() : "not set"}</span>
+              <span className="v">
+                {data.model ? data.model.split("/").pop() : "not set"}
+              </span>
             </div>
             <div className="kv-row">
               <span className="k">provider</span>
@@ -56,18 +74,37 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
             <div className="kv-row">
               <span className="k">autonomy</span>
               {/* Dot carries the rung colour; the label stays foreground (purple text here was 2.5:1). */}
-              <span className="v" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <i style={{ width: 7, height: 7, borderRadius: 999, background: auto.dot }} />
+              <span
+                className="v"
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                <i
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 999,
+                    background: auto.dot,
+                  }}
+                />
                 {auto.label}
               </span>
             </div>
             <div className="kv-row">
               <span className="k">version</span>
-              <span className="v">{data.version ? `v${data.version}` : "unknown"}</span>
+              <span className="v">
+                {data.version ? `v${data.version}` : "unknown"}
+              </span>
             </div>
             <div className="kv-row">
               <span className="k">paired</span>
-              <span className="v" style={{ color: data.paired ? "var(--accent-green)" : "var(--accent-orange)" }}>
+              <span
+                className="v"
+                style={{
+                  color: data.paired
+                    ? "var(--accent-green)"
+                    : "var(--accent-orange)",
+                }}
+              >
                 {data.paired ? "yes" : "no"}
               </span>
             </div>
@@ -76,7 +113,10 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
 
         <div>
           <div className="rsec-title">
-            <span className="cdot" style={{ background: "var(--accent-green)" }} />
+            <span
+              className="cdot"
+              style={{ background: "var(--accent-green)" }}
+            />
             {/* `GET /channels` reports what is configured, not what is running
                 (the Channels panel joins runtime health for that), so this
                 block must not claim "online". */}
@@ -87,7 +127,10 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
             <div className="minis">
               {data.channels.map((c) => (
                 <div className="mini" key={c}>
-                  <span className="chan-dot" style={{ background: channelDot(c) }} />
+                  <span
+                    className="chan-dot"
+                    style={{ background: channelDot(c) }}
+                  />
                   <span className="m-name">{c}</span>
                   <span className="m-proto">set up</span>
                 </div>
@@ -100,9 +143,14 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
 
         <div>
           <div className="rsec-title">
-            <span className="cdot" style={{ background: "var(--accent-orange)" }} />
+            <span
+              className="cdot"
+              style={{ background: "var(--accent-orange)" }}
+            />
             <b>This session</b>
-            {data.sessionId && <span className="more">{data.sessionId.slice(0, 8)}</span>}
+            {data.sessionId && (
+              <span className="more">{data.sessionId.slice(0, 8)}</span>
+            )}
           </div>
           {/* The four numbers an operator glances at mid-conversation: designed
               as data, not as a debug key/value dump. */}
@@ -112,11 +160,13 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
               <span>turns</span>
             </div>
             <div className="stat-mini">
-              <b className="sky">{formatNumber(t.tokens)}</b>
+              <b className="sky">
+                {t.tokens === null ? "—" : formatNumber(t.tokens)}
+              </b>
               <span>tokens</span>
             </div>
             <div className="stat-mini">
-              <b>{formatUsd(t.cost)}</b>
+              <b>{t.cost === null ? "—" : formatUsd(t.cost)}</b>
               <span>cost</span>
             </div>
             <div className="stat-mini">
@@ -128,14 +178,21 @@ export const RightPanel = React.memo(function RightPanel({ data, onCollapse }: {
 
         <div>
           <div className="rsec-title">
-            <span className="cdot" style={{ background: "var(--accent-purple)" }} />
+            <span
+              className="cdot"
+              style={{ background: "var(--accent-purple)" }}
+            />
             <b>Active skills</b>
             <span className="more">{data.skills.length}</span>
           </div>
           {data.skills.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {data.skills.map((s) => (
-                <Badge key={s} variant="outline" className="font-mono text-[11px]">
+                <Badge
+                  key={s}
+                  variant="outline"
+                  className="font-mono text-[11px]"
+                >
                   {s}
                 </Badge>
               ))}
