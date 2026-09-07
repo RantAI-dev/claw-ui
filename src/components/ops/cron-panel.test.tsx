@@ -547,7 +547,6 @@ describe("CronPanel keyboard, contrast, names and sizes", () => {
     const create = button("Create");
     for (const label of ["Prompt", "Model override", "Repeats", "Cron expression", "Name"]) {
       const field = screen.getByLabelText(label);
-      // eslint-disable-next-line no-bitwise
       expect(field.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
     expect(screen.getByText(/Runs at 09:00, every day · UTC/)).toBeTruthy();
