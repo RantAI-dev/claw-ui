@@ -388,7 +388,9 @@ export function configVerdict(cfg: {
   };
 }
 
-const MASK = "••••••••";
+/** The one masking glyph. Exported so a panel rendering a stored secret uses the
+ *  same answer the config viewer does, rather than inventing a second one. */
+export const MASK = "••••••••";
 /** Provider key prefixes, mirroring RantAIClaw `config/api_url.rs` API_KEY_PREFIXES. */
 const API_KEY_PREFIXES = ["sk-", "sk_", "gsk_", "xai-", "AIza", "hf_"];
 const SECRET_FLAG_WORDS = ["key", "token", "secret", "password"];

@@ -8,11 +8,31 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import type { GatewayMcpServer } from "@/lib/types";
-import { CONFIG_CHANGED } from "@/lib/console";
+import { CONFIG_CHANGED, MASK } from "@/lib/console";
 import { toast } from "sonner";
 import { EmptyState, IconButton, PanelFrame, RefreshButton, SectionTitle } from "./shared";
+
+/** Parse `KEY=value` lines into an env map. One pair per line, because an MCP
+ *  credential routinely contains spaces and `=`, which space-splitting mangles.
+ *  Blank lines and `#` comments are dropped; only the FIRST `=` splits, so a
+ *  value may contain more. A line with no `=` is ignored rather than silently
+ *  becoming an empty-valued key. */
+export function parseEnv(input: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const raw of input.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    if (!key) continue;
+    out[key] = line.slice(eq + 1).trim();
+  }
+  return out;
+}
 
 /** Split a command-line arg string into tokens, honoring single/double quotes so
  *  a path with spaces (e.g. --path "/a b") survives as one arg. Whitespace-split
@@ -63,6 +83,7 @@ export function McpPanel() {
   const [name, setName] = React.useState("");
   const [command, setCommand] = React.useState("");
   const [args, setArgs] = React.useState("");
+  const [env, setEnv] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [working, setWorking] = React.useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = React.useState<string | null>(null);
@@ -71,14 +92,17 @@ export function McpPanel() {
     if (!name.trim() || !command.trim()) return;
     setBusy(true);
     try {
+      const envMap = parseEnv(env);
       await api.addMcpServer(name.trim(), {
         command: command.trim(),
         args: parseArgs(args),
+        ...(Object.keys(envMap).length ? { env: envMap } : {}),
       });
       toast.success(`Added MCP server “${name.trim()}” · applies on daemon restart`);
       setName("");
       setCommand("");
       setArgs("");
+      setEnv("");
       cfg.refresh();
       // Update the shell's MCP nav badge (a load-time snapshot).
       window.dispatchEvent(new Event(CONFIG_CHANGED));
@@ -143,6 +167,8 @@ export function McpPanel() {
                 {servers.map(([n, s]) => {
                   const sArgs = Array.isArray(s?.args) ? (s.args as string[]) : [];
                   const cmd = [s?.command as string, ...sArgs].filter(Boolean).join(" ");
+                  const envKeys =
+                    s?.env && typeof s.env === "object" ? Object.keys(s.env as object) : [];
                   const w = working === n;
                   return (
                     <div key={n} className="flex items-center gap-3 px-3 py-2.5">
@@ -154,6 +180,14 @@ export function McpPanel() {
                         <div className="truncate font-mono text-[11px] text-muted-foreground" title={cmd}>
                           {cmd || "no command recorded"}
                         </div>
+                        {envKeys.length > 0 && (
+                          // Keys visible, values masked — the same answer the config
+                          // viewer gives. An operator needs to know WHICH variable is
+                          // set far more often than what it is set to.
+                          <div className="truncate font-mono text-[11px] text-muted-foreground/80">
+                            {envKeys.map((k) => `${k}=${MASK}`).join("  ")}
+                          </div>
+                        )}
                       </div>
                       <IconButton
                         onClick={() => setPendingRemove(n)}
@@ -209,6 +243,23 @@ export function McpPanel() {
                 />
                 <span className="mt-1 block text-[11px] text-muted-foreground">
                   Space-separated; quote a value that contains spaces.
+                </span>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-muted-foreground">
+                  Environment <span className="text-muted-foreground/70">(optional)</span>
+                </span>
+                <Textarea
+                  value={env}
+                  onChange={(e) => setEnv(e.target.value)}
+                  aria-label="Environment"
+                  rows={3}
+                  placeholder={"GITHUB_TOKEN=ghp_...\nAPI_BASE=https://example.com"}
+                  className="font-mono text-xs"
+                />
+                <span className="mt-1 block text-[11px] text-muted-foreground">
+                  One <code>KEY=value</code> per line. Values are encrypted at rest by the
+                  gateway and shown here as {MASK} afterwards — keep your own copy.
                 </span>
               </label>
               <div className="flex items-center justify-between gap-2">

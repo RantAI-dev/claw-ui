@@ -24,6 +24,10 @@ jobs:
     steps:
       # SHAs pinned to match release.yml — no new action sources.
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          # Tags: the version check compares package.json against the newest one.
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: "20"
@@ -36,6 +40,21 @@ jobs:
       # is what keeps that true after the 16.3.4 bump.
       - name: Audit runtime dependencies
         run: npm audit --omit=dev --audit-level=high
+
+      # The console's auth boundary leans on framework and hook correctness, and
+      # `tsc` cannot see a hook mistake. Until this step existed there was no
+      # linter in the repo at all — `next lint` was removed in Next 16, so the
+      # `lint` script had been a no-op error for a while.
+      - name: Lint
+        run: npm run lint
+
+      # `package.json` said 0.2.0 while the shipped tag was v0.3.27. Falling
+      # behind is the failure that happened, so that is what this fails on;
+      # bumping ahead of the tag (a release PR) is allowed.
+      - name: Version is not behind the newest tag
+        run: |
+          node scripts/check-version.mjs --self-test
+          node scripts/check-version.mjs
 
       - name: Typecheck
         run: npx tsc --noEmit
