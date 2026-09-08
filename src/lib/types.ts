@@ -307,18 +307,35 @@ export interface KbReExtractResult {
 }
 
 /**
- * How mature the runtime says a channel is.
+ * What the project commits to for a channel.
  *
- * The runtime's `ChannelMaturity` (RantaiClaw `src/channels/mod.rs`), on the
- * wire. Not a union the console decides — a value it renders.
+ * The runtime's `ChannelSupport` (RantaiClaw `src/channels/mod.rs`), on the
+ * wire. Not a union the console decides, a value it renders.
  */
-export type ChannelMaturity = "supported" | "under_development";
+export type ChannelSupport = "supported" | "under_development";
+
+/**
+ * Whether anyone has driven the channel against the real platform.
+ *
+ * The runtime's `ChannelVerification`. Independent of `ChannelSupport`:
+ * "supported" and "not_driven" together is a real state, not a missing value,
+ * and it describes three channels today.
+ */
+export type ChannelVerification = "driven" | "not_driven";
+
+/** Deprecated alias for `ChannelSupport`, kept while `maturity` is on the wire. */
+export type ChannelMaturity = ChannelSupport;
 
 /** One row of the runtime's channel catalog, as `/api/v1/channels` publishes it. */
 export interface ChannelCatalogEntry {
   key: string;
   label: string;
-  maturity: ChannelMaturity;
+  /** What the project commits to. Absent on a runtime older than the split. */
+  support?: ChannelSupport;
+  /** The runtime's deprecated alias for `support`. Older runtimes send only this. */
+  maturity?: ChannelSupport;
+  /** Whether anyone has driven it. Absent on a runtime older than the split. */
+  verification?: ChannelVerification;
   configured: boolean;
 }
 

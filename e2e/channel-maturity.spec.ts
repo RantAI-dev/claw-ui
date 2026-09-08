@@ -20,7 +20,7 @@ test.afterAll(async () => {
   await sandbox?.stop();
 });
 
-test("the console renders the runtime's tier, or degrades to keys when it has none", async ({
+test("the console renders the runtime's labels, or degrades to keys when it has none", async ({
   page,
 }) => {
   // Which of the two branches below runs depends on the gateway, not on the
@@ -40,8 +40,29 @@ test("the console renders the runtime's tier, or degrades to keys when it has no
   if (servesCatalog) {
     const ircRow = page.getByRole("listitem").filter({ hasText: "IRC" });
     await expect(ircRow).toContainText("Under development");
-    // Telegram is `supported` and has its own card; it carries no tier badge.
+    // Telegram is `supported` and has its own card; it carries no support badge.
     await expect(page.getByText("Under development", { exact: true })).toHaveCount(1);
+
+    // The verification axis, when the gateway has one. A runtime between #766
+    // and the split serves `maturity` alone, so this half is conditional on the
+    // field being present rather than on the catalog being present at all.
+    const servesVerification = catalog.channels.some(
+      (c: { verification?: string }) => typeof c.verification === "string",
+    );
+    if (servesVerification) {
+      // Supported and never driven: no support badge, and the qualifier shown.
+      // This is the state that was invisible before the split.
+      const discordRow = page.getByRole("listitem").filter({ hasText: "Discord" });
+      await expect(discordRow).not.toContainText("Under development");
+      await expect(discordRow).toContainText("not yet verified");
+
+      // Under development and never driven: both signals on one row.
+      await expect(ircRow).toContainText("not yet verified");
+
+      // Supported and driven: said out loud on Telegram's own card, so the good
+      // case is not left to be inferred from an absence.
+      await expect(page.getByText("verified", { exact: true })).toBeVisible();
+    }
     return;
   }
 

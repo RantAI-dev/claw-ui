@@ -12,6 +12,34 @@ carries the paired entry and the release notes.
 
 ### Changed
 
+- **The console shows the two axes the runtime now publishes, so "supported" stops implying
+  "verified".** RantaiClaw split the single channel label into a **support** axis (what the
+  project commits to) and a **verification** axis (whether anyone has driven it). The console
+  read the first and would have shown only that, which is the exact claim this effort has been
+  removing everywhere else: a channel reading "supported" in a UI when nobody has watched a
+  message arrive on it.
+  The support axis keeps the badge it had. Verification reads as a quieter qualifier next to it,
+  not a second chip: two chips per row would make the list unreadable and would imply the two
+  facts carry equal weight, and they do not. One is a commitment and one is evidence.
+  The three states now read differently at a glance. A supported and driven channel says
+  **verified**, a supported and undriven one says **not yet verified**, and an under-development
+  one carries both its badge and the qualifier.
+- **Telegram's card says "verified" out loud** rather than leaving the good case to be inferred
+  from an absence. Telegram is the only driven channel and it has its own card, so without this
+  the two states would have sat on different components with nothing said on either.
+- **The panel explains what "not yet verified" means** in one sentence, next to the count: the
+  project stands behind these channels and nobody has watched a message arrive on one yet. An
+  operator is about to hand one of them credentials.
+- **A console newer than its gateway still renders.** `support` falls back to the `maturity`
+  field older runtimes send, and verification stays `null` rather than being invented: a runtime
+  from before the split has no opinion, and claiming "not yet verified" on its behalf would be
+  making up evidence about a channel the console cannot see. The E2E asserts the two-axis case
+  and the degradation separately, and passes against both the current build and the released
+  binary that has neither field.
+
+
+### Changed
+
 - **The linter's backlog is down from 51 warnings to 37, and what is left is named.** Plan 326's
   first three groups:
   - The one `@next/next/no-location-assign-relative-destination` finding is **justified, not

@@ -150,6 +150,13 @@ nickname = "rantaiclaw_bot"
 channels = ["#rantaiclaw"]
 allowed_users = ["*"]
 
+# Supported and never driven, which is the third state the panel has to show.
+# Nothing here dials Discord; the token is a placeholder and the listener is
+# never started by these tests.
+[channels_config.discord]
+bot_token = "placeholder-not-a-real-token"
+allowed_users = ["*"]
+
 [gateway]
 enabled = true
 host = "127.0.0.1"
