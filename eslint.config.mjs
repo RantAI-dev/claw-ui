@@ -58,6 +58,29 @@ const config = [
       "react-hooks/refs": "warn",
       "react-hooks/immutability": "warn",
       "react-hooks/use-memo": "warn",
+
+      // `no-unused-vars`, told the two conventions this codebase already
+      // follows. Neither option hides a finding; both describe a binding whose
+      // whole purpose is to be unused, and without them the only way to satisfy
+      // the rule is to stop writing the intent down.
+      //
+      //   `^_`  — a parameter that exists to hold a position in a signature.
+      //           `resolveApprovalMock(_id, _approve, _always)` cannot drop its
+      //           first two arguments and keep the third, and `_a` in the toast
+      //           mocks is the same shape. The underscore IS the annotation.
+      //
+      //   rest siblings — `ol({ start, node, ...props })` in the markdown
+      //           renderer destructures `node` precisely so it does NOT reach
+      //           `...props` and end up on a DOM element. Removing it would
+      //           reintroduce the bug it prevents.
+      //
+      // Everything the rule found that was genuinely dead — four imports and a
+      // local — was deleted rather than configured away, which is what keeps
+      // this pair honest.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
     },
   },
 ];

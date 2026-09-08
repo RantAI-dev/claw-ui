@@ -555,7 +555,6 @@ export function ConsoleShell({
 
   // ⇧⇥ cycles autonomy (and persists).
   React.useEffect(() => {
-    const order = AUTONOMY.map((p) => p.id);
     const onKey = (e: KeyboardEvent) => {
       if (e.shiftKey && e.key === "Tab") {
         // Shift+Tab is the universal "focus previous" key. Exempting only text
