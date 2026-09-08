@@ -53,9 +53,20 @@ function statusWith(components: Record<string, unknown>) {
   };
 }
 
+/**
+ * What `/api/v1/channels` sends for its catalog. Deliberately short: the console
+ * holds no catalog of its own any more, and a sixteen-row fixture here would be
+ * the same hand-maintained copy this change deleted.
+ */
+const CATALOG = [
+  { key: "telegram", label: "Telegram", maturity: "supported" as const, configured: true },
+  { key: "discord", label: "Discord", maturity: "supported" as const, configured: false },
+  { key: "webhook", label: "Webhook", maturity: "under_development" as const, configured: false },
+];
+
 beforeEach(() => {
   gateway.connection = "online";
-  channels.mockResolvedValue({ configured: ["telegram"], count: 1 });
+  channels.mockResolvedValue({ configured: ["telegram"], count: 1, channels: CATALOG });
   config.mockResolvedValue({ channels_config: { telegram: { allowed_users: ["alice"] } } });
   status.mockResolvedValue(statusWith({ gateway: component() }));
 });
@@ -99,18 +110,63 @@ describe("ChannelsPanel status words", () => {
   });
 
   it("lists the other configured channels with the same vocabulary, and nothing else", async () => {
-    channels.mockResolvedValue({ configured: ["telegram", "discord", "webhook"], count: 3 });
+    channels.mockResolvedValue({
+      configured: ["telegram", "discord", "webhook"],
+      count: 3,
+      channels: CATALOG,
+    });
     render(<ChannelsPanel />);
     const rows = await screen.findAllByRole("listitem");
     expect(rows).toHaveLength(2);
     expect(rows[0].textContent).toMatch(/Discord/);
     expect(rows[1].textContent).toMatch(/Webhook/);
     expect(rows[1].textContent).toMatch(/Served by the gateway/);
-    expect(screen.queryByText(/under development/i)).toBeNull();
+    // This used to assert that "under development" appeared nowhere, back when
+    // the console had no idea what a tier was. The tier badge is deliberate now
+    // — but it is still not part of the state vocabulary, so it appears on the
+    // under-development row and on no other.
+    expect(rows[0].textContent).not.toMatch(/Under development/);
+    expect(rows[1].textContent).toMatch(/Under development/);
+  });
+
+  it("badges an under-development channel and leaves a supported one unbadged", async () => {
+    // The point of the whole catalog change: a grid of equal-looking tiles says
+    // all sixteen channels are equally ready, and they are not.
+    channels.mockResolvedValue({
+      configured: ["telegram", "discord", "webhook"],
+      count: 3,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows[0].textContent).toMatch(/Discord/);
+    expect(rows[0].textContent).not.toMatch(/Under development/);
+    expect(rows[1].textContent).toMatch(/Webhook/);
+    expect(rows[1].textContent).toMatch(/Under development/);
+  });
+
+  it("renders a key the catalog does not carry as the key, with no tier claimed", async () => {
+    channels.mockResolvedValue({
+      configured: ["telegram", "zzz"],
+      count: 2,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toMatch(/zzz/);
+    expect(rows[0].textContent).not.toMatch(/Under development/);
+  });
+
+  it("says what the label means before an operator commits credentials", async () => {
+    render(<ChannelsPanel />);
+    expect(
+      await screen.findByText(/1 of the 3 channel types this runtime knows/),
+    ).toBeTruthy();
   });
 
   it("shows the connect form and no list when nothing is configured", async () => {
-    channels.mockResolvedValue({ configured: [], count: 0 });
+    channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
     expect(await screen.findByText("Not reachable on any channel")).toBeTruthy();
@@ -120,14 +176,18 @@ describe("ChannelsPanel status words", () => {
   });
 
   it("says the runtime-level cause once, in the band, not on every card", async () => {
-    channels.mockResolvedValue({ configured: ["telegram", "discord"], count: 2 });
+    channels.mockResolvedValue({
+      configured: ["telegram", "discord"],
+      count: 2,
+      channels: CATALOG,
+    });
     render(<ChannelsPanel />);
     expect(await screen.findByText("2 channels configured, not running")).toBeTruthy();
     expect(await screen.findAllByText(/channels runtime is not running/)).toHaveLength(1);
   });
 
   it("shows the channels-wide approval boundary whether or not Telegram is configured", async () => {
-    channels.mockResolvedValue({ configured: [], count: 0 });
+    channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
     config.mockResolvedValue({
       channels_config: { approval_owners: ["1360247715"], autonomous_tools: false },
     });
@@ -234,7 +294,7 @@ describe("ChannelsPanel actions", () => {
   });
 
   it("names the connect fields with labels and submits on Enter", async () => {
-    channels.mockResolvedValue({ configured: [], count: 0 });
+    channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
     const token = (await screen.findByLabelText("Bot token")) as HTMLInputElement;

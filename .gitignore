@@ -36,3 +36,9 @@ next-env.d.ts
 # Nexus brand build dir
 .next-nexus/
 .devgateway/
+
+# Internal working notes — audits and execution plans. Never commit: these are
+# working artefacts, not product, and a set of them was once pushed to a public
+# branch by accident. RantaiClaw's .gitignore carries the same two lines.
+/plans/
+/anti-slop/

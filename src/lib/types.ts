@@ -306,9 +306,35 @@ export interface KbReExtractResult {
   error?: string;
 }
 
+/**
+ * How mature the runtime says a channel is.
+ *
+ * The runtime's `ChannelMaturity` (RantaiClaw `src/channels/mod.rs`), on the
+ * wire. Not a union the console decides — a value it renders.
+ */
+export type ChannelMaturity = "supported" | "under_development";
+
+/** One row of the runtime's channel catalog, as `/api/v1/channels` publishes it. */
+export interface ChannelCatalogEntry {
+  key: string;
+  label: string;
+  maturity: ChannelMaturity;
+  configured: boolean;
+}
+
 export interface ChannelsInfo {
   configured: string[];
   count: number;
+  /**
+   * The whole catalog, in the runtime's order.
+   *
+   * Optional because a console can be newer than the gateway it is pointed at:
+   * a runtime from before this field existed sends `configured`/`count` only,
+   * and the panel must degrade to a list without labels or tiers rather than
+   * fall back to a second hand-written catalog. Carrying that copy is what this
+   * field exists to delete.
+   */
+  channels?: ChannelCatalogEntry[];
 }
 
 /** Result of the "connect Telegram" / allowlist-update flow (validate + persist). */

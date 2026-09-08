@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
-import { CHANNEL_CATALOG, allowlistToastTitle, channelState, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import { allowlistToastTitle, channelState, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
 import { cn } from "@/lib/utils";
@@ -99,7 +99,14 @@ export function ChannelsPanel() {
   const staleStatus = statusIsStale(error, gateway.connection);
   const runtime = st.data ? parseRuntimeHealth(st.data.runtime) : null;
   const tgState = channelState("telegram", data?.configured ?? null, runtime, staleStatus);
-  const rows = configuredRows(data?.configured ?? null, runtime, staleStatus);
+  // The runtime's catalog, not a copy of it. Empty when the gateway predates
+  // the field — the rows then render by key, which is the same degradation an
+  // unknown key already got.
+  const catalog = data?.channels ?? [];
+  const underDevelopmentCount = catalog.filter(
+    (c) => c.maturity === "under_development",
+  ).length;
+  const rows = configuredRows(data?.configured ?? null, runtime, staleStatus, catalog);
   // Set after a save the gateway said restarts the runtime, so the outage that
   // follows is presented as the change being applied, not as a load error.
   // `waiting`: the response is in and the restart is scheduled (the gateway
@@ -197,7 +204,7 @@ export function ChannelsPanel() {
     wasOffline.current = !online;
   }, [gateway.connection, refreshNow]);
 
-  const verdict = channelsVerdict(data?.configured ?? null, runtime, staleStatus);
+  const verdict = channelsVerdict(data?.configured ?? null, runtime, staleStatus, catalog);
 
   return (
     <div className="max-w-[1120px] space-y-8">
@@ -255,10 +262,21 @@ export function ChannelsPanel() {
                 Set up with <code>rantaiclaw setup</code> or in config.toml; this console
                 manages Telegram.
               </p>
+              {underDevelopmentCount > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {underDevelopmentCount} of the {catalog.length} channel types this
+                  runtime knows are marked{" "}
+                  <span className="font-medium text-foreground">under development</span>:
+                  they build and have tests, but nobody has watched a message arrive and{" "}
+                  <code>channel doctor</code> does not probe them. Connecting one is
+                  fine — expect to debug it yourself.
+                </p>
+              )}
               {rows.length === 0 && (
                 <Card className="mt-3 p-4 text-xs text-muted-foreground">
-                  None configured yet. {CHANNEL_CATALOG.length - 1} more channels are
-                  available.
+                  {catalog.length > 0
+                    ? `None configured yet. ${catalog.length - 1} more channels are available.`
+                    : "None configured yet."}
                 </Card>
               )}
               {rows.length > 0 && (
@@ -277,6 +295,9 @@ export function ChannelsPanel() {
                           />
                           <span className="font-medium">{r.label}</span>
                           <Badge variant={r.state.tone}>{r.state.label}</Badge>
+                          {r.maturity === "under_development" && (
+                            <Badge variant="warning">Under development</Badge>
+                          )}
                         </div>
                         {r.state.detail && r.state.detailScope === "channel" && (
                           <p

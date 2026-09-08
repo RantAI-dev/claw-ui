@@ -1,31 +1,29 @@
 import type { RuntimeHealth } from "./status";
+import type { ChannelCatalogEntry, ChannelMaturity } from "./types";
 
 /**
- * The runtime's channel catalog, in its order (RantAIClaw `src/channels/mod.rs`,
- * `CHANNEL_CATALOG`). Labels are the console's. A key the runtime reports that is
- * missing here still renders, as the key.
+ * The console used to keep its own transcription of the runtime's catalog here.
+ * Two hand-maintained lists of the same thing, in two repositories, and its own
+ * comment admitted they could disagree — which is how `/api/v1/channels` came
+ * to report 7 of 11 channels. The list now arrives on that endpoint
+ * (`ChannelsInfo.channels`) and every function below takes it as an argument
+ * rather than reaching for a literal.
+ *
+ * The fallback the old comment described is kept: a key the catalog does not
+ * carry still renders, as the key. That covers both directions of version skew
+ * — a runtime newer than this console, and a gateway too old to send a catalog
+ * at all.
  */
-export const CHANNEL_CATALOG: { key: string; label: string }[] = [
-  { key: "telegram", label: "Telegram" },
-  { key: "discord", label: "Discord" },
-  { key: "slack", label: "Slack" },
-  { key: "mattermost", label: "Mattermost" },
-  { key: "webhook", label: "Webhook" },
-  { key: "imessage", label: "iMessage" },
-  { key: "matrix", label: "Matrix" },
-  { key: "signal", label: "Signal" },
-  { key: "whatsapp", label: "WhatsApp" },
-  { key: "linq", label: "Linq (SMS/RCS)" },
-  { key: "nextcloud_talk", label: "Nextcloud Talk" },
-  { key: "email", label: "Email" },
-  { key: "irc", label: "IRC" },
-  { key: "lark", label: "Lark / Feishu" },
-  { key: "dingtalk", label: "DingTalk" },
-  { key: "qq", label: "QQ" },
-];
+export function channelLabel(key: string, catalog: ChannelCatalogEntry[]): string {
+  return catalog.find((c) => c.key === key)?.label ?? key;
+}
 
-export function channelLabel(key: string): string {
-  return CHANNEL_CATALOG.find((c) => c.key === key)?.label ?? key;
+/** The tier the runtime reports for `key`, or `null` when it does not know it. */
+export function channelMaturity(
+  key: string,
+  catalog: ChannelCatalogEntry[],
+): ChannelMaturity | null {
+  return catalog.find((c) => c.key === key)?.maturity ?? null;
 }
 
 export type ChannelWord = "running" | "error" | "configured" | "not configured" | "unknown";
@@ -99,19 +97,22 @@ export interface ChannelRow {
   key: string;
   label: string;
   state: ChannelState;
+  /** `null` for a key the runtime's catalog does not carry. */
+  maturity: ChannelMaturity | null;
 }
 
 /**
  * Every configured channel except Telegram (which has its own card), catalog
- * order first, keys the console does not know after, in the order reported.
+ * order first, keys the catalog does not carry after, in the order reported.
  */
 export function configuredRows(
   configured: string[] | null,
   runtime: RuntimeHealth | null,
   stale: boolean,
+  catalog: ChannelCatalogEntry[],
 ): ChannelRow[] {
   if (!configured) return [];
-  const known = CHANNEL_CATALOG.map((c) => c.key);
+  const known = catalog.map((c) => c.key);
   const rank = (k: string) => {
     const i = known.indexOf(k);
     return i === -1 ? known.length : i;
@@ -119,7 +120,12 @@ export function configuredRows(
   return configured
     .filter((k) => k !== "telegram")
     .sort((a, b) => rank(a) - rank(b))
-    .map((key) => ({ key, label: channelLabel(key), state: channelState(key, configured, runtime, stale) }));
+    .map((key) => ({
+      key,
+      label: channelLabel(key, catalog),
+      state: channelState(key, configured, runtime, stale),
+      maturity: channelMaturity(key, catalog),
+    }));
 }
 
 export interface ChannelsVerdict {
@@ -142,6 +148,7 @@ export function channelsVerdict(
   configured: string[] | null,
   runtime: RuntimeHealth | null,
   stale: boolean,
+  catalog: ChannelCatalogEntry[],
 ): ChannelsVerdict {
   if (stale) {
     return {
@@ -167,7 +174,7 @@ export function channelsVerdict(
     return {
       headline:
         failing.length === 1
-          ? `${channelLabel(failing[0].key)} is failing`
+          ? `${channelLabel(failing[0].key, catalog)} is failing`
           : `${failing.length} channels are failing`,
       tone: "destructive",
       meta,
@@ -176,7 +183,7 @@ export function channelsVerdict(
   }
   const reachable = states.filter((s) => s.state.word === "running" || s.key === "webhook");
   if (reachable.length > 0) {
-    const names = reachable.map((s) => channelLabel(s.key));
+    const names = reachable.map((s) => channelLabel(s.key, catalog));
     return {
       headline:
         names.length === 1
@@ -189,7 +196,8 @@ export function channelsVerdict(
       detail: null,
     };
   }
-  const subject = states.length === 1 ? channelLabel(states[0].key) : `${states.length} channels`;
+  const subject =
+    states.length === 1 ? channelLabel(states[0].key, catalog) : `${states.length} channels`;
   const detail = !runtime
     ? NO_SNAPSHOT
     : !runtime.components.some((c) => c.name === "channels")
