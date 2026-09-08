@@ -738,6 +738,15 @@ export function ConsoleShell({
 
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    // A hard navigation, not `router.push`, and the destination is a literal.
+    //
+    // The rule this disables exists for open redirects — assigning a
+    // *user-controlled* relative destination. "/login" is neither user-controlled
+    // nor dynamic. What the hard navigation buys is the reason to keep it: it
+    // tears down the React tree, so the session list, the config dump and the
+    // personality this component is holding in memory go with it. A client-side
+    // push would leave every one of them sitting in a logged-out console.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- literal destination; the full reload is what discards in-memory session data
     window.location.href = "/login";
   };
 
