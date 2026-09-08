@@ -10,6 +10,56 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.28] — 2026-09-08
+
+Paired with RantaiClaw `v0.31.0-alpha`, and this console needs it: the channel
+badges below read two fields that only that runtime serves. Against an older
+gateway the list still renders, by key, with no tier claimed.
+
+### Added
+
+- **An `env` field on the MCP panel.** The API had accepted `env` all along and the gateway
+  encrypts it at rest, so a server needing a credential could be configured everywhere except
+  here. Stored keys are listed with masked values, reusing the `MASK` the config viewer already
+  uses. (Landed in #114, before this file existed, so it appears here rather than in its own PR
+  entry.)
+- **A linter, and a version that cannot fall behind.** The repository had none: `next lint` was
+  removed in Next 16 and the `lint` script had been failing for a while. CI now runs ESLint and
+  fails on a stale `eslint-disable`. `package.json` said `0.2.0` while the shipped tag was
+  `v0.3.27`; `scripts/check-version.mjs` keeps that from happening again. (#114)
+
+- **The console's first end-to-end tests, against a real gateway.** 695 unit tests click real
+  buttons and assert real request bodies — and all of them stop at the BFF boundary. Nothing had
+  ever verified that a login actually gates, that a chat turn survives a round trip, or that the
+  console stays legible when the gateway is down. Five Playwright scenarios now run against the
+  **released `rantaiclaw` binary** with a scratch `HOME`, not a mock; only the model is stubbed,
+  because it is the one component whose answers must be deterministic and the one this suite is
+  not about.
+  - **The login gate** — the assertion the unit tests structurally cannot make. The gate is a Next
+    middleware; a unit test can assert that file's logic, but only an end-to-end run can assert
+    that the framework runs it before serving `/api/rc/*`. Verified failing: with the gate's
+    `denied()` replaced by `NextResponse.next()`, the scenario goes red.
+  - **A chat turn**, composer to reply, through the SSE relay and a tool call.
+  - **An ops-panel write**, asserted against what the *gateway* reports afterwards rather than
+    against the request the console sent — that second half is where the audits kept finding
+    saves that reported success and changed nothing.
+  - **The gateway going away**: the BFF answers 502 and the page names the outage, instead of a
+    blank panel or a spinner that never resolves.
+  - **The channel maturity badge**, end to end from the runtime's catalog to the pixel.
+  Eight assertions, **17 seconds**, no retries and nothing skipped — five scenarios that always
+  run beat twenty that get disabled the first time they flake. CI runs them as their own job
+  against the newest published release binary; no new GitHub Action source was added.
+
+- **A channel's maturity is visible where channels are listed.** A grid of equal-looking rows
+  says all sixteen channels are equally ready; they are not. An `under_development` channel now
+  carries an "Under development" badge — the existing `warning` badge variant, whose contrast
+  was already checked, not a new chip — and a `supported` one carries none. The section says in
+  one sentence what the label means before an operator commits credentials: these build and have
+  tests, nobody has watched a message arrive, `channel doctor` does not probe them, and
+  connecting one is fine as long as you expect to debug it yourself.
+- **This file.** The console had no changelog, so console changes were only ever described in
+  the runtime's. Each console PR now writes its own entry here.
+
 ### Changed
 
 - **The console shows the two axes the runtime now publishes, so "supported" stops implying
@@ -36,9 +86,6 @@ carries the paired entry and the release notes.
   making up evidence about a channel the console cannot see. The E2E asserts the two-axis case
   and the degradation separately, and passes against both the current build and the released
   binary that has neither field.
-
-
-### Changed
 
 - **The linter's backlog is down from 51 warnings to 37, and what is left is named.** Plan 326's
   first three groups:
@@ -69,34 +116,6 @@ carries the paired entry and the release notes.
   stay at `warn` until that count is zero — raising them early would be the exemption-that-nobody-
   has-to-act-on this backlog already is.
 
-
-### Added
-
-- **The console's first end-to-end tests, against a real gateway.** 695 unit tests click real
-  buttons and assert real request bodies — and all of them stop at the BFF boundary. Nothing had
-  ever verified that a login actually gates, that a chat turn survives a round trip, or that the
-  console stays legible when the gateway is down. Five Playwright scenarios now run against the
-  **released `rantaiclaw` binary** with a scratch `HOME`, not a mock; only the model is stubbed,
-  because it is the one component whose answers must be deterministic and the one this suite is
-  not about.
-  - **The login gate** — the assertion the unit tests structurally cannot make. The gate is a Next
-    middleware; a unit test can assert that file's logic, but only an end-to-end run can assert
-    that the framework runs it before serving `/api/rc/*`. Verified failing: with the gate's
-    `denied()` replaced by `NextResponse.next()`, the scenario goes red.
-  - **A chat turn**, composer to reply, through the SSE relay and a tool call.
-  - **An ops-panel write**, asserted against what the *gateway* reports afterwards rather than
-    against the request the console sent — that second half is where the audits kept finding
-    saves that reported success and changed nothing.
-  - **The gateway going away**: the BFF answers 502 and the page names the outage, instead of a
-    blank panel or a spinner that never resolves.
-  - **The channel maturity badge**, end to end from the runtime's catalog to the pixel.
-  Eight assertions, **17 seconds**, no retries and nothing skipped — five scenarios that always
-  run beat twenty that get disabled the first time they flake. CI runs them as their own job
-  against the newest published release binary; no new GitHub Action source was added.
-
-
-### Changed
-
 - **The console no longer keeps its own copy of the channel catalog.** `src/lib/channels.ts`
   held a hand-typed `CHANNEL_CATALOG` of all sixteen channels, mirroring the runtime's, and its
   own comment admitted the two could disagree. Two hand-maintained lists of the same thing in
@@ -106,15 +125,3 @@ carries the paired entry and the release notes.
   kept and now covers both directions of version skew: a key the catalog does not carry renders
   as the key, and a gateway too old to send a catalog at all leaves the rows rendering by key
   rather than blanking.
-
-### Added
-
-- **A channel's maturity is visible where channels are listed.** A grid of equal-looking rows
-  says all sixteen channels are equally ready; they are not. An `under_development` channel now
-  carries an "Under development" badge — the existing `warning` badge variant, whose contrast
-  was already checked, not a new chip — and a `supported` one carries none. The section says in
-  one sentence what the label means before an operator commits credentials: these build and have
-  tests, nobody has watched a message arrive, `channel doctor` does not probe them, and
-  connecting one is fine as long as you expect to debug it yourself.
-- **This file.** The console had no changelog, so console changes were only ever described in
-  the runtime's. Each console PR now writes its own entry here.
