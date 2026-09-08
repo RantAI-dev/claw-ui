@@ -59,9 +59,30 @@ function statusWith(components: Record<string, unknown>) {
  * the same hand-maintained copy this change deleted.
  */
 const CATALOG = [
-  { key: "telegram", label: "Telegram", maturity: "supported" as const, configured: true },
-  { key: "discord", label: "Discord", maturity: "supported" as const, configured: false },
-  { key: "webhook", label: "Webhook", maturity: "under_development" as const, configured: false },
+  {
+    key: "telegram",
+    label: "Telegram",
+    support: "supported" as const,
+    maturity: "supported" as const,
+    verification: "driven" as const,
+    configured: true,
+  },
+  {
+    key: "discord",
+    label: "Discord",
+    support: "supported" as const,
+    maturity: "supported" as const,
+    verification: "not_driven" as const,
+    configured: false,
+  },
+  {
+    key: "webhook",
+    label: "Webhook",
+    support: "under_development" as const,
+    maturity: "under_development" as const,
+    verification: "not_driven" as const,
+    configured: false,
+  },
 ];
 
 beforeEach(() => {
@@ -122,16 +143,17 @@ describe("ChannelsPanel status words", () => {
     expect(rows[1].textContent).toMatch(/Webhook/);
     expect(rows[1].textContent).toMatch(/Served by the gateway/);
     // This used to assert that "under development" appeared nowhere, back when
-    // the console had no idea what a tier was. The tier badge is deliberate now
-    // — but it is still not part of the state vocabulary, so it appears on the
-    // under-development row and on no other.
+    // the console had no idea what a tier was. The support badge is deliberate
+    // now, and it is still not part of the state vocabulary, so it appears on
+    // the under-development row and on no other.
     expect(rows[0].textContent).not.toMatch(/Under development/);
     expect(rows[1].textContent).toMatch(/Under development/);
   });
 
-  it("badges an under-development channel and leaves a supported one unbadged", async () => {
-    // The point of the whole catalog change: a grid of equal-looking tiles says
-    // all sixteen channels are equally ready, and they are not.
+  it("shows the two axes separately, so the three states read differently", async () => {
+    // The point of the split. A grid of equal-looking rows says every channel is
+    // equally ready, and the middle state is the one that was invisible: the
+    // project stands behind Discord and nobody has driven it.
     channels.mockResolvedValue({
       configured: ["telegram", "discord", "webhook"],
       count: 3,
@@ -139,10 +161,34 @@ describe("ChannelsPanel status words", () => {
     });
     render(<ChannelsPanel />);
     const rows = await screen.findAllByRole("listitem");
+
+    // supported + not driven: no support badge, but the qualifier is there.
     expect(rows[0].textContent).toMatch(/Discord/);
     expect(rows[0].textContent).not.toMatch(/Under development/);
+    expect(rows[0].textContent).toMatch(/not yet verified/);
+
+    // under development + not driven: both signals.
     expect(rows[1].textContent).toMatch(/Webhook/);
     expect(rows[1].textContent).toMatch(/Under development/);
+    expect(rows[1].textContent).toMatch(/not yet verified/);
+  });
+
+  it("says a driven channel is verified rather than leaving it to an absence", async () => {
+    // Telegram is supported AND driven and has its own card, so the two states
+    // sit on different components. The card has to say "verified" out loud:
+    // before the split it rendered exactly like Discord, and after it, saying
+    // nothing would leave the reader inferring the good case from silence.
+    channels.mockResolvedValue({
+      configured: ["telegram", "discord"],
+      count: 2,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    expect(await screen.findByText("verified")).toBeTruthy();
+
+    const rows = await screen.findAllByRole("listitem");
+    const undriven = rows.find((r) => r.textContent?.includes("Discord"));
+    expect(undriven?.textContent).toMatch(/not yet verified/);
   });
 
   it("renders a key the catalog does not carry as the key, with no tier claimed", async () => {

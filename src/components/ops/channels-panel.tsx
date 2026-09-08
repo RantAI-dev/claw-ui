@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
-import { allowlistToastTitle, channelState, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import { allowlistToastTitle, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import type { ChannelVerification } from "@/lib/types";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
 import { cn } from "@/lib/utils";
@@ -103,8 +104,16 @@ export function ChannelsPanel() {
   // the field — the rows then render by key, which is the same degradation an
   // unknown key already got.
   const catalog = data?.channels ?? [];
+  const supportOf = (c: (typeof catalog)[number]) => c.support ?? c.maturity;
   const underDevelopmentCount = catalog.filter(
-    (c) => c.maturity === "under_development",
+    (c) => supportOf(c) === "under_development",
+  ).length;
+  // Committed to and never driven. The count is worth its own sentence because
+  // it is the state an operator is most likely to misread: the badge says the
+  // project stands behind the channel, and nobody has watched a message arrive
+  // on it.
+  const committedUndrivenCount = catalog.filter(
+    (c) => supportOf(c) === "supported" && c.verification === "not_driven",
   ).length;
   const rows = configuredRows(data?.configured ?? null, runtime, staleStatus, catalog);
   // Set after a save the gateway said restarts the runtime, so the outage that
@@ -248,6 +257,7 @@ export function ChannelsPanel() {
             <TelegramCard
               connected={tgConnected}
               state={tgState}
+              verification={channelVerification("telegram", catalog)}
               allowedUsers={telegramAllowlist(cfg.data)}
               onReload={refreshAfterReload}
             />
@@ -267,9 +277,18 @@ export function ChannelsPanel() {
                   {underDevelopmentCount} of the {catalog.length} channel types this
                   runtime knows are marked{" "}
                   <span className="font-medium text-foreground">under development</span>:
-                  they build and have tests, but nobody has watched a message arrive and{" "}
-                  <code>channel doctor</code> does not probe them. Connecting one is
-                  fine — expect to debug it yourself.
+                  they build and have tests, but <code>channel doctor</code> does not
+                  probe them and they are outside what an alpha release claims.
+                  Connecting one is fine. Expect to debug it yourself.
+                </p>
+              )}
+              {committedUndrivenCount > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A further {committedUndrivenCount} are supported but{" "}
+                  <span className="font-medium text-foreground">not yet verified</span>:
+                  the project stands behind them, and nobody has watched a message
+                  arrive on one yet. You are about to hand one of these credentials,
+                  so it is worth knowing which of the two you are getting.
                 </p>
               )}
               {rows.length === 0 && (
@@ -295,8 +314,19 @@ export function ChannelsPanel() {
                           />
                           <span className="font-medium">{r.label}</span>
                           <Badge variant={r.state.tone}>{r.state.label}</Badge>
-                          {r.maturity === "under_development" && (
+                          {r.support === "under_development" && (
                             <Badge variant="warning">Under development</Badge>
+                          )}
+                          {/* The verification axis reads as a quieter qualifier
+                              than the support badge, because it qualifies that
+                              badge rather than competing with it. Two chips per
+                              row would make the list unreadable and would imply
+                              the two facts carry equal weight, which they do
+                              not: one is a commitment, one is evidence. */}
+                          {r.verification === "not_driven" && (
+                            <span className="text-xs text-muted-foreground">
+                              not yet verified
+                            </span>
                           )}
                         </div>
                         {r.state.detail && r.state.detailScope === "channel" && (
@@ -403,11 +433,15 @@ function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousT
 function TelegramCard({
   connected,
   state,
+  verification,
   allowedUsers,
   onReload,
 }: {
   /** A Telegram section exists in config (the editor is shown). */
   connected: boolean;
+  /** Telegram's verification axis, so the card states it rather than implying
+   *  it by omission. `null` on a runtime older than the split. */
+  verification: ChannelVerification | null;
   /** What the runtime says about it; drives the badge and its detail line. */
   state: ChannelState;
   allowedUsers: string[];
@@ -540,6 +574,15 @@ function TelegramCard({
           style={{ background: channelDot("telegram") }}
         />
         <Badge variant={state.tone}>{state.label}</Badge>
+        {/* Said, not implied. The rows in "Other channels" carry "not yet
+            verified" as a qualifier; a card that said nothing would leave the
+            reader to infer the good case from an absence. */}
+        {verification === "driven" && (
+          <span className="text-xs text-muted-foreground">verified</span>
+        )}
+        {verification === "not_driven" && (
+          <span className="text-xs text-muted-foreground">not yet verified</span>
+        )}
       </div>
       <div className="space-y-2 p-4">
         {state.detail && state.detailScope === "channel" && (

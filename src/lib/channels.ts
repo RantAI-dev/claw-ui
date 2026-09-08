@@ -1,5 +1,5 @@
 import type { RuntimeHealth } from "./status";
-import type { ChannelCatalogEntry, ChannelMaturity } from "./types";
+import type { ChannelCatalogEntry, ChannelSupport, ChannelVerification } from "./types";
 
 /**
  * The console used to keep its own transcription of the runtime's catalog here.
@@ -18,12 +18,36 @@ export function channelLabel(key: string, catalog: ChannelCatalogEntry[]): strin
   return catalog.find((c) => c.key === key)?.label ?? key;
 }
 
-/** The tier the runtime reports for `key`, or `null` when it does not know it. */
-export function channelMaturity(
+/**
+ * What the runtime says the project commits to for `key`, or `null` when it
+ * does not say.
+ *
+ * Falls back to `maturity`, the field the runtime published before the axes
+ * were split and still sends as an alias. Without that fallback a console newer
+ * than its gateway would drop the badge entirely.
+ */
+export function channelSupport(
   key: string,
   catalog: ChannelCatalogEntry[],
-): ChannelMaturity | null {
-  return catalog.find((c) => c.key === key)?.maturity ?? null;
+): ChannelSupport | null {
+  const entry = catalog.find((c) => c.key === key);
+  return entry?.support ?? entry?.maturity ?? null;
+}
+
+/**
+ * Whether the runtime says anyone has driven `key`, or `null` when it does not
+ * say.
+ *
+ * `null` and `"not_driven"` are different answers and the panel renders them
+ * differently. A runtime older than the split has no opinion, and claiming
+ * "not yet verified" on its behalf would be inventing evidence about a channel
+ * the console cannot see.
+ */
+export function channelVerification(
+  key: string,
+  catalog: ChannelCatalogEntry[],
+): ChannelVerification | null {
+  return catalog.find((c) => c.key === key)?.verification ?? null;
 }
 
 export type ChannelWord = "running" | "error" | "configured" | "not configured" | "unknown";
@@ -98,7 +122,9 @@ export interface ChannelRow {
   label: string;
   state: ChannelState;
   /** `null` for a key the runtime's catalog does not carry. */
-  maturity: ChannelMaturity | null;
+  support: ChannelSupport | null;
+  /** `null` when the runtime is older than the two-axis split. */
+  verification: ChannelVerification | null;
 }
 
 /**
@@ -124,7 +150,8 @@ export function configuredRows(
       key,
       label: channelLabel(key, catalog),
       state: channelState(key, configured, runtime, stale),
-      maturity: channelMaturity(key, catalog),
+      support: channelSupport(key, catalog),
+      verification: channelVerification(key, catalog),
     }));
 }
 

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   allowlistToastTitle,
   channelLabel,
-  channelMaturity,
   channelState,
+  channelSupport,
+  channelVerification,
   channelsVerdict,
   configuredRows,
 } from "./channels";
@@ -13,13 +14,50 @@ import type { ChannelCatalogEntry } from "./types";
 /**
  * A stand-in for what `/api/v1/channels` sends, not a copy of the runtime's
  * catalog: the console no longer holds one, and a sixteen-row fixture here
- * would recreate the duplication this suite's subject exists to delete. Four
- * rows are enough to cover both tiers, catalog ordering, and an unknown key.
+ * would recreate the duplication this suite's subject exists to delete.
+ *
+ * Four rows, covering the three states an operator can meet plus an unknown
+ * key. Telegram is supported and driven, Discord is supported and not driven,
+ * and the two under-development rows are neither.
  */
 const CATALOG: ChannelCatalogEntry[] = [
-  { key: "telegram", label: "Telegram", maturity: "supported", configured: true },
+  {
+    key: "telegram",
+    label: "Telegram",
+    support: "supported",
+    maturity: "supported",
+    verification: "driven",
+    configured: true,
+  },
+  {
+    key: "discord",
+    label: "Discord",
+    support: "supported",
+    maturity: "supported",
+    verification: "not_driven",
+    configured: false,
+  },
+  {
+    key: "webhook",
+    label: "Webhook",
+    support: "under_development",
+    maturity: "under_development",
+    verification: "not_driven",
+    configured: false,
+  },
+  {
+    key: "irc",
+    label: "IRC",
+    support: "under_development",
+    maturity: "under_development",
+    verification: "not_driven",
+    configured: false,
+  },
+];
+
+/** What a runtime older than the two-axis split sends: `maturity` and no more. */
+const LEGACY_CATALOG: ChannelCatalogEntry[] = [
   { key: "discord", label: "Discord", maturity: "supported", configured: false },
-  { key: "webhook", label: "Webhook", maturity: "under_development", configured: false },
   { key: "irc", label: "IRC", maturity: "under_development", configured: false },
 ];
 
@@ -103,12 +141,26 @@ describe("configuredRows", () => {
     expect(configuredRows(null, null, false, CATALOG)).toEqual([]);
   });
 
-  it("carries the runtime's tier per row, and null for a key it does not know", () => {
-    const rows = configuredRows(["discord", "irc", "zzz"], null, false, CATALOG);
-    expect(rows.map((r) => [r.key, r.maturity])).toEqual([
-      ["discord", "supported"],
-      ["irc", "under_development"],
-      ["zzz", null],
+  it("carries both axes per row, and null for a key it does not know", () => {
+    // Telegram is absent on purpose: `configuredRows` excludes it because it has
+    // its own card. Its supported-and-driven pair is asserted below, through
+    // `channelVerification`.
+    const rows = configuredRows(["telegram", "discord", "irc", "zzz"], null, false, CATALOG);
+    expect(rows.map((r) => [r.key, r.support, r.verification])).toEqual([
+      ["discord", "supported", "not_driven"],
+      ["irc", "under_development", "not_driven"],
+      ["zzz", null, null],
+    ]);
+  });
+
+  it("reads `maturity` as support when the runtime predates the split", () => {
+    // A console newer than its gateway. Support still renders; verification is
+    // `null` rather than an invented "not_driven", because that runtime has no
+    // opinion and claiming one would be inventing evidence.
+    const rows = configuredRows(["discord", "irc"], null, false, LEGACY_CATALOG);
+    expect(rows.map((r) => [r.key, r.support, r.verification])).toEqual([
+      ["discord", "supported", null],
+      ["irc", "under_development", null],
     ]);
   });
 
@@ -117,20 +169,29 @@ describe("configuredRows", () => {
     // here was a second hard-coded list; the rows render by key instead.
     const rows = configuredRows(["discord", "irc"], null, false, []);
     expect(rows.map((r) => r.label)).toEqual(["discord", "irc"]);
-    expect(rows.every((r) => r.maturity === null)).toBe(true);
+    expect(rows.every((r) => r.support === null && r.verification === null)).toBe(true);
   });
 });
 
-describe("channelLabel / channelMaturity", () => {
-  it("reads both off the catalog the runtime sent", () => {
+describe("channelLabel / channelSupport / channelVerification", () => {
+  it("reads all three off the catalog the runtime sent", () => {
     expect(channelLabel("webhook", CATALOG)).toBe("Webhook");
-    expect(channelMaturity("webhook", CATALOG)).toBe("under_development");
-    expect(channelMaturity("telegram", CATALOG)).toBe("supported");
+    expect(channelSupport("webhook", CATALOG)).toBe("under_development");
+    expect(channelSupport("telegram", CATALOG)).toBe("supported");
+    expect(channelVerification("telegram", CATALOG)).toBe("driven");
+    expect(channelVerification("discord", CATALOG)).toBe("not_driven");
   });
 
-  it("renders an unknown key as the key, and refuses to guess its tier", () => {
+  it("keeps the two axes independent", () => {
+    // The state the split exists for. Reading one from the other is the bug.
+    expect(channelSupport("discord", CATALOG)).toBe("supported");
+    expect(channelVerification("discord", CATALOG)).toBe("not_driven");
+  });
+
+  it("renders an unknown key as the key, and refuses to guess either axis", () => {
     expect(channelLabel("zzz", CATALOG)).toBe("zzz");
-    expect(channelMaturity("zzz", CATALOG)).toBeNull();
+    expect(channelSupport("zzz", CATALOG)).toBeNull();
+    expect(channelVerification("zzz", CATALOG)).toBeNull();
   });
 });
 
