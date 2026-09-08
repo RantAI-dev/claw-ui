@@ -10,6 +10,38 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **The linter's backlog is down from 51 warnings to 37, and what is left is named.** Plan 326's
+  first three groups:
+  - The one `@next/next/no-location-assign-relative-destination` finding is **justified, not
+    changed**. It is not an open redirect — the rule is about a *user-controlled* relative
+    destination and this is the literal `"/login"` in `logout`. The hard navigation is the point:
+    it tears down the React tree, so the session list, config dump and personality this component
+    holds in memory go with it. A client-side push would leave all three in a logged-out console.
+    The disable carries that reason on the line.
+  - **Ten unused-binding warnings, four of them genuinely dead** — two imports, a third import in a
+    test, and a computed-and-never-read local. Those are deleted. The other six are bindings whose
+    purpose is to be unused: `^_` parameters holding a position in a signature that cannot drop its
+    leading arguments, and `ol({ start, node, ...props })` in the markdown renderer, which
+    destructures `node` precisely so it does *not* land on a DOM element. The rule is told both
+    conventions rather than the code bent to satisfy it, and the four deletions are what keeps
+    that honest.
+  - **`useAsync` no longer reads a ref during render.** It backs every ops panel. `loaded` was a
+    ref, read at render and returned to callers — which works only because the write sits on the
+    same line as `setData`, whose re-render is what makes the new value visible. Reorder those two
+    statements and every consumer renders a stale `loaded` with nothing to say so; `PanelFrame`
+    uses it to decide whether a failed refresh blanks the panel or keeps the data on screen.
+    It is now a ref *and* a state value, written together and never separately.
+
+  **Still open: 37 warnings** — 24 `react-hooks/set-state-in-effect`, 7 `react-hooks/refs`,
+  3 `immutability`, 2 `use-memo`, 1 `exhaustive-deps`. Every one of them is a question about where
+  state should be derived rather than set, and plan 326 asks for a live drive of the affected panel
+  per file, because these bugs are invisible to unit tests by nature. The four `react-hooks` rules
+  stay at `warn` until that count is zero — raising them early would be the exemption-that-nobody-
+  has-to-act-on this backlog already is.
+
+
 ### Added
 
 - **The console's first end-to-end tests, against a real gateway.** 695 unit tests click real

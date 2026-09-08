@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Loader2, Network, RefreshCw } from "lucide-react";
+import { AlertTriangle, Network, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { api, describeApiError } from "@/lib/api";
 import { deriveGraphState } from "./graph-lens-helpers";

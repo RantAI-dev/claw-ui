@@ -17,7 +17,7 @@ import {
   skippedSentence,
   sortBySeverity,
 } from "@/lib/status";
-import type { GatewayConfig, StatusInfo } from "@/lib/types";
+import type { GatewayConfig } from "@/lib/types";
 import { formatNumber, relativeTime } from "@/lib/utils";
 import {
   EmptyState,
