@@ -69,6 +69,53 @@ jobs:
         env:
           RANTAICLAW_GATEWAY_URL: http://127.0.0.1:9393
 
-# Deliberately no lint step: `next lint` was removed in Next 16, and the `lint`
-# script left in package.json now fails with "no such directory: lint". Wiring
-# ESLint back up is a separate change from establishing a gate at all.
+  e2e:
+    name: E2E (real gateway)
+    needs: [check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+
+      # The gateway the suite talks to is the real binary, from the newest
+      # published release. Building RantaiClaw from source here would add ten
+      # minutes and a Rust toolchain to a JavaScript repo's CI for no extra
+      # signal — the console's contract is with a *released* gateway, which is
+      # what an operator runs.
+      #
+      # No token: RantAI-dev/RantAIClaw is public. If it ever stops being, this
+      # job fails loudly on the download rather than silently skipping.
+      - name: Fetch the released gateway binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download --repo RantAI-dev/RantAIClaw \
+            --pattern 'rantaiclaw-x86_64-unknown-linux-gnu.tar.gz' --dir /tmp/rc
+          tar -xzf /tmp/rc/rantaiclaw-x86_64-unknown-linux-gnu.tar.gz -C /tmp/rc
+          chmod +x /tmp/rc/rantaiclaw
+          /tmp/rc/rantaiclaw --version
+
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+        env:
+          RANTAICLAW_GATEWAY_URL: http://127.0.0.1:9393
+
+      - name: E2E
+        run: npx playwright test
+        env:
+          RANTAICLAW_BINARY: /tmp/rc/rantaiclaw
+
+      # No artifact upload on failure: that would add a third action source to a
+      # repo whose CI deliberately uses only the two already pinned in
+      # release.yml, and Playwright's `list` reporter plus the `github` reporter
+      # already put the failing assertion in the job log and the PR annotation.
+      # Traces are worth having; adding an action source is a separate decision.
