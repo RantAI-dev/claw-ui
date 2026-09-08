@@ -42,3 +42,9 @@ next-env.d.ts
 # branch by accident. RantaiClaw's .gitignore carries the same two lines.
 /plans/
 /anti-slop/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/
