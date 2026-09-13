@@ -50,6 +50,51 @@ export function channelVerification(
   return catalog.find((c) => c.key === key)?.verification ?? null;
 }
 
+/**
+ * The channels this console can set up, each with its own card.
+ *
+ * `configuredRows` leaves these out, because a row and a card would both claim
+ * the same channel while only the card can connect or disconnect it. The rule
+ * used to be the literal string "telegram", back when Telegram was the only
+ * channel with an endpoint behind it.
+ */
+export const CARDED_CHANNELS = ["telegram", "discord", "slack"] as const;
+
+/**
+ * Whether the runtime says `key`'s configured section carries a credential, or
+ * `null` when it does not say.
+ *
+ * Three answers, not two. `configured` only means a config section exists, so a
+ * section written by hand without the token reads as connected everywhere and
+ * never starts — that is what `false` is for. A gateway older than the field
+ * gets `null`, and so does a key the catalog does not carry: rendering either
+ * as "the token is missing" would invent evidence about a channel the console
+ * cannot see, which is the mistake `channelVerification` already refuses to
+ * make.
+ */
+export function channelHasCredentials(
+  key: string,
+  catalog: ChannelCatalogEntry[],
+): boolean | null {
+  return catalog.find((c) => c.key === key)?.has_credentials ?? null;
+}
+
+/**
+ * Whether `key` is configured but has no credential saved for it.
+ *
+ * The one state this exists for: `[channels_config.discord]` written by hand
+ * with `bot_token` left out. Only a runtime that answers the question can put
+ * the console in this state; silence is not an accusation.
+ */
+export function channelMissingCredentials(
+  key: string,
+  configured: string[] | null,
+  catalog: ChannelCatalogEntry[],
+): boolean {
+  if (!configured?.includes(key)) return false;
+  return channelHasCredentials(key, catalog) === false;
+}
+
 export type ChannelWord = "running" | "error" | "configured" | "not configured" | "unknown";
 
 export interface ChannelState {
@@ -128,7 +173,7 @@ export interface ChannelRow {
 }
 
 /**
- * Every configured channel except Telegram (which has its own card), catalog
+ * Every configured channel except the ones with their own setup card, catalog
  * order first, keys the catalog does not carry after, in the order reported.
  */
 export function configuredRows(
@@ -144,7 +189,10 @@ export function configuredRows(
     return i === -1 ? known.length : i;
   };
   return configured
-    .filter((k) => k !== "telegram")
+    // Widened on purpose: `CARDED_CHANNELS` keeps its literal type so the panel
+    // can derive its cards from it, and `includes` will not take a plain string
+    // against a readonly tuple of literals.
+    .filter((k) => !(CARDED_CHANNELS as readonly string[]).includes(k))
     .sort((a, b) => rank(a) - rank(b))
     .map((key) => ({
       key,
@@ -231,6 +279,41 @@ export function channelsVerdict(
       ? RUNTIME_DOWN
       : "The channels runtime is up, but nothing has started; check credentials in config.toml.";
   return { headline: `${subject} configured, not running`, tone: "muted", meta, detail };
+}
+
+/**
+ * What saving `next` would do to a server list that has moved since the editor
+ * was seeded from `seeded`.
+ *
+ * The POST replaces the allowlist wholesale, so anyone who self-onboarded via
+ * `/claim` after the panel loaded is silently revoked. The backend deliberately
+ * re-reads the freshest config under a lock to avoid clobbering them; the
+ * console defeated that by sending a stale snapshot back.
+ *
+ * Returns `null` when the server matches what the editor was seeded from —
+ * nothing to warn about.
+ *
+ * It lived in `channels-panel.tsx` while Telegram was the only card. Moved here
+ * unchanged when Discord and Slack started needing the same check; the panel
+ * re-exports the name so its own suite still finds it there.
+ */
+export function allowlistDrift(
+  seeded: string[],
+  server: string[],
+  next: string[],
+): { wouldRevoke: string[]; alsoChanged: string[] } | null {
+  const seededSet = new Set(seeded);
+  const serverSet = new Set(server);
+  const addedOnServer = server.filter((u) => !seededSet.has(u));
+  const goneFromServer = seeded.filter((u) => !serverSet.has(u));
+  if (addedOnServer.length === 0 && goneFromServer.length === 0) return null;
+  const nextSet = new Set(next);
+  return {
+    // Only the ones the operator's box does NOT already carry: an entry they
+    // typed back in is not being revoked.
+    wouldRevoke: addedOnServer.filter((u) => !nextSet.has(u)),
+    alsoChanged: goneFromServer,
+  };
 }
 
 /** The one success line for an allowlist save, from what the SERVER stored. */

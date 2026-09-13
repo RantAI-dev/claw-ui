@@ -2,29 +2,28 @@
 
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
-import { api, describeApiError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ConfirmModal } from "@/components/ui/confirm-modal";
-import { toast } from "sonner";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
-import { allowlistToastTitle, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import {
+  channelAllowlist,
+  DisconnectDialog,
+  DriftDialog,
+  MissingCredentialNotice,
+  PlainField,
+  SecretField,
+  SetupCardFrame,
+  useChannelSetup,
+} from "./channel-setup";
+import { allowlistDrift, CARDED_CHANNELS, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import type { ChannelVerification } from "@/lib/types";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
 import { cn } from "@/lib/utils";
-
-/** Pull the Telegram allowlist out of GET /config (the bot token itself is redacted). */
-function telegramAllowlist(config: Record<string, unknown> | null): string[] {
-  const cc = config?.["channels_config"] as Record<string, unknown> | undefined;
-  const tg = cc?.["telegram"] as Record<string, unknown> | undefined;
-  const allowed = tg?.["allowed_users"];
-  return Array.isArray(allowed) ? (allowed as string[]) : [];
-}
 
 /**
  * Who may approve a gated tool call, and whether the gate is on at all.
@@ -47,18 +46,6 @@ export function approvalBoundary(config: Record<string, unknown> | null): {
 }
 
 /**
- * What saving `next` would do to a server list that has moved since the editor
- * was seeded from `seeded`.
- *
- * The POST replaces the allowlist wholesale, so anyone who self-onboarded via
- * `/claim` after the panel loaded is silently revoked. The backend deliberately
- * re-reads the freshest config under a lock to avoid clobbering them; the
- * console defeated that by sending a stale snapshot back.
- *
- * Returns `null` when the server matches what the editor was seeded from —
- * nothing to warn about.
- */
-/**
  * Whether the channel status on screen is last-known rather than current.
  *
  * `PanelFrame` deliberately keeps content on screen when a *refresh* fails —
@@ -70,24 +57,16 @@ export function statusIsStale(error: string | null | undefined, connection: stri
   return !!error || connection !== "online";
 }
 
-export function allowlistDrift(
-  seeded: string[],
-  server: string[],
-  next: string[],
-): { wouldRevoke: string[]; alsoChanged: string[] } | null {
-  const seededSet = new Set(seeded);
-  const serverSet = new Set(server);
-  const addedOnServer = server.filter((u) => !seededSet.has(u));
-  const goneFromServer = seeded.filter((u) => !serverSet.has(u));
-  if (addedOnServer.length === 0 && goneFromServer.length === 0) return null;
-  const nextSet = new Set(next);
-  return {
-    // Only the ones the operator's box does NOT already carry: an entry they
-    // typed back in is not being revoked.
-    wouldRevoke: addedOnServer.filter((u) => !nextSet.has(u)),
-    alsoChanged: goneFromServer,
-  };
-}
+/**
+ * Kept at this address on purpose.
+ *
+ * `allowlistDrift` moved to `@/lib/channels` when a second and third card
+ * started needing it — it is a pure function and that is where the panel's
+ * other pure helpers live. Its behaviour did not change, and re-exporting it
+ * here means the suite that imports it from this module keeps passing without
+ * being edited to follow the code around.
+ */
+export { allowlistDrift };
 
 export function ChannelsPanel() {
   const { data, loading, error, refresh, loaded, refreshing } = useAsync(() => api.channels(), []);
@@ -95,11 +74,9 @@ export function ChannelsPanel() {
   // Whether a configured channel actually runs is only in the runtime snapshot;
   // a failure here degrades to "no snapshot", it never blocks the page.
   const st = useAsync(() => api.status(), []);
-  const tgConnected = !!data?.configured.includes("telegram");
   const gateway = useGatewayStatus();
   const staleStatus = statusIsStale(error, gateway.connection);
   const runtime = st.data ? parseRuntimeHealth(st.data.runtime) : null;
-  const tgState = channelState("telegram", data?.configured ?? null, runtime, staleStatus);
   // The runtime's catalog, not a copy of it. Empty when the gateway predates
   // the field — the rows then render by key, which is the same degradation an
   // unknown key already got.
@@ -116,6 +93,15 @@ export function ChannelsPanel() {
     (c) => supportOf(c) === "supported" && c.verification === "not_driven",
   ).length;
   const rows = configuredRows(data?.configured ?? null, runtime, staleStatus, catalog);
+  // The four facts every setup card needs, derived once. Three cards spelling
+  // this out themselves would be three chances for them to disagree about what
+  // "connected" means.
+  const cardFacts = (key: string) => ({
+    connected: !!data?.configured.includes(key),
+    state: channelState(key, data?.configured ?? null, runtime, staleStatus),
+    verification: channelVerification(key, catalog),
+    missingCredentials: channelMissingCredentials(key, data?.configured ?? null, catalog),
+  });
   // Set after a save the gateway said restarts the runtime, so the outage that
   // follows is presented as the change being applied, not as a load error.
   // `waiting`: the response is in and the restart is scheduled (the gateway
@@ -252,15 +238,37 @@ export function ChannelsPanel() {
           gives the editor the width; the facts scan in the narrow column. */}
       {data && cfg.loaded && (
         <div className="grid gap-8 lg:grid-cols-12">
-          <div className="lg:col-span-7">
-            <SectionTitle>Telegram</SectionTitle>
-            <TelegramCard
-              connected={tgConnected}
-              state={tgState}
-              verification={channelVerification("telegram", catalog)}
-              allowedUsers={telegramAllowlist(cfg.data)}
-              onReload={refreshAfterReload}
-            />
+          {/* Three cards stacked in the wide column rather than spread into a
+              grid: the band is 1120 and the 7/5 split is the page's contract,
+              and a section title per card is the device this page already uses
+              to name things. */}
+          <div className="space-y-8 lg:col-span-7">
+            <div>
+              <SectionTitle>Telegram</SectionTitle>
+              <TelegramCard
+                {...cardFacts("telegram")}
+                allowedUsers={channelAllowlist(cfg.data, "telegram")}
+                onReload={refreshAfterReload}
+              />
+            </div>
+
+            <div>
+              <SectionTitle>Discord</SectionTitle>
+              <DiscordCard
+                {...cardFacts("discord")}
+                allowedUsers={channelAllowlist(cfg.data, "discord")}
+                onReload={refreshAfterReload}
+              />
+            </div>
+
+            <div>
+              <SectionTitle>Slack</SectionTitle>
+              <SlackCard
+                {...cardFacts("slack")}
+                allowedUsers={channelAllowlist(cfg.data, "slack")}
+                onReload={refreshAfterReload}
+              />
+            </div>
           </div>
 
           <div className="space-y-8 lg:col-span-5">
@@ -270,7 +278,7 @@ export function ChannelsPanel() {
               <SectionTitle>Other channels</SectionTitle>
               <p className="text-xs text-muted-foreground">
                 Set up with <code>rantaiclaw setup</code> or in config.toml; this console
-                manages Telegram.
+                manages Telegram, Discord and Slack.
               </p>
               {underDevelopmentCount > 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -293,8 +301,15 @@ export function ChannelsPanel() {
               )}
               {rows.length === 0 && (
                 <Card className="mt-3 p-4 text-xs text-muted-foreground">
+                  {/* The ones without a card: the three that have one are set
+                      up above, so counting them here would offer the operator
+                      channels this column cannot help with. */}
                   {catalog.length > 0
-                    ? `None configured yet. ${catalog.length - 1} more channels are available.`
+                    ? `None configured yet. ${
+                        catalog.filter(
+                          (c) => !(CARDED_CHANNELS as readonly string[]).includes(c.key),
+                        ).length
+                      } more channels are available.`
                     : "None configured yet."}
                 </Card>
               )}
@@ -430,8 +445,19 @@ function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousT
   );
 }
 
+/**
+ * Telegram's card, rebuilt on the shared pieces.
+ *
+ * Its words and its control names are untouched, deliberately. The suites pin
+ * `Connect`, `Save allowlist` and `Disconnect` as bare names, and with three
+ * cards on the page those read as ambiguous — but renaming them is a Telegram
+ * behaviour change, and this plan's stop condition says to keep the behaviour
+ * and report it. Discord and Slack name their controls in full; the asymmetry
+ * is recorded rather than smoothed over.
+ */
 function TelegramCard({
   connected,
+  missingCredentials,
   state,
   verification,
   allowedUsers,
@@ -439,6 +465,9 @@ function TelegramCard({
 }: {
   /** A Telegram section exists in config (the editor is shown). */
   connected: boolean;
+  /** Configured, but the runtime says no bot token is saved. Only a gateway
+   *  that answers `has_credentials` can put the card here; silence means no. */
+  missingCredentials: boolean;
   /** Telegram's verification axis, so the card states it rather than implying
    *  it by omission. `null` on a runtime older than the split. */
   verification: ChannelVerification | null;
@@ -448,169 +477,51 @@ function TelegramCard({
   onReload: (restartsRuntime: boolean) => void;
 }) {
   const [token, setToken] = React.useState("");
-  const [users, setUsers] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
-  // Set when the server's allowlist has moved since the editor was seeded, so
-  // saving would revoke someone the operator never saw.
-  const [drift, setDrift] = React.useState<{
-    wouldRevoke: string[];
-    alsoChanged: string[];
-  } | null>(null);
-
-  // Prefill the allowlist editor with the saved list once connected.
-  const savedAllowlist = allowedUsers.join(", ");
-  React.useEffect(() => {
-    if (connected) setUsers(savedAllowlist);
-  }, [connected, savedAllowlist]);
-
-  const parseUsers = () =>
-    users
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  // Nothing to save while the box holds the saved list (whitespace and a
-  // trailing comma are not a change).
-  const dirty =
-    parseUsers().join(",") !==
-    allowedUsers
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .join(",");
+  // A configured channel with no credential cannot be managed, only fixed, so
+  // it gets the connect form rather than an allowlist editor for a channel
+  // that cannot run.
+  const manage = connected && !missingCredentials;
+  const s = useChannelSetup({
+    channelKey: "telegram",
+    allowedUsers,
+    connected,
+    onReload,
+    freshAllowlist: async () => channelAllowlist(await api.config(), "telegram"),
+    updateAllowlist: (users) => api.updateTelegramAllowlist(users),
+    disconnect: () => api.disconnectTelegram(),
+  });
 
   // One toast per action. The gateway's `warning` (empty allowlist, `*`) is the
   // toast's second line; its `note` restates either the count or the restart,
   // which the banner already carries, so it is not shown.
-  const connect = async () => {
+  const connect = () => {
     const t = token.trim();
     if (!t) return;
-    setBusy(true);
-    try {
-      const r = await api.connectTelegram(t, parseUsers());
-      toast.success(`Connected Telegram @${r.bot_username}`, {
-        description: r.warning ?? undefined,
-      });
-      setToken("");
-      onReload(r.restarts_runtime === true);
-    } catch (e) {
-      toast.error(describeApiError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // The POST replaces the list wholesale, and the editor is seeded from a
-  // snapshot taken when the panel loaded — so anyone who self-onboarded via
-  // `/claim` since then is silently revoked. The backend goes out of its way to
-  // avoid clobbering that (it re-reads the freshest config under a lock); this
-  // makes the console stop defeating it, by showing the operator the removal and
-  // asking first.
-  const runSave = async () => {
-    setBusy(true);
-    try {
-      const r = await api.updateTelegramAllowlist(parseUsers());
-      // What the SERVER stored, not what was requested. A mismatch between the
-      // two is exactly what an operator needs to see.
-      toast.success(allowlistToastTitle(r.allowed_users), {
-        description: r.warning ?? undefined,
-      });
-      onReload(r.restarts_runtime === true);
-    } catch (e) {
-      toast.error(describeApiError(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const saveAllowlist = async () => {
-    setBusy(true);
-    let fresh: string[] | null = null;
-    try {
-      fresh = telegramAllowlist(await api.config());
-    } catch {
-      // A failed pre-check must not block the save — it is a courtesy, not a
-      // gate. Falling through means the operator gets the old behaviour, which
-      // is what they would have had anyway.
-      fresh = null;
-    } finally {
-      setBusy(false);
-    }
-
-    if (fresh) {
-      const d = allowlistDrift(allowedUsers, fresh, parseUsers());
-      if (d) {
-        setDrift(d);
-        return;
-      }
-    }
-
-    await runSave();
-  };
-
-  const disconnect = async () => {
-    setBusy(true);
-    try {
-      const r = await api.disconnectTelegram();
-      toast.success("Telegram disconnected");
-      setUsers("");
-      setConfirmDisconnect(false);
-      onReload(r.restarts_runtime === true);
-    } catch (e) {
-      toast.error(describeApiError(e));
-    } finally {
-      setBusy(false);
-    }
+    void s.runConnect(
+      () => api.connectTelegram(t, s.parseUsers()),
+      (r) => `Connected Telegram @${r.bot_username}`,
+      () => setToken(""),
+    );
   };
 
   return (
     <>
-    <Card className="p-0">
-      {/* Status strip: the channel's own dot (the colour the right rail uses
-          for it) beside its state; the section title above carries the name. */}
-      <div className="flex flex-wrap items-center gap-2.5 border-b border-border/60 px-4 py-3">
-        <span
-          aria-hidden
-          className="inline-block size-2 rounded-full"
-          style={{ background: channelDot("telegram") }}
-        />
-        <Badge variant={state.tone}>{state.label}</Badge>
-        {/* Said, not implied. The rows in "Other channels" carry "not yet
-            verified" as a qualifier; a card that said nothing would leave the
-            reader to infer the good case from an absence. */}
-        {verification === "driven" && (
-          <span className="text-xs text-muted-foreground">verified</span>
-        )}
-        {verification === "not_driven" && (
-          <span className="text-xs text-muted-foreground">not yet verified</span>
-        )}
-      </div>
-      <div className="space-y-2 p-4">
-        {state.detail && state.detailScope === "channel" && (
-          <p
-            className={cn(
-              "text-xs",
-              state.word === "error" ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {state.detail}
-          </p>
-        )}
-        {connected ? (
+      <SetupCardFrame channelKey="telegram" state={state} verification={verification}>
+        {missingCredentials && <MissingCredentialNotice what="no bot token is saved" />}
+        {manage ? (
           <form
             className="space-y-2"
             onSubmit={(e) => {
               e.preventDefault();
-              void saveAllowlist();
+              void s.saveAllowlist();
             }}
           >
-            <label htmlFor="tg-allowlist" className="text-xs text-muted-foreground">
-              Allowed user ids / usernames (comma-separated)
-            </label>
-            <Input
+            <PlainField
               id="tg-allowlist"
+              label="Allowed user ids / usernames (comma-separated)"
               placeholder="123456789, @rantaiclaw_user"
-              value={users}
-              onChange={(e) => setUsers(e.target.value)}
+              value={s.users}
+              onChange={s.setUsers}
             />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
@@ -618,15 +529,15 @@ function TelegramCard({
                 the bot token, disconnect and connect again.
               </span>
               <div className="flex shrink-0 gap-2">
-                <Button type="submit" size="sm" variant="outline" disabled={busy || !dirty}>
-                  {busy ? "Saving…" : "Save allowlist"}
+                <Button type="submit" size="sm" variant="outline" disabled={s.busy || !s.dirty}>
+                  {s.busy ? "Saving…" : "Save allowlist"}
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="destructive"
-                  onClick={() => setConfirmDisconnect(true)}
-                  disabled={busy}
+                  onClick={() => s.setConfirmDisconnect(true)}
+                  disabled={s.busy}
                 >
                   Disconnect
                 </Button>
@@ -638,79 +549,384 @@ function TelegramCard({
             className="space-y-2"
             onSubmit={(e) => {
               e.preventDefault();
-              void connect();
+              connect();
             }}
           >
-            <label htmlFor="tg-token" className="text-xs text-muted-foreground">
-              Bot token
-            </label>
-            <Input
+            <SecretField
               id="tg-token"
-              type="password"
+              label="Bot token"
               placeholder="123456789:AA… from @BotFather"
               value={token}
-              onChange={(e) => setToken(e.target.value)}
-              autoComplete="off"
+              onChange={setToken}
             />
-            <label htmlFor="tg-users" className="text-xs text-muted-foreground">
-              Allowed user ids / usernames (comma-separated)
-            </label>
-            <Input
+            <PlainField
               id="tg-users"
+              label="Allowed user ids / usernames (comma-separated)"
               placeholder="123456789, @rantaiclaw_user"
-              value={users}
-              onChange={(e) => setUsers(e.target.value)}
+              value={s.users}
+              onChange={s.setUsers}
             />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
                 The token is checked with Telegram, then saved. An empty allowlist denies
                 every sender.
               </span>
-              <Button type="submit" size="sm" className="shrink-0" disabled={busy || !token.trim()}>
-                {busy ? "Connecting…" : "Connect"}
+              <Button
+                type="submit"
+                size="sm"
+                className="shrink-0"
+                disabled={s.busy || !token.trim()}
+              >
+                {s.busy ? "Connecting…" : "Connect"}
               </Button>
             </div>
           </form>
         )}
-      </div>
-    </Card>
-    <ConfirmModal
-      open={confirmDisconnect}
-      onClose={() => setConfirmDisconnect(false)}
-      title="Disconnect Telegram?"
-      description="The saved bot token is cleared. To reconnect, enter a new token from @BotFather."
-      confirmLabel="Disconnect"
-      icon={null}
-      busy={busy}
-      onConfirm={disconnect}
-    />
-    <ConfirmModal
-      open={drift !== null}
-      onClose={() => setDrift(null)}
-      title="The allowlist changed while this was open"
-      description={
-        drift
-          ? [
-              drift.wouldRevoke.length > 0
-                ? `Saving now removes: ${drift.wouldRevoke.join(", ")} (added on the server since this panel loaded, most likely by /claim or /bind).`
-                : "",
-              drift.alsoChanged.length > 0
-                ? `Already removed on the server: ${drift.alsoChanged.join(", ")}.`
-                : "",
-              "Save anyway replaces the server's list with what is in the box.",
-            ]
-              .filter(Boolean)
-              .join(" ")
-          : ""
-      }
-      confirmLabel="Save anyway"
-      icon={null}
-      busy={busy}
-      onConfirm={async () => {
-        setDrift(null);
-        await runSave();
-      }}
-    />
+      </SetupCardFrame>
+      <DisconnectDialog
+        open={s.confirmDisconnect}
+        label="Telegram"
+        description="The saved bot token is cleared. To reconnect, enter a new token from @BotFather."
+        busy={s.busy}
+        onClose={() => s.setConfirmDisconnect(false)}
+        onConfirm={() => void s.runDisconnect("Telegram")}
+      />
+      <DriftDialog
+        drift={s.drift}
+        busy={s.busy}
+        onClose={() => s.setDrift(null)}
+        onConfirm={async () => {
+          s.setDrift(null);
+          await s.runSave();
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * Discord: one bot token, an allowlist, and an optional guild filter.
+ *
+ * The guild id is the one field here that restarts the runtime when it changes,
+ * because it is read into the channel object at construction. The gateway
+ * decides that and reports it in `restarts_runtime`; the card does not guess.
+ */
+function DiscordCard({
+  connected,
+  missingCredentials,
+  state,
+  verification,
+  allowedUsers,
+  onReload,
+}: {
+  connected: boolean;
+  /** Configured, but the runtime says no bot token is saved. */
+  missingCredentials: boolean;
+  verification: ChannelVerification | null;
+  state: ChannelState;
+  allowedUsers: string[];
+  onReload: (restartsRuntime: boolean) => void;
+}) {
+  const [token, setToken] = React.useState("");
+  const [guild, setGuild] = React.useState("");
+  const s = useChannelSetup({
+    channelKey: "discord",
+    allowedUsers,
+    connected,
+    onReload,
+    freshAllowlist: async () => channelAllowlist(await api.config(), "discord"),
+    updateAllowlist: (users) => api.updateDiscordAllowlist(users),
+    disconnect: () => api.disconnectDiscord(),
+  });
+
+  // A configured channel with no credential cannot be managed, only fixed, so
+  // it gets the connect form rather than an allowlist editor.
+  const manage = connected && !missingCredentials;
+
+  const connect = () => {
+    const t = token.trim();
+    if (!t) return;
+    void s.runConnect(
+      () => api.connectDiscord(t, s.parseUsers(), guild.trim() || undefined),
+      () => "Connected Discord",
+      () => {
+        setToken("");
+        setGuild("");
+      },
+    );
+  };
+
+  return (
+    <>
+      <SetupCardFrame channelKey="discord" state={state} verification={verification}>
+        {missingCredentials && <MissingCredentialNotice what="no bot token is saved" />}
+        {manage ? (
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void s.saveAllowlist();
+            }}
+          >
+            <PlainField
+              id="discord-allowlist"
+              label="Allowed Discord user ids (comma-separated)"
+              placeholder="123456789012345678"
+              value={s.users}
+              onChange={s.setUsers}
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                Applied to the running channel without a restart. To change the bot token
+                or the server, disconnect and connect again.
+              </span>
+              <div className="flex shrink-0 gap-2">
+                <Button type="submit" size="sm" variant="outline" disabled={s.busy || !s.dirty}>
+                  {s.busy ? "Saving…" : "Save Discord allowlist"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => s.setConfirmDisconnect(true)}
+                  disabled={s.busy}
+                >
+                  Disconnect Discord
+                </Button>
+              </div>
+            </div>
+          </form>
+        ) : (
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              connect();
+            }}
+          >
+            <SecretField
+              id="discord-token"
+              label="Discord bot token"
+              placeholder="from the Discord developer portal"
+              value={token}
+              onChange={setToken}
+            />
+            <PlainField
+              id="discord-users"
+              label="Allowed Discord user ids (comma-separated)"
+              placeholder="123456789012345678"
+              value={s.users}
+              onChange={s.setUsers}
+            />
+            <PlainField
+              id="discord-guild"
+              label="Server (guild) id (optional)"
+              placeholder="leave empty to answer in every server the bot is in"
+              value={guild}
+              onChange={setGuild}
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                The token is checked with Discord, then saved. An empty allowlist denies
+                every sender.
+              </span>
+              <Button
+                type="submit"
+                size="sm"
+                className="shrink-0"
+                disabled={s.busy || !token.trim()}
+              >
+                {s.busy ? "Connecting…" : "Connect Discord"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </SetupCardFrame>
+      <DisconnectDialog
+        open={s.confirmDisconnect}
+        label="Discord"
+        description="The saved bot token is cleared. To reconnect, enter a new token from the Discord developer portal."
+        busy={s.busy}
+        onClose={() => s.setConfirmDisconnect(false)}
+        onConfirm={() => void s.runDisconnect("Discord")}
+      />
+      <DriftDialog
+        drift={s.drift}
+        busy={s.busy}
+        onClose={() => s.setDrift(null)}
+        onConfirm={async () => {
+          s.setDrift(null);
+          await s.runSave();
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * Slack: two tokens that are not interchangeable, plus an optional channel
+ * filter.
+ *
+ * The bot token authenticates API calls; the app-level token opens Socket Mode.
+ * With Socket Mode on, a channel filter makes the bot ignore direct messages —
+ * the gateway returns that caveat in `warning` and the card relays it verbatim
+ * rather than deciding for itself when it applies.
+ */
+function SlackCard({
+  connected,
+  missingCredentials,
+  state,
+  verification,
+  allowedUsers,
+  onReload,
+}: {
+  connected: boolean;
+  missingCredentials: boolean;
+  verification: ChannelVerification | null;
+  state: ChannelState;
+  allowedUsers: string[];
+  onReload: (restartsRuntime: boolean) => void;
+}) {
+  const [botToken, setBotToken] = React.useState("");
+  const [appToken, setAppToken] = React.useState("");
+  const [channelId, setChannelId] = React.useState("");
+  const s = useChannelSetup({
+    channelKey: "slack",
+    allowedUsers,
+    connected,
+    onReload,
+    freshAllowlist: async () => channelAllowlist(await api.config(), "slack"),
+    updateAllowlist: (users) => api.updateSlackAllowlist(users),
+    disconnect: () => api.disconnectSlack(),
+  });
+
+  const manage = connected && !missingCredentials;
+
+  const connect = () => {
+    const bot = botToken.trim();
+    if (!bot) return;
+    void s.runConnect(
+      () => api.connectSlack(bot, appToken.trim(), s.parseUsers(), channelId.trim() || undefined),
+      () => "Connected Slack",
+      () => {
+        setBotToken("");
+        setAppToken("");
+        setChannelId("");
+      },
+    );
+  };
+
+  return (
+    <>
+      <SetupCardFrame channelKey="slack" state={state} verification={verification}>
+        {missingCredentials && <MissingCredentialNotice what="no bot token is saved" />}
+        {manage ? (
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void s.saveAllowlist();
+            }}
+          >
+            <PlainField
+              id="slack-allowlist"
+              label="Allowed Slack user ids (comma-separated)"
+              placeholder="U01234567"
+              value={s.users}
+              onChange={s.setUsers}
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                Applied to the running channel without a restart. To change either token
+                or the channel filter, disconnect and connect again.
+              </span>
+              <div className="flex shrink-0 gap-2">
+                <Button type="submit" size="sm" variant="outline" disabled={s.busy || !s.dirty}>
+                  {s.busy ? "Saving…" : "Save Slack allowlist"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => s.setConfirmDisconnect(true)}
+                  disabled={s.busy}
+                >
+                  Disconnect Slack
+                </Button>
+              </div>
+            </div>
+          </form>
+        ) : (
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              connect();
+            }}
+          >
+            <SecretField
+              id="slack-bot-token"
+              label="Slack bot token"
+              placeholder="xoxb-…"
+              value={botToken}
+              onChange={setBotToken}
+            />
+            <SecretField
+              id="slack-app-token"
+              label="Slack app-level token"
+              placeholder="xapp-… (optional; turns on Socket Mode)"
+              value={appToken}
+              onChange={setAppToken}
+            />
+            <PlainField
+              id="slack-users"
+              label="Allowed Slack user ids (comma-separated)"
+              placeholder="U01234567"
+              value={s.users}
+              onChange={s.setUsers}
+            />
+            <PlainField
+              id="slack-channel"
+              label="Channel id (optional)"
+              placeholder="C01234567; leave empty to answer everywhere the bot is invited"
+              value={channelId}
+              onChange={setChannelId}
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                The bot token is checked with Slack, then saved. The app-level token is
+                checked for shape only; <code>doctor</code> reports whether Socket Mode
+                actually connects.
+              </span>
+              <Button
+                type="submit"
+                size="sm"
+                className="shrink-0"
+                disabled={s.busy || !botToken.trim()}
+              >
+                {s.busy ? "Connecting…" : "Connect Slack"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </SetupCardFrame>
+      <DisconnectDialog
+        open={s.confirmDisconnect}
+        label="Slack"
+        description="The saved bot token and app-level token are cleared. To reconnect, enter them again from the Slack app settings."
+        busy={s.busy}
+        onClose={() => s.setConfirmDisconnect(false)}
+        onConfirm={() => void s.runDisconnect("Slack")}
+      />
+      <DriftDialog
+        drift={s.drift}
+        busy={s.busy}
+        onClose={() => s.setDrift(null)}
+        onConfirm={async () => {
+          s.setDrift(null);
+          await s.runSave();
+        }}
+      />
     </>
   );
 }
