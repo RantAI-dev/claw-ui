@@ -1,5 +1,7 @@
 // Client-side API — talks to the Next.js proxy at /api/rc/* (never the gateway directly).
 import type {
+  ChannelConnectResult,
+  ChannelDisconnectResult,
   ChannelsInfo,
   ClawHubSkill,
   CronJob,
@@ -215,6 +217,56 @@ export const api = {
         method: "DELETE",
       },
     ),
+  // Discord and Slack, mirroring the Telegram trio above. The gateway validates
+  // a supplied bot token against the platform before persisting it, and an
+  // omitted token keeps the saved one — which is what lets an allowlist be
+  // edited without the operator re-typing a secret.
+  //
+  // The optional fields are sent only when set. The gateway reads an absent
+  // field as "leave the saved value alone", so sending an empty string would
+  // clear a guild or channel filter the operator never touched.
+  connectDiscord: (bot_token: string, allowed_users: string[], guild_id?: string) =>
+    rc<ChannelConnectResult>("channels/discord", {
+      method: "POST",
+      body: JSON.stringify({
+        bot_token,
+        allowed_users,
+        ...(guild_id?.trim() ? { guild_id: guild_id.trim() } : {}),
+      }),
+    }),
+  updateDiscordAllowlist: (allowed_users: string[]) =>
+    rc<ChannelConnectResult>("channels/discord", {
+      method: "POST",
+      body: JSON.stringify({ allowed_users }),
+    }),
+  disconnectDiscord: () =>
+    rc<ChannelDisconnectResult>("channels/discord", { method: "DELETE" }),
+  // Two credentials, and they are not interchangeable: the bot token
+  // authenticates API calls, the app token opens Socket Mode. The gateway
+  // shape-checks the app token and refuses a malformed one rather than saving
+  // it with a warning.
+  connectSlack: (
+    bot_token: string,
+    app_token: string,
+    allowed_users: string[],
+    channel_id?: string,
+  ) =>
+    rc<ChannelConnectResult>("channels/slack", {
+      method: "POST",
+      body: JSON.stringify({
+        bot_token,
+        ...(app_token.trim() ? { app_token: app_token.trim() } : {}),
+        allowed_users,
+        ...(channel_id?.trim() ? { channel_id: channel_id.trim() } : {}),
+      }),
+    }),
+  updateSlackAllowlist: (allowed_users: string[]) =>
+    rc<ChannelConnectResult>("channels/slack", {
+      method: "POST",
+      body: JSON.stringify({ allowed_users }),
+    }),
+  disconnectSlack: () =>
+    rc<ChannelDisconnectResult>("channels/slack", { method: "DELETE" }),
   providers: () =>
     rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   // Model catalog for a provider — resolved by the gateway from the SAME on-disk

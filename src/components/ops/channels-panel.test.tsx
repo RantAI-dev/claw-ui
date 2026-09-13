@@ -8,7 +8,14 @@ const status = vi.fn();
 const updateTelegramAllowlist = vi.fn();
 const connectTelegram = vi.fn();
 const disconnectTelegram = vi.fn();
+const updateDiscordAllowlist = vi.fn();
+const connectDiscord = vi.fn();
+const disconnectDiscord = vi.fn();
+const updateSlackAllowlist = vi.fn();
+const connectSlack = vi.fn();
+const disconnectSlack = vi.fn();
 const toastSuccess = vi.fn();
+const toastError = vi.fn();
 const gateway: { connection: "connecting" | "online" | "offline" } = { connection: "online" };
 
 // Keep the real `describeApiError` (useAsync maps every failure through it);
@@ -22,13 +29,24 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     updateTelegramAllowlist: (users: string[]) => updateTelegramAllowlist(users),
     connectTelegram: (token: string, users: string[]) => connectTelegram(token, users),
     disconnectTelegram: () => disconnectTelegram(),
+    updateDiscordAllowlist: (users: string[]) => updateDiscordAllowlist(users),
+    connectDiscord: (token: string, users: string[], guild?: string) =>
+      connectDiscord(token, users, guild),
+    disconnectDiscord: () => disconnectDiscord(),
+    updateSlackAllowlist: (users: string[]) => updateSlackAllowlist(users),
+    connectSlack: (bot: string, app: string, users: string[], channel?: string) =>
+      connectSlack(bot, app, users, channel),
+    disconnectSlack: () => disconnectSlack(),
   },
 }));
 vi.mock("@/hooks/use-gateway-status", () => ({ useGatewayStatus: () => gateway }));
 vi.mock("sonner", () => ({
   toast: {
+    // `error` is recorded rather than discarded: a card that swallows a refusal
+    // and leaves the operator looking at an unchanged form is the failure these
+    // suites exist to catch, and it cannot be asserted against a black hole.
     success: (...a: unknown[]) => toastSuccess(...a),
-    error: vi.fn(),
+    error: (...a: unknown[]) => toastError(...a),
     warning: vi.fn(),
     message: vi.fn(),
   },
@@ -70,6 +88,26 @@ const CATALOG = [
   {
     key: "discord",
     label: "Discord",
+    support: "supported" as const,
+    maturity: "supported" as const,
+    verification: "not_driven" as const,
+    configured: false,
+  },
+  {
+    key: "slack",
+    label: "Slack",
+    support: "supported" as const,
+    maturity: "supported" as const,
+    verification: "not_driven" as const,
+    configured: false,
+  },
+  // The row that is supported and never driven. Discord used to play this part,
+  // and cannot any more: it has a setup card now, so it never appears in the
+  // list. Without a stand-in, the state the two-axis split exists to show would
+  // have stopped being covered here without a single test going red.
+  {
+    key: "matrix",
+    label: "Matrix",
     support: "supported" as const,
     maturity: "supported" as const,
     verification: "not_driven" as const,
@@ -132,14 +170,14 @@ describe("ChannelsPanel status words", () => {
 
   it("lists the other configured channels with the same vocabulary, and nothing else", async () => {
     channels.mockResolvedValue({
-      configured: ["telegram", "discord", "webhook"],
+      configured: ["telegram", "matrix", "webhook"],
       count: 3,
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
     const rows = await screen.findAllByRole("listitem");
     expect(rows).toHaveLength(2);
-    expect(rows[0].textContent).toMatch(/Discord/);
+    expect(rows[0].textContent).toMatch(/Matrix/);
     expect(rows[1].textContent).toMatch(/Webhook/);
     expect(rows[1].textContent).toMatch(/Served by the gateway/);
     // This used to assert that "under development" appeared nowhere, back when
@@ -150,12 +188,26 @@ describe("ChannelsPanel status words", () => {
     expect(rows[1].textContent).toMatch(/Under development/);
   });
 
+  it("leaves Discord and Slack to their cards instead of listing them twice", async () => {
+    // Both are configured here. A row and a card would both claim the channel,
+    // and only the card can connect or disconnect it.
+    channels.mockResolvedValue({
+      configured: ["telegram", "discord", "slack", "webhook"],
+      count: 4,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toMatch(/Webhook/);
+  });
+
   it("shows the two axes separately, so the three states read differently", async () => {
     // The point of the split. A grid of equal-looking rows says every channel is
     // equally ready, and the middle state is the one that was invisible: the
-    // project stands behind Discord and nobody has driven it.
+    // project stands behind Matrix and nobody has driven it.
     channels.mockResolvedValue({
-      configured: ["telegram", "discord", "webhook"],
+      configured: ["telegram", "matrix", "webhook"],
       count: 3,
       channels: CATALOG,
     });
@@ -163,7 +215,7 @@ describe("ChannelsPanel status words", () => {
     const rows = await screen.findAllByRole("listitem");
 
     // supported + not driven: no support badge, but the qualifier is there.
-    expect(rows[0].textContent).toMatch(/Discord/);
+    expect(rows[0].textContent).toMatch(/Matrix/);
     expect(rows[0].textContent).not.toMatch(/Under development/);
     expect(rows[0].textContent).toMatch(/not yet verified/);
 
@@ -176,10 +228,11 @@ describe("ChannelsPanel status words", () => {
   it("says a driven channel is verified rather than leaving it to an absence", async () => {
     // Telegram is supported AND driven and has its own card, so the two states
     // sit on different components. The card has to say "verified" out loud:
-    // before the split it rendered exactly like Discord, and after it, saying
-    // nothing would leave the reader inferring the good case from silence.
+    // before the split it rendered exactly like every undriven channel, and
+    // after it, saying nothing would leave the reader inferring the good case
+    // from silence.
     channels.mockResolvedValue({
-      configured: ["telegram", "discord"],
+      configured: ["telegram", "matrix"],
       count: 2,
       channels: CATALOG,
     });
@@ -187,7 +240,7 @@ describe("ChannelsPanel status words", () => {
     expect(await screen.findByText("verified")).toBeTruthy();
 
     const rows = await screen.findAllByRole("listitem");
-    const undriven = rows.find((r) => r.textContent?.includes("Discord"));
+    const undriven = rows.find((r) => r.textContent?.includes("Matrix"));
     expect(undriven?.textContent).toMatch(/not yet verified/);
   });
 
@@ -207,7 +260,7 @@ describe("ChannelsPanel status words", () => {
   it("says what the label means before an operator commits credentials", async () => {
     render(<ChannelsPanel />);
     expect(
-      await screen.findByText(/1 of the 3 channel types this runtime knows/),
+      await screen.findByText(/1 of the 5 channel types this runtime knows/),
     ).toBeTruthy();
   });
 
@@ -216,9 +269,14 @@ describe("ChannelsPanel status words", () => {
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
     expect(await screen.findByText("Not reachable on any channel")).toBeTruthy();
-    expect(await screen.findByText("Not configured")).toBeTruthy();
+    // One badge per setup card, and all three say the same thing. Asserting the
+    // count rather than "at least one" is what would catch a card that drifts
+    // out of step with the other two.
+    expect(await screen.findAllByText("Not configured")).toHaveLength(3);
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect Discord" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();
   });
 
   it("says the runtime-level cause once, in the band, not on every card", async () => {
@@ -245,7 +303,10 @@ describe("ChannelsPanel status words", () => {
   it("says Status unknown while the gateway is offline, whatever the last fetch said", async () => {
     gateway.connection = "offline";
     render(<ChannelsPanel />);
-    expect(await screen.findByText("Status unknown")).toBeTruthy();
+    // Every card, not just the first one: a card still claiming "Running" from
+    // the last good fetch while the gateway is down is the defect this covers,
+    // and it would hide behind a single-element assertion.
+    expect(await screen.findAllByText("Status unknown")).toHaveLength(3);
   });
 });
 
@@ -383,5 +444,246 @@ describe("ChannelsPanel actions", () => {
     channels.mockReturnValue(new Promise(() => {}));
     fireEvent.click(button);
     await waitFor(() => expect(button.disabled).toBe(true));
+  });
+});
+
+/**
+ * The two cards this change adds.
+ *
+ * Each test pushes its own `channels` fixture rather than editing the shared
+ * `CATALOG`, because `has_credentials` matters to two of them and adding it to
+ * the shared fixture would quietly change what the other suites are asserting.
+ */
+describe("ChannelsPanel Discord", () => {
+  beforeEach(() => {
+    channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: {} });
+  });
+
+  const CONNECTED = {
+    connected: true,
+    channel: "discord",
+    bot_username: null,
+    allowed_users: 1,
+    warning: null,
+    restarts_runtime: true,
+  };
+
+  it("sends the bot token, the allowlist and an optional guild id", async () => {
+    render(<ChannelsPanel />);
+    const token = (await screen.findByLabelText("Discord bot token")) as HTMLInputElement;
+    const users = screen.getByLabelText(/Allowed Discord user ids/);
+    const guild = screen.getByLabelText(/Server \(guild\) id/);
+
+    const connect = screen.getByRole("button", { name: "Connect Discord" }) as HTMLButtonElement;
+    // Nothing to send without a credential, so the control says so rather than
+    // letting the operator find out from a 400.
+    expect(connect.disabled).toBe(true);
+
+    fireEvent.change(token, { target: { value: "discord-token" } });
+    fireEvent.change(users, { target: { value: "111, 222" } });
+    fireEvent.change(guild, { target: { value: "G1" } });
+    connectDiscord.mockResolvedValue(CONNECTED);
+    fireEvent.click(connect);
+
+    await waitFor(() =>
+      expect(connectDiscord).toHaveBeenCalledWith("discord-token", ["111", "222"], "G1"),
+    );
+  });
+
+  it("never renders the token back into the field after a save", async () => {
+    // The field is a password box and the gateway never echoes a credential;
+    // re-seeding it from anything would put a secret back on screen and into
+    // the next request body.
+    render(<ChannelsPanel />);
+    const token = (await screen.findByLabelText("Discord bot token")) as HTMLInputElement;
+    fireEvent.change(token, { target: { value: "discord-token" } });
+    connectDiscord.mockResolvedValue(CONNECTED);
+    fireEvent.click(screen.getByRole("button", { name: "Connect Discord" }));
+
+    await waitFor(() => expect(connectDiscord).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(token.value).toBe(""));
+  });
+
+  it("edits the allowlist without re-sending the token, and says what the server stored", async () => {
+    channels.mockResolvedValue({
+      configured: ["discord"],
+      count: 1,
+      channels: CATALOG,
+    });
+    config.mockResolvedValue({
+      channels_config: { discord: { allowed_users: ["111"] } },
+    });
+    render(<ChannelsPanel />);
+    const box = (await screen.findByLabelText(/Allowed Discord user ids/)) as HTMLInputElement;
+    await waitFor(() => expect(box.value).toBe("111"));
+
+    const save = screen.getByRole("button", {
+      name: "Save Discord allowlist",
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    fireEvent.change(box, { target: { value: "111, 222" } });
+    updateDiscordAllowlist.mockResolvedValue({ ...CONNECTED, allowed_users: 2, restarts_runtime: false });
+    fireEvent.click(save);
+
+    await waitFor(() => expect(updateDiscordAllowlist).toHaveBeenCalledWith(["111", "222"]));
+    expect(connectDiscord).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Allowlist saved: 2 senders allowed", {
+        description: undefined,
+      }),
+    );
+  });
+
+  it("asks before revoking someone who was added while the panel sat open", async () => {
+    // The same protection Telegram has: the POST replaces the list wholesale,
+    // so a sender who self-onboarded since the editor was seeded would be
+    // removed with nothing on screen saying so.
+    channels.mockResolvedValue({ configured: ["discord"], count: 1, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: { discord: { allowed_users: ["111"] } } });
+    render(<ChannelsPanel />);
+    const box = (await screen.findByLabelText(/Allowed Discord user ids/)) as HTMLInputElement;
+    await waitFor(() => expect(box.value).toBe("111"));
+    fireEvent.change(box, { target: { value: "111, 222" } });
+
+    // The server has moved on: 999 arrived after the panel loaded.
+    config.mockResolvedValue({
+      channels_config: { discord: { allowed_users: ["111", "999"] } },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Discord allowlist" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toMatch(/999/);
+    expect(updateDiscordAllowlist).not.toHaveBeenCalled();
+  });
+
+  it("clears the saved credentials on disconnect, after a confirmation", async () => {
+    channels.mockResolvedValue({ configured: ["discord"], count: 1, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: { discord: { allowed_users: ["111"] } } });
+    render(<ChannelsPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect Discord" }));
+
+    const dialog = await screen.findByRole("dialog");
+    disconnectDiscord.mockResolvedValue({
+      disconnected: true,
+      channel: "discord",
+      restarts_runtime: true,
+    });
+    fireEvent.click(
+      Array.from(dialog.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Disconnect",
+      )!,
+    );
+    await waitFor(() => expect(disconnectDiscord).toHaveBeenCalledTimes(1));
+  });
+
+  it("says a configured channel has no credential instead of letting it read as connected", async () => {
+    // `[channels_config.discord]` written by hand with the token left out. Every
+    // surface in this console used to call that "configured" and the channel
+    // never started.
+    channels.mockResolvedValue({
+      configured: ["discord"],
+      count: 1,
+      channels: CATALOG.map((c) =>
+        c.key === "discord" ? { ...c, configured: true, has_credentials: false } : c,
+      ),
+    });
+    config.mockResolvedValue({ channels_config: { discord: { allowed_users: ["111"] } } });
+    render(<ChannelsPanel />);
+
+    expect(await screen.findByText(/no bot token is saved/i)).toBeTruthy();
+    // And the way out is on screen: the connect form, not the allowlist editor.
+    expect(screen.getByLabelText("Discord bot token")).toBeTruthy();
+  });
+
+  it("reports a refusal from the gateway instead of swallowing it", async () => {
+    render(<ChannelsPanel />);
+    const token = (await screen.findByLabelText("Discord bot token")) as HTMLInputElement;
+    fireEvent.change(token, { target: { value: "bad-token" } });
+    connectDiscord.mockRejectedValue(new Error("discord rejected the bot token: 401"));
+    fireEvent.click(screen.getByRole("button", { name: "Connect Discord" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    expect(String(toastError.mock.calls[0][0])).toMatch(/rejected the bot token/);
+  });
+});
+
+describe("ChannelsPanel Slack", () => {
+  beforeEach(() => {
+    channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: {} });
+  });
+
+  it("sends the two tokens separately, plus an optional channel id", async () => {
+    render(<ChannelsPanel />);
+    const bot = (await screen.findByLabelText("Slack bot token")) as HTMLInputElement;
+    const app = screen.getByLabelText("Slack app-level token");
+    const users = screen.getByLabelText(/Allowed Slack user ids/);
+    const channel = screen.getByLabelText(/Channel id/);
+
+    fireEvent.change(bot, { target: { value: "xoxb-1" } });
+    fireEvent.change(app, { target: { value: "xapp-1-A" } });
+    fireEvent.change(users, { target: { value: "U1" } });
+    fireEvent.change(channel, { target: { value: "C1" } });
+    connectSlack.mockResolvedValue({
+      connected: true,
+      channel: "slack",
+      bot_username: null,
+      allowed_users: 1,
+      warning: null,
+      restarts_runtime: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect Slack" }));
+
+    await waitFor(() =>
+      expect(connectSlack).toHaveBeenCalledWith("xoxb-1", "xapp-1-A", ["U1"], "C1"),
+    );
+  });
+
+  it("shows the gateway's Socket Mode caveat rather than inventing one", async () => {
+    // F-3 from the 2026-09-11 drive: with Socket Mode on, a channel id filter
+    // makes the bot ignore every direct message. The gateway decides when that
+    // applies and returns the sentence; the console must not guess at it.
+    render(<ChannelsPanel />);
+    const bot = (await screen.findByLabelText("Slack bot token")) as HTMLInputElement;
+    fireEvent.change(bot, { target: { value: "xoxb-1" } });
+    connectSlack.mockResolvedValue({
+      connected: true,
+      channel: "slack",
+      bot_username: null,
+      allowed_users: 0,
+      warning:
+        "Socket Mode with a channel_id set: the bot ignores direct messages and every other conversation.",
+      restarts_runtime: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect Slack" }));
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1));
+    expect(toastSuccess.mock.calls[0][1]).toEqual({
+      description:
+        "Socket Mode with a channel_id set: the bot ignores direct messages and every other conversation.",
+    });
+  });
+
+  it("edits the allowlist without re-sending either token", async () => {
+    channels.mockResolvedValue({ configured: ["slack"], count: 1, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: { slack: { allowed_users: ["U1"] } } });
+    render(<ChannelsPanel />);
+    const box = (await screen.findByLabelText(/Allowed Slack user ids/)) as HTMLInputElement;
+    await waitFor(() => expect(box.value).toBe("U1"));
+    fireEvent.change(box, { target: { value: "U1, U2" } });
+    updateSlackAllowlist.mockResolvedValue({
+      connected: true,
+      channel: "slack",
+      bot_username: null,
+      allowed_users: 2,
+      warning: null,
+      restarts_runtime: false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save Slack allowlist" }));
+
+    await waitFor(() => expect(updateSlackAllowlist).toHaveBeenCalledWith(["U1", "U2"]));
+    expect(connectSlack).not.toHaveBeenCalled();
   });
 });

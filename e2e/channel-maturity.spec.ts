@@ -52,16 +52,32 @@ test("the console renders the runtime's labels, or degrades to keys when it has 
     if (servesVerification) {
       // Supported and never driven: no support badge, and the qualifier shown.
       // This is the state that was invisible before the split.
-      const discordRow = page.getByRole("listitem").filter({ hasText: "Discord" });
-      await expect(discordRow).not.toContainText("Under development");
-      await expect(discordRow).toContainText("not yet verified");
+      //
+      // Discord used to be this example and cannot be any more, for two
+      // independent reasons. It has a setup card now, so it never appears in
+      // this list; and the runtime catalog marks it `Driven`, so the assertion
+      // below was already wrong about it before the card existed. WhatsApp
+      // Cloud API is the one channel left in the supported-but-undriven state.
+      // Matched loosely because the label itself moved: the released gateway
+      // calls this channel "WhatsApp" and `main` calls it "WhatsApp Cloud API".
+      // CI runs the released binary, so pinning either spelling would pass
+      // locally and fail there, or the reverse.
+      const undrivenRow = page.getByRole("listitem").filter({ hasText: /WhatsApp/ });
+      await expect(undrivenRow).not.toContainText("Under development");
+      await expect(undrivenRow).toContainText("not yet verified");
 
       // Under development and never driven: both signals on one row.
       await expect(ircRow).toContainText("not yet verified");
 
       // Supported and driven: said out loud on Telegram's own card, so the good
       // case is not left to be inferred from an absence.
-      await expect(page.getByText("verified", { exact: true })).toBeVisible();
+      //
+      // Anchored to that card rather than to the page. Three channels are
+      // driven in the runtime catalog and each says so on its own card or row,
+      // so a page-wide locator matches three elements and fails strict mode —
+      // which says nothing about whether the card under test is right.
+      const telegramCard = page.locator('[data-channel-card="telegram"]');
+      await expect(telegramCard.getByText("verified", { exact: true })).toBeVisible();
     }
     return;
   }

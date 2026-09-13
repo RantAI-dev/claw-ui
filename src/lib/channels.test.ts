@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   allowlistToastTitle,
+  channelHasCredentials,
   channelLabel,
+  channelMissingCredentials,
   channelState,
   channelSupport,
   channelVerification,
@@ -55,9 +57,16 @@ const CATALOG: ChannelCatalogEntry[] = [
   },
 ];
 
-/** What a runtime older than the two-axis split sends: `maturity` and no more. */
+/**
+ * What a runtime older than the two-axis split sends: `maturity` and no more.
+ *
+ * The `supported` row is Webhook rather than Discord because Discord now has
+ * its own setup card and `configuredRows` filters it out — leaving it here
+ * would have deleted this suite's only `maturity: "supported"` case without
+ * anything going red.
+ */
 const LEGACY_CATALOG: ChannelCatalogEntry[] = [
-  { key: "discord", label: "Discord", maturity: "supported", configured: false },
+  { key: "webhook", label: "Webhook", maturity: "supported", configured: false },
   { key: "irc", label: "IRC", maturity: "under_development", configured: false },
 ];
 
@@ -131,10 +140,19 @@ describe("channelState", () => {
 });
 
 describe("configuredRows", () => {
-  it("lists every configured key but Telegram, catalog order first, unknown keys last as-is", () => {
-    const rows = configuredRows(["zzz", "webhook", "telegram", "discord"], null, false, CATALOG);
-    expect(rows.map((r) => r.key)).toEqual(["discord", "webhook", "zzz"]);
-    expect(rows.map((r) => r.label)).toEqual(["Discord", "Webhook", "zzz"]);
+  it("lists every configured key but the ones with a card, catalog order first, unknown keys last as-is", () => {
+    const rows = configuredRows(["zzz", "webhook", "telegram", "irc"], null, false, CATALOG);
+    expect(rows.map((r) => r.key)).toEqual(["webhook", "irc", "zzz"]);
+    expect(rows.map((r) => r.label)).toEqual(["Webhook", "IRC", "zzz"]);
+  });
+
+  it("leaves Discord and Slack to their own cards, as it already did for Telegram", () => {
+    // A row and a card would both claim the channel, and only one of them can
+    // connect or disconnect it. The rule is "has a setup card", not "is
+    // Telegram" — which is what it used to be, back when Telegram was the only
+    // channel the console could set up.
+    const rows = configuredRows(["telegram", "discord", "slack", "irc"], null, false, CATALOG);
+    expect(rows.map((r) => r.key)).toEqual(["irc"]);
   });
 
   it("is empty before the list has loaded", () => {
@@ -142,12 +160,8 @@ describe("configuredRows", () => {
   });
 
   it("carries both axes per row, and null for a key it does not know", () => {
-    // Telegram is absent on purpose: `configuredRows` excludes it because it has
-    // its own card. Its supported-and-driven pair is asserted below, through
-    // `channelVerification`.
     const rows = configuredRows(["telegram", "discord", "irc", "zzz"], null, false, CATALOG);
     expect(rows.map((r) => [r.key, r.support, r.verification])).toEqual([
-      ["discord", "supported", "not_driven"],
       ["irc", "under_development", "not_driven"],
       ["zzz", null, null],
     ]);
@@ -157,9 +171,9 @@ describe("configuredRows", () => {
     // A console newer than its gateway. Support still renders; verification is
     // `null` rather than an invented "not_driven", because that runtime has no
     // opinion and claiming one would be inventing evidence.
-    const rows = configuredRows(["discord", "irc"], null, false, LEGACY_CATALOG);
+    const rows = configuredRows(["webhook", "irc"], null, false, LEGACY_CATALOG);
     expect(rows.map((r) => [r.key, r.support, r.verification])).toEqual([
-      ["discord", "supported", null],
+      ["webhook", "supported", null],
       ["irc", "under_development", null],
     ]);
   });
@@ -167,9 +181,57 @@ describe("configuredRows", () => {
   it("degrades to keys when the gateway sends no catalog at all", () => {
     // A console newer than the gateway it is pointed at. The old failure mode
     // here was a second hard-coded list; the rows render by key instead.
-    const rows = configuredRows(["discord", "irc"], null, false, []);
-    expect(rows.map((r) => r.label)).toEqual(["discord", "irc"]);
+    const rows = configuredRows(["webhook", "irc"], null, false, []);
+    expect(rows.map((r) => r.label)).toEqual(["webhook", "irc"]);
     expect(rows.every((r) => r.support === null && r.verification === null)).toBe(true);
+  });
+});
+
+describe("channelHasCredentials", () => {
+  /** A catalog from a runtime that answers the question, both ways. */
+  const WITH_ANSWER: ChannelCatalogEntry[] = [
+    { key: "telegram", label: "Telegram", configured: true, has_credentials: true },
+    { key: "discord", label: "Discord", configured: true, has_credentials: false },
+  ];
+
+  it("reports what the runtime said", () => {
+    expect(channelHasCredentials("telegram", WITH_ANSWER)).toBe(true);
+    expect(channelHasCredentials("discord", WITH_ANSWER)).toBe(false);
+  });
+
+  it("says null when the runtime has no opinion, which is not the same as false", () => {
+    // A gateway older than the field, and a key the catalog does not carry.
+    // Rendering either as "the token is missing" would be inventing evidence
+    // about a channel the console cannot see — the same mistake the
+    // verification axis already refuses to make.
+    expect(channelHasCredentials("telegram", CATALOG)).toBeNull();
+    expect(channelHasCredentials("zzz", WITH_ANSWER)).toBeNull();
+  });
+});
+
+describe("channelMissingCredentials", () => {
+  const WITH_ANSWER: ChannelCatalogEntry[] = [
+    { key: "discord", label: "Discord", configured: true, has_credentials: false },
+    { key: "slack", label: "Slack", configured: true, has_credentials: true },
+  ];
+
+  it("is true only for a configured channel the runtime says has no credential", () => {
+    // The state this exists for: a `[channels_config.discord]` section written
+    // by hand with the token left out reads as connected on every surface the
+    // console has, and the channel never starts.
+    expect(channelMissingCredentials("discord", ["discord"], WITH_ANSWER)).toBe(true);
+    expect(channelMissingCredentials("slack", ["slack"], WITH_ANSWER)).toBe(false);
+  });
+
+  it("is false for a channel that is not configured at all", () => {
+    // Nothing is missing before anything was set up; the card offers the
+    // connect form for its own reason, and must not also accuse the operator.
+    expect(channelMissingCredentials("discord", [], WITH_ANSWER)).toBe(false);
+    expect(channelMissingCredentials("discord", null, WITH_ANSWER)).toBe(false);
+  });
+
+  it("is false when the runtime has no opinion", () => {
+    expect(channelMissingCredentials("telegram", ["telegram"], CATALOG)).toBe(false);
   });
 });
 

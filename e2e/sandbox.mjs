@@ -150,12 +150,21 @@ nickname = "rantaiclaw_bot"
 channels = ["#rantaiclaw"]
 allowed_users = ["*"]
 
-# Supported and never driven, which is the third state the panel has to show.
-# Nothing here dials Discord; the token is a placeholder and the listener is
-# never started by these tests.
+# Nothing here dials Discord; the token is a placeholder, and this sandbox runs
+# the gateway rather than the daemon, so no channel listener is ever started.
+# Discord is configured so its setup card opens in manage mode rather than
+# offering to connect.
 [channels_config.discord]
 bot_token = "placeholder-not-a-real-token"
 allowed_users = ["*"]
+
+# Supported and never driven, which is the third state the panel has to show.
+# It used to be Discord's part; Discord is driven in the runtime catalog now and
+# has a setup card besides, so it never appears in the list. WhatsApp Cloud API
+# is the only remaining channel in that state, and every field of its config
+# section is optional.
+[channels_config.whatsapp]
+allowed_numbers = ["*"]
 
 [gateway]
 enabled = true

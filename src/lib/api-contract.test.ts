@@ -119,6 +119,50 @@ const CASES: Record<string, Case> = {
     url: "/api/rc/channels/telegram",
     method: "DELETE",
   },
+  connectDiscord: {
+    args: ["bot-token", ["operator"], "guild-1"],
+    url: "/api/rc/channels/discord",
+    method: "POST",
+    body: { bot_token: "bot-token", allowed_users: ["operator"], guild_id: "guild-1" },
+  },
+  updateDiscordAllowlist: {
+    // No `bot_token`: the gateway keeps the saved one, and that omission is what
+    // makes an allowlist edit possible without the operator re-typing a secret.
+    args: [["operator"]],
+    url: "/api/rc/channels/discord",
+    method: "POST",
+    body: { allowed_users: ["operator"] },
+  },
+  disconnectDiscord: {
+    args: [],
+    url: "/api/rc/channels/discord",
+    method: "DELETE",
+  },
+  connectSlack: {
+    // Two credentials, not one: the bot token authenticates the API calls and
+    // the app token opens Socket Mode. Sending one as the other is the mistake
+    // this contract line exists to catch.
+    args: ["xoxb-bot", "xapp-1-app", ["operator"], "C1"],
+    url: "/api/rc/channels/slack",
+    method: "POST",
+    body: {
+      bot_token: "xoxb-bot",
+      app_token: "xapp-1-app",
+      allowed_users: ["operator"],
+      channel_id: "C1",
+    },
+  },
+  updateSlackAllowlist: {
+    args: [["operator"]],
+    url: "/api/rc/channels/slack",
+    method: "POST",
+    body: { allowed_users: ["operator"] },
+  },
+  disconnectSlack: {
+    args: [],
+    url: "/api/rc/channels/slack",
+    method: "DELETE",
+  },
   providers: { args: [], url: "/api/rc/providers" },
   providerModels: {
     args: ["open ai"],

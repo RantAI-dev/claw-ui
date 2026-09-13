@@ -337,6 +337,15 @@ export interface ChannelCatalogEntry {
   /** Whether anyone has driven it. Absent on a runtime older than the split. */
   verification?: ChannelVerification;
   configured: boolean;
+  /**
+   * Whether the configured section actually carries a credential.
+   *
+   * `configured` only says a config section exists, so a section written by
+   * hand with the token left out reads as connected and never starts. Absent on
+   * a runtime older than the field — and absent is not `false`: a gateway with
+   * no opinion must not be rendered as one that says the token is missing.
+   */
+  has_credentials?: boolean;
 }
 
 export interface ChannelsInfo {
@@ -354,11 +363,23 @@ export interface ChannelsInfo {
   channels?: ChannelCatalogEntry[];
 }
 
-/** Result of the "connect Telegram" / allowlist-update flow (validate + persist). */
-export interface TelegramConnectResult {
+/**
+ * Result of a connect / allowlist-update flow (validate + persist).
+ *
+ * One shape for all three channels the console can set up. The gateway
+ * deliberately answers Discord and Slack in Telegram's shape rather than
+ * inventing a second one, so the console reads one response everywhere.
+ */
+export interface ChannelConnectResult {
   connected: boolean;
   channel: string;
-  /** Bot username from the live `getMe` probe — null on an allowlist-only update. */
+  /**
+   * Bot username from a live identity probe, or null.
+   *
+   * Telegram's `getMe` returns a name. Discord's and Slack's checks return a
+   * verdict and no identity, so this is always null for them — the field stays
+   * so one response shape covers all three, not because a name is coming.
+   */
   bot_username: string | null;
   allowed_users: number;
   experimental?: boolean;
@@ -369,6 +390,16 @@ export interface TelegramConnectResult {
    * gateway (which omits it) reads as `false` — the right default, since the
    * common save is an allowlist edit that is picked up live.
    */
+  restarts_runtime?: boolean;
+}
+
+/** The name this shape had when Telegram was the only channel with an endpoint. */
+export type TelegramConnectResult = ChannelConnectResult;
+
+/** Result of a disconnect: the saved credentials for that channel are cleared. */
+export interface ChannelDisconnectResult {
+  disconnected: boolean;
+  channel: string;
   restarts_runtime?: boolean;
 }
 
