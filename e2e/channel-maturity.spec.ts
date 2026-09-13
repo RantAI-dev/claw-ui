@@ -58,7 +58,11 @@ test("the console renders the runtime's labels, or degrades to keys when it has 
       // this list; and the runtime catalog marks it `Driven`, so the assertion
       // below was already wrong about it before the card existed. WhatsApp
       // Cloud API is the one channel left in the supported-but-undriven state.
-      const undrivenRow = page.getByRole("listitem").filter({ hasText: "WhatsApp Cloud API" });
+      // Matched loosely because the label itself moved: the released gateway
+      // calls this channel "WhatsApp" and `main` calls it "WhatsApp Cloud API".
+      // CI runs the released binary, so pinning either spelling would pass
+      // locally and fail there, or the reverse.
+      const undrivenRow = page.getByRole("listitem").filter({ hasText: /WhatsApp/ });
       await expect(undrivenRow).not.toContainText("Under development");
       await expect(undrivenRow).toContainText("not yet verified");
 

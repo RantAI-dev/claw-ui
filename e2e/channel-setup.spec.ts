@@ -35,16 +35,34 @@ test("a bot token the gateway refuses is not saved, and the card says why", asyn
   const before = await (await page.request.get(`${sandbox.baseURL}/api/rc/channels`)).json();
   expect(before.configured).not.toContain("slack");
 
+  // Does this gateway have the setup route at all?
+  //
+  // CI runs the newest *released* binary, and these endpoints landed in
+  // RantAIClaw #813, which no release carries yet. An empty body writes nothing
+  // either way: a gateway without the route answers 404, and one with it
+  // answers 400 because no token was sent and none is saved. The proxy relays
+  // the gateway's status untouched (`src/app/api/rc/[...path]/route.ts:33-36`),
+  // so the status is the gateway's own answer.
+  const probe = await page.request.post(`${sandbox.baseURL}/api/rc/channels/slack`, { data: {} });
+  const servesChannelSetup = probe.status() !== 404;
+
   const token = page.getByLabel("Slack bot token");
   await expect(token).toBeVisible();
   await token.fill("xoxb-0000000000-not-a-real-token");
   await page.getByRole("button", { name: "Connect Slack" }).click();
 
-  // The gateway's own words, either verdict. The console must not translate a
-  // refusal into a success, and must not invent a reason of its own.
-  await expect(
-    page.getByText(/rejected the bot token|could not check the bot token/i),
-  ).toBeVisible();
+  if (servesChannelSetup) {
+    // The gateway's own words, either verdict. The console must not translate a
+    // refusal into a success, and must not invent a reason of its own.
+    await expect(
+      page.getByText(/rejected the bot token|could not check the bot token/i),
+    ).toBeVisible();
+  }
+  // Against a gateway too old to have the route, the wording is the proxy's 404
+  // rather than a credential verdict, so it is not asserted — but the two facts
+  // below are the ones that matter, and they hold in both worlds. This branch
+  // disappears on the next RantaiClaw release; until then the refusal wording
+  // is covered only by the local run against a gateway built from `main`.
 
   // Read back through a different endpoint than the write used: a panel that
   // reports failure while the credential lands anyway is the defect that
