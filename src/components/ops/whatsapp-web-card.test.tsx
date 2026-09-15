@@ -5,8 +5,9 @@
 // stub the relay with a fake Response whose body emits the same SSE
 // frames the gateway sends, then assert:
 //   - the QR arrives as an <img src="data:...">, never as innerHTML;
-//   - a "connected" frame turns the QR off and shows the green
-//     confirmation;
+//   - a "connected" frame turns the QR off, confirms with a toast, and
+//     reloads the way the gateway's `restarts_runtime` says;
+//   - the disconnect dialog names the step left on the phone;
 //   - a "timeout" or "failed" frame sets the right terminal state;
 //   - 409 responses surface as the gateway's `detail`;
 //   - unmounting the card aborts the in-flight fetch.
@@ -16,6 +17,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import * as React from "react";
+
+const toastSuccess = vi.fn();
+const toastError = vi.fn();
+vi.mock("sonner", () => ({
+  toast: {
+    success: (...a: unknown[]) => toastSuccess(...a),
+    // Recorded rather than discarded, as the channels panel suite does: a card
+    // that swallows a refusal cannot be asserted against a black hole.
+    error: (...a: unknown[]) => toastError(...a),
+    warning: vi.fn(),
+    message: vi.fn(),
+  },
+}));
 
 // Build a Response whose body is a stream of `data:` frames, the
 // shape the gateway sends. `frames` is an array of pre-stringified
@@ -51,6 +65,8 @@ describe("WhatsAppWebCard pairing", () => {
 
   beforeEach(() => {
     cleanup();
+    toastSuccess.mockClear();
+    toastError.mockClear();
   });
 
   afterEach(() => {
@@ -127,8 +143,11 @@ describe("WhatsAppWebCard pairing", () => {
     fireEvent.click(screen.getByRole("button", { name: "Link WhatsApp" }));
 
     expect(
-      await screen.findByText(/pairing window expired/i),
+      await screen.findByText(/pairing window expired before the phone scanned the QR/i),
     ).toBeTruthy();
+    // F-40: the old sentence promised a new QR rotation per click. The window
+    // is the gateway's to size, and the card does not know it.
+    expect(screen.queryByText(/QR rotates/i)).toBeNull();
   });
 
   it("surfaces the gateway's 409 detail when a session is already configured", async () => {
@@ -205,6 +224,81 @@ describe("WhatsAppWebCard pairing", () => {
     // Plan 369 keeps the operator from re-scanning an already-used
     // QR: the first QR rendered test covers the visibility path,
     // this test covers the Connected → onReload(true) wiring.
+  });
+
+  it("confirms a link with a toast instead of a line the refetch removes", async () => {
+    // F-40: "Linked." rendered inside the link form, and the refetch that
+    // follows `connected` swaps that form for the manage one, so the
+    // confirmation was gone before it could be read.
+    const notConfiguredState = {
+      word: "not configured" as const,
+      label: "Not configured",
+      tone: "outline" as const,
+      detail: null,
+    };
+    global.fetch = vi.fn(async () =>
+      sseResponse([
+        JSON.stringify({ type: "qr", svg: "<svg/>" }),
+        JSON.stringify({ type: "connected", session_path: "/tmp/x.db", restarts_runtime: true }),
+      ]),
+    ) as unknown as typeof fetch;
+
+    const { WhatsAppWebCard } = await import("./channels-panel");
+    render(
+      <WhatsAppWebCard
+        connected={false}
+        missingCredentials={false}
+        state={notConfiguredState}
+        verification={null}
+        allowedNumbers={[]}
+        onReload={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Link WhatsApp" }));
+
+    await vi.waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("WhatsApp linked"));
+    // Nothing in the form claims the link: the refetch swaps the form away, so
+    // a line there would vanish before it is read.
+    await vi.waitFor(() => expect(screen.queryByTestId("whatsapp-web-qr")).toBeNull());
+    expect(screen.queryByText(/^Linked\./)).toBeNull();
+  });
+
+  it("trusts restarts_runtime on the Connected frame", async () => {
+    // A gateway with RantaiClaw #820 says whether the link restarts the
+    // runtime. The earlier Connected-frame test sends a frame without the
+    // field, as a released gateway does, and expects a restart.
+    const notConfiguredState = {
+      word: "not configured" as const,
+      label: "Not configured",
+      tone: "outline" as const,
+      detail: null,
+    };
+    const onReload = vi.fn();
+    global.fetch = vi.fn(async () =>
+      sseResponse([
+        JSON.stringify({ type: "qr", svg: "<svg/>" }),
+        JSON.stringify({ type: "connected", session_path: "/tmp/x.db", restarts_runtime: false }),
+      ]),
+    ) as unknown as typeof fetch;
+
+    const { WhatsAppWebCard } = await import("./channels-panel");
+    render(
+      <WhatsAppWebCard
+        connected={false}
+        missingCredentials={false}
+        state={notConfiguredState}
+        verification={null}
+        allowedNumbers={[]}
+        onReload={onReload}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Link WhatsApp" }));
+
+    await vi.waitFor(() => expect(onReload).toHaveBeenCalled());
+    expect(onReload).toHaveBeenCalledWith(false);
+    expect(onReload).not.toHaveBeenCalledWith(true);
   });
 
   it("aborts the in-flight stream when the card unmounts", async () => {
@@ -335,6 +429,36 @@ describe("WhatsAppWebCard pairing", () => {
     await vi.waitFor(() =>
       expect(onReload).toHaveBeenCalledWith(true),
     );
+  });
+
+  it("tells the operator to remove the device on the phone when disconnecting", async () => {
+    // F-40: the dialog said the paired session is cleared and a fresh QR
+    // reconnects. The gateway only removes the config section, and wa-rs has
+    // no logout, so the phone keeps the device under Linked Devices.
+    const configuredState = {
+      word: "running" as const,
+      label: "Running",
+      tone: "success" as const,
+      detail: null,
+    };
+    global.fetch = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+
+    const { WhatsAppWebCard } = await import("./channels-panel");
+    render(
+      <WhatsAppWebCard
+        connected={true}
+        missingCredentials={false}
+        state={configuredState}
+        verification={null}
+        allowedNumbers={["+15551234567"]}
+        onReload={() => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect whatsapp/i }));
+
+    expect(screen.getByText(/WhatsApp → Linked Devices/)).toBeTruthy();
+    expect(screen.queryByText(/paired session is cleared/i)).toBeNull();
   });
 
   it("shows a Save button in the manage state and posts allowed_numbers on click", async () => {

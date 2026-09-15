@@ -10,6 +10,18 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The WhatsApp Web card says what actually happens.** Disconnecting said the paired session was
+  cleared and a fresh QR would reconnect, but the gateway only clears the saved section and wa-rs has
+  no logout, so the phone keeps the linked device. The dialog now says WhatsApp is disconnected from
+  RantaiClaw, the runtime restarts, and the device stays on the phone until it is removed under
+  WhatsApp → Linked Devices. A successful link shows a "WhatsApp linked" toast instead of a "Linked."
+  line that the refetch replaced before it could be read, and the card waits for a restart only when
+  the gateway's `connected` frame says one is coming (`restarts_runtime`, RantaiClaw #820); a gateway
+  without the field is still treated as restarting. The timeout message no longer promises a new QR
+  rotation per click.
+
 ## [0.3.28] — 2026-09-08
 
 Paired with RantaiClaw `v0.31.0-alpha`, and this console needs it: the channel

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useAsync } from "@/hooks/use-async";
 import { useGatewayStatus } from "@/hooks/use-gateway-status";
@@ -1088,16 +1089,20 @@ export function WhatsAppWebCard({
                 type: string;
                 svg?: string;
                 reason?: string;
+                restarts_runtime?: boolean;
               };
               if (parsed.type === "qr" && parsed.svg) {
                 setQrSvg(parsed.svg);
               } else if (parsed.type === "connected") {
-                // The runtime now needs to pick up the freshly-
-                // persisted session file; the gateway has scheduled
-                // the daemon reload. Show the reload banner and ask
-                // the panel to refetch once the gateway comes back.
+                // The gateway saved the session. It says in
+                // `restarts_runtime` whether the runtime restarts to start
+                // the channel; a gateway from before that field leaves it
+                // out, and the card keeps treating that as a restart. The
+                // toast outlives the refetch that swaps this form for the
+                // manage one.
                 setPairState("connected");
-                onReload(true);
+                toast.success("WhatsApp linked");
+                onReload(parsed.restarts_runtime ?? true);
                 return;
               } else if (parsed.type === "timeout") {
                 setPairState("timeout");
@@ -1283,17 +1288,12 @@ export function WhatsAppWebCard({
             )}
             {pairState === "timeout" && (
               <p className="text-xs text-amber-400">
-                The gateway&rsquo;s pairing window expired before the phone scanned.
-                Try again &mdash; the QR rotates each time you press Link WhatsApp.
+                The pairing window expired before the phone scanned the QR. Press Link
+                WhatsApp to try again.
               </p>
             )}
             {pairState === "failed" && failReason && (
               <p className="text-xs text-red-400">{failReason}</p>
-            )}
-            {pairState === "connected" && (
-              <p className="text-xs text-emerald-400">
-                Linked. The runtime picked up the new session after the next reload.
-              </p>
             )}
           </div>
         )}
@@ -1304,7 +1304,7 @@ export function WhatsAppWebCard({
         description={
           halfConfigured
             ? "The empty channels_config.whatsapp_web section is cleared. Press Link WhatsApp after the daemon reloads to scan a fresh QR."
-            : "The paired session is cleared. To reconnect, scan a fresh QR with your phone."
+            : "WhatsApp is disconnected from RantaiClaw and the runtime restarts. The phone keeps the linked device until you remove it under WhatsApp → Linked Devices."
         }
         busy={s.busy || halfDisconnecting}
         onClose={() =>
