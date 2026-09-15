@@ -18,6 +18,7 @@ import {
   SecretField,
   SetupCardFrame,
   useChannelSetup,
+  whatsappAllowlist,
 } from "./channel-setup";
 import { allowlistDrift, CARDED_CHANNELS, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import type { ChannelVerification } from "@/lib/types";
@@ -269,6 +270,15 @@ export function ChannelsPanel() {
                 onReload={refreshAfterReload}
               />
             </div>
+
+            <div>
+              <SectionTitle>WhatsApp Web</SectionTitle>
+              <WhatsAppWebCard
+                {...cardFacts("whatsapp_web")}
+                allowedNumbers={whatsappAllowlist(cfg.data)}
+                onReload={refreshAfterReload}
+              />
+            </div>
           </div>
 
           <div className="space-y-8 lg:col-span-5">
@@ -278,7 +288,7 @@ export function ChannelsPanel() {
               <SectionTitle>Other channels</SectionTitle>
               <p className="text-xs text-muted-foreground">
                 Set up with <code>rantaiclaw setup</code> or in config.toml; this console
-                manages Telegram, Discord and Slack.
+                manages Telegram, Discord, Slack and WhatsApp Web.
               </p>
               {underDevelopmentCount > 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -927,6 +937,314 @@ function SlackCard({
           await s.runSave();
         }}
       />
+    </>
+  );
+}
+
+/**
+ * WhatsApp Web setup card.
+ *
+ * Plan 369. Web-mode WhatsApp is linked by scanning a QR. The gateway
+ * mints a fresh session file per link (`whatsapp-<unix>.db`), so two
+ * clients never hold one session (plan 364 D-3); the QR is rendered
+ * server-side as SVG (plan 364 D-2) and the browser shows it as an
+ * `<img src="data:...">`, never as `innerHTML`. The SSE stream from
+ * `POST /api/v1/channels/whatsapp_web/pair` runs through the dedicated
+ * `/api/whatsapp-web/pair` relay (NOT the buffered `/api/rc/...` proxy
+ * — that one reads the whole body before answering, which would never
+ * let a frame through). The card owns the stream so navigating away
+ * or unmounting aborts it.
+ *
+ * Exported so the WhatsApp-specific tests in
+ * `whatsapp-web-card.test.tsx` can drive the component directly
+ * without mounting the whole panel and its surrounding fetches.
+ */
+export function WhatsAppWebCard({
+  connected,
+  missingCredentials,
+  state,
+  verification,
+  allowedNumbers,
+  onReload,
+}: {
+  connected: boolean;
+  missingCredentials: boolean;
+  verification: ChannelVerification | null;
+  state: ChannelState;
+  allowedNumbers: string[];
+  onReload: (restartsRuntime: boolean) => void;
+}) {
+  // Pairing state: idle (not started), streaming (SSE open), or a
+  // terminal outcome (connected/timeout/failed). `qrSvg` carries the
+  // most recent frame from the SSE stream so a re-render keeps the QR
+  // visible without re-fetching.
+  const [pairState, setPairState] = React.useState<
+    "idle" | "streaming" | "connected" | "timeout" | "failed"
+  >("idle");
+  const [qrSvg, setQrSvg] = React.useState<string | null>(null);
+  const [failReason, setFailReason] = React.useState<string | null>(null);
+  const abortRef = React.useRef<AbortController | null>(null);
+  // The allowlist the user types in; seeded from the saved list and
+  // reset to that list after a successful pair.
+  const [numbers, setNumbers] = React.useState<string[]>(allowedNumbers);
+  React.useEffect(() => setNumbers(allowedNumbers), [allowedNumbers]);
+
+  const manage = connected && !missingCredentials;
+
+  // Open the SSE pairing stream. One per click; a second `Link` click
+  // while a stream is open is a no-op so the in-flight flag on the
+  // gateway does not 409 the operator.
+  const startPair = React.useCallback(() => {
+    if (pairState === "streaming") return;
+    // Reset visible state from any previous attempt.
+    setQrSvg(null);
+    setFailReason(null);
+    setPairState("streaming");
+    const ac = new AbortController();
+    abortRef.current = ac;
+    (async () => {
+      try {
+        const res = await fetch("/api/whatsapp-web/pair", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            allowed_numbers: numbers.filter((n) => n.trim() !== ""),
+          }),
+          signal: ac.signal,
+        });
+        if (!res.ok || !res.body) {
+          // The relay passes the gateway's JSON error body through; the
+          // most common is 409 already_linked, which surfaces here as
+          // a failed state with the gateway's `detail`.
+          const text = await res.text().catch(() => "");
+          let detail = `pair refused (HTTP ${res.status})`;
+          try {
+            const parsed = JSON.parse(text) as { detail?: string; error?: string };
+            detail = parsed.detail || parsed.error || detail;
+          } catch {
+            if (text) detail = text.slice(0, 200);
+          }
+          setFailReason(detail);
+          setPairState("failed");
+          return;
+        }
+        // Read the SSE frames one by one. Each `data:` line is a JSON
+        // object whose `type` is one of qr / connected / timeout /
+        // failed. PairCode is dropped server-side; we never see it
+        // here, which is D-2.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          // SSE frames are separated by a blank line; keep parsing
+          // until the buffer is exhausted or holds a complete frame.
+          let sep: number;
+          while ((sep = buffer.indexOf("\n\n")) !== -1) {
+            const frame = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            const dataLine = frame
+              .split("\n")
+              .find((line) => line.startsWith("data:"));
+            if (!dataLine) continue;
+            const payload = dataLine.slice(5).trim();
+            try {
+              const parsed = JSON.parse(payload) as {
+                type: string;
+                svg?: string;
+                reason?: string;
+              };
+              if (parsed.type === "qr" && parsed.svg) {
+                setQrSvg(parsed.svg);
+              } else if (parsed.type === "connected") {
+                // The runtime now needs to pick up the freshly-
+                // persisted session file; the gateway has scheduled
+                // the daemon reload. Show the reload banner and ask
+                // the panel to refetch once the gateway comes back.
+                setPairState("connected");
+                onReload(true);
+                return;
+              } else if (parsed.type === "timeout") {
+                setPairState("timeout");
+                return;
+              } else if (parsed.type === "failed") {
+                setFailReason(parsed.reason ?? "pair failed");
+                setPairState("failed");
+                return;
+              }
+            } catch {
+              // Ignore a malformed frame; the next one will land.
+            }
+          }
+        }
+      } catch (err) {
+        if ((err as { name?: string })?.name === "AbortError") {
+          // The operator navigated away or hit Cancel; nothing to
+          // show, the stream was cancelled cleanly.
+          setPairState("idle");
+          return;
+        }
+        setFailReason(
+          err instanceof Error ? err.message : "could not reach the gateway",
+        );
+        setPairState("failed");
+      }
+      // Note: deliberately do not clear `abortRef.current` here. The
+      // unmount cleanup reads it to abort an in-flight stream; clearing
+      // it would race the cleanup and let a stream outlive the card.
+      // The next call to `startPair` overwrites the ref with a fresh
+      // controller; that is the only place a stale entry is replaced.
+    })();
+  }, [pairState, numbers, onReload]);
+
+  // Closing the card (unmount) aborts the open stream; aborting is
+  // safe even when no stream is open.
+  React.useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
+  return (
+    <>
+      <SetupCardFrame
+        channelKey="whatsapp_web"
+        state={state}
+        verification={verification}
+      >
+        {manage ? (
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              // An allowlist-only edit goes through the same
+              // POST route as Discord and Slack, with no token.
+              // The runtime applies it live via
+              // Channel::apply_allowed_senders.
+              void (async () => {
+                try {
+                  const res = await fetch("/api/rc/channels/whatsapp_web", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      allowed_numbers: numbers
+                        .map((n) => n.trim())
+                        .filter((n) => n !== ""),
+                    }),
+                  });
+                  if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(text || `HTTP ${res.status}`);
+                  }
+                  onReload(false);
+                } catch (err) {
+                  setFailReason(
+                    err instanceof Error ? err.message : "save failed",
+                  );
+                  setPairState("failed");
+                }
+              })();
+            }}
+          >
+            <PlainField
+              id="whatsapp-web-allowlist"
+              label="Allowed WhatsApp phone numbers (comma-separated, E.164)"
+              placeholder="+15551234567"
+              value={numbers.join(", ")}
+              onChange={(v) =>
+                setNumbers(
+                  v
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter((s) => s !== ""),
+                )
+              }
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                Applied to the running channel without a restart.
+              </span>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setPairState("idle")}
+                  disabled={pairState === "idle"}
+                >
+                  Disconnect WhatsApp
+                </Button>
+              </div>
+            </div>
+            {pairState === "connected" && (
+              <p className="text-xs text-emerald-400">
+                Linked. The runtime picked up the new session after the next reload.
+              </p>
+            )}
+          </form>
+        ) : (
+          <div className="space-y-3">
+            <PlainField
+              id="whatsapp-web-numbers"
+              label="Allowed WhatsApp phone numbers (comma-separated, E.164)"
+              placeholder="+15551234567"
+              value={numbers.join(", ")}
+              onChange={(v) =>
+                setNumbers(
+                  v
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter((s) => s !== ""),
+                )
+              }
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                Open WhatsApp on your phone → Linked Devices → Link a Device, then
+                scan the QR below. The gateway mints a fresh session file per
+                scan; two phones never share one session.
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                className="shrink-0"
+                onClick={() => startPair()}
+                disabled={pairState === "streaming"}
+              >
+                {pairState === "streaming" ? "Linking…" : "Link WhatsApp"}
+              </Button>
+            </div>
+            {/* The QR is rendered as an <img> from a data: URL built
+                from the inline SVG the gateway sent. Plan 369: never
+                as innerHTML. The browser caches the URL until the next
+                frame arrives; navigating away aborts the stream and
+                the QR disappears with the card. A timeout frame after
+                a QR keeps the last SVG on screen so the operator can
+                see what expired; `connected` / `failed` clear it. */}
+            {qrSvg && pairState !== "connected" && pairState !== "failed" && (
+              <div className="rounded-md border border-border bg-background p-4">
+                <img
+                  src={`data:image/svg+xml;utf8,${encodeURIComponent(qrSvg)}`}
+                  alt="WhatsApp Web pairing QR"
+                  className="mx-auto block h-56 w-56"
+                  data-testid="whatsapp-web-qr"
+                />
+              </div>
+            )}
+            {pairState === "timeout" && (
+              <p className="text-xs text-amber-400">
+                The gateway&rsquo;s pairing window expired before the phone scanned.
+                Try again &mdash; the QR rotates each time you press Link WhatsApp.
+              </p>
+            )}
+            {pairState === "failed" && failReason && (
+              <p className="text-xs text-red-400">{failReason}</p>
+            )}
+          </div>
+        )}
+      </SetupCardFrame>
     </>
   );
 }
