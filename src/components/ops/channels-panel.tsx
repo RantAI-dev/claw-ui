@@ -983,6 +983,8 @@ export function WhatsAppWebCard({
   >("idle");
   const [qrSvg, setQrSvg] = React.useState<string | null>(null);
   const [failReason, setFailReason] = React.useState<string | null>(null);
+  const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
+  const [disconnecting, setDisconnecting] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
   // The allowlist the user types in; seeded from the saved list and
   // reset to that list after a successful pair.
@@ -990,6 +992,13 @@ export function WhatsAppWebCard({
   React.useEffect(() => setNumbers(allowedNumbers), [allowedNumbers]);
 
   const manage = connected && !missingCredentials;
+  // `halfConfigured`: a `channels_config.whatsapp_web` section exists
+  // but its `session_path` is empty (e.g. written by hand, or the link
+  // failed before persisting). D-3 forbids pairing while the section
+  // exists, so the only path forward is to clear the section first;
+  // the console needs to offer that path because `rantaiclaw setup`
+  // would just write the same broken section back.
+  const halfConfigured = connected && missingCredentials;
 
   // Open the SSE pairing stream. One per click; a second `Link` click
   // while a stream is open is a no-op so the in-flight flag on the
@@ -1107,6 +1116,30 @@ export function WhatsAppWebCard({
     };
   }, []);
 
+  // Disconnect is the same DELETE endpoint for both the manage and
+  // the half-configured case. Half-configured: clears the empty
+  // section so the operator can pair again. Manage: tears down the
+  // paired session. Both schedule a daemon reload.
+  const runDisconnect = React.useCallback(async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/rc/channels/whatsapp_web", {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      // Clearing the section triggers a daemon reload.
+      onReload(true);
+    } catch (err) {
+      setFailReason(err instanceof Error ? err.message : "disconnect failed");
+    } finally {
+      setDisconnecting(false);
+      setConfirmDisconnect(false);
+    }
+  }, [onReload]);
+
   return (
     <>
       <SetupCardFrame
@@ -1171,10 +1204,10 @@ export function WhatsAppWebCard({
                   type="button"
                   size="sm"
                   variant="destructive"
-                  onClick={() => setPairState("idle")}
-                  disabled={pairState === "idle"}
+                  onClick={() => setConfirmDisconnect(true)}
+                  disabled={disconnecting}
                 >
-                  Disconnect WhatsApp
+                  {disconnecting ? "Disconnecting…" : "Disconnect WhatsApp"}
                 </Button>
               </div>
             </div>
@@ -1184,6 +1217,33 @@ export function WhatsAppWebCard({
               </p>
             )}
           </form>
+        ) : halfConfigured ? (
+          // The section exists in `config.toml` but has no usable
+          // session_path. Pair is refused while the section exists
+          // (D-3), so the only recovery from the console is to clear
+          // it; once `whatsapp_web` is `None`, the Link button works.
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              A <code>channels_config.whatsapp_web</code> section is saved
+              but has no session file, so the channel cannot start. Disconnect
+              below to clear the section, then press <strong>Link WhatsApp</strong>
+              to scan a fresh QR.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                onClick={() => setConfirmDisconnect(true)}
+                disabled={disconnecting}
+              >
+                {disconnecting ? "Disconnecting…" : "Clear section"}
+              </Button>
+            </div>
+            {failReason && (
+              <p className="text-xs text-red-400">{failReason}</p>
+            )}
+          </div>
         ) : (
           <div className="space-y-3">
             <PlainField
@@ -1245,6 +1305,18 @@ export function WhatsAppWebCard({
           </div>
         )}
       </SetupCardFrame>
+      <DisconnectDialog
+        open={confirmDisconnect}
+        label={manage ? "WhatsApp" : "the WhatsApp Web section"}
+        description={
+          manage
+            ? "The paired session is cleared. To reconnect, scan a fresh QR with your phone."
+            : "The empty channels_config.whatsapp_web section is cleared. Press Link WhatsApp after the daemon reloads to scan a fresh QR."
+        }
+        busy={disconnecting}
+        onClose={() => setConfirmDisconnect(false)}
+        onConfirm={() => void runDisconnect()}
+      />
     </>
   );
 }

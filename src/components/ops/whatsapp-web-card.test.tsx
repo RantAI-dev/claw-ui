@@ -246,4 +246,94 @@ describe("WhatsAppWebCard pairing", () => {
     unmount();
     expect(abortSignal!.aborted).toBe(true);
   });
+
+  it("shows a Clear-section path when the section exists but has no session_path", async () => {
+    // A `channels_config.whatsapp_web` section is saved (so `connected`
+    // is true) but its `session_path` is empty (so `missingCredentials`
+    // is true). D-3 forbids pairing while the section exists, so the
+    // only recovery from the console is to DELETE the section first;
+    // the card shows a Clear-section button to do that.
+    const configuredNoSessionState = {
+      word: "configured" as const,
+      label: "Configured",
+      tone: "outline" as const,
+      detail:
+        "The channels runtime is up but this channel has not started; check its credentials in config.toml.",
+      detailScope: "channel" as const,
+    };
+    const onReload = vi.fn();
+    global.fetch = vi.fn(async () =>
+      jsonResponse({ disconnected: true, channel: "whatsapp_web" }, 200),
+    ) as unknown as typeof fetch;
+
+    const { WhatsAppWebCard } = await import("./channels-panel");
+    render(
+      <WhatsAppWebCard
+        connected={true}
+        missingCredentials={true}
+        state={configuredNoSessionState}
+        verification={null}
+        allowedNumbers={[]}
+        onReload={onReload}
+      />,
+    );
+
+    // The state detail is the "check config.toml" message — the
+    // console surfaces the runtime's truth instead of swallowing it.
+    expect(
+      screen.getByText(/this channel has not started/i),
+    ).toBeTruthy();
+    // The Link button is NOT shown — pairing is refused while the
+    // section exists, so a button that promises a scan would lie.
+    expect(screen.queryByRole("button", { name: "Link WhatsApp" })).toBeNull();
+    // The Clear section button IS shown — that is the only path
+    // forward from the console.
+    const clear = screen.getByRole("button", { name: /clear section/i });
+    fireEvent.click(clear);
+    // The confirm dialog appears; confirm it.
+    fireEvent.click(
+      screen.getByRole("button", { name: /^disconnect$/i }),
+    );
+    await vi.waitFor(() =>
+      expect(onReload).toHaveBeenCalledWith(true),
+    );
+  });
+
+  it("disconnects through the same DELETE when the channel is fully paired", async () => {
+    // The "manage" state — section exists, session_path filled.
+    // Disconnect still goes through DELETE and schedules a reload.
+    const configuredState = {
+      word: "running" as const,
+      label: "Running",
+      tone: "success" as const,
+      detail: null,
+    };
+    const onReload = vi.fn();
+    global.fetch = vi.fn(async () =>
+      jsonResponse({ disconnected: true, channel: "whatsapp_web" }, 200),
+    ) as unknown as typeof fetch;
+
+    const { WhatsAppWebCard } = await import("./channels-panel");
+    render(
+      <WhatsAppWebCard
+        connected={true}
+        missingCredentials={false}
+        state={configuredState}
+        verification={null}
+        allowedNumbers={["+15551234567"]}
+        onReload={onReload}
+      />,
+    );
+
+    const disconnect = screen.getByRole("button", {
+      name: /disconnect whatsapp/i,
+    });
+    fireEvent.click(disconnect);
+    fireEvent.click(
+      screen.getByRole("button", { name: /^disconnect$/i }),
+    );
+    await vi.waitFor(() =>
+      expect(onReload).toHaveBeenCalledWith(true),
+    );
+  });
 });
