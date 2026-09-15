@@ -269,14 +269,15 @@ describe("ChannelsPanel status words", () => {
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
     expect(await screen.findByText("Not reachable on any channel")).toBeTruthy();
-    // One badge per setup card, and all three say the same thing. Asserting the
+    // One badge per setup card, and all four say the same thing. Asserting the
     // count rather than "at least one" is what would catch a card that drifts
-    // out of step with the other two.
-    expect(await screen.findAllByText("Not configured")).toHaveLength(3);
+    // out of step with the others.
+    expect(await screen.findAllByText("Not configured")).toHaveLength(4);
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Discord" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Link WhatsApp" })).toBeTruthy();
   });
 
   it("says the runtime-level cause once, in the band, not on every card", async () => {
@@ -306,7 +307,7 @@ describe("ChannelsPanel status words", () => {
     // Every card, not just the first one: a card still claiming "Running" from
     // the last good fetch while the gateway is down is the defect this covers,
     // and it would hide behind a single-element assertion.
-    expect(await screen.findAllByText("Status unknown")).toHaveLength(3);
+    expect(await screen.findAllByText("Status unknown")).toHaveLength(4);
   });
 });
 

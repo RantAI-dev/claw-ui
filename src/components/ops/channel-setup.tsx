@@ -38,6 +38,16 @@ export function channelAllowlist(
   return Array.isArray(allowed) ? (allowed as string[]) : [];
 }
 
+/** WhatsApp Web uses `allowed_numbers` rather than `allowed_users`. */
+export function whatsappAllowlist(
+  config: Record<string, unknown> | null,
+): string[] {
+  const cc = config?.["channels_config"] as Record<string, unknown> | undefined;
+  const section = cc?.["whatsapp_web"] as Record<string, unknown> | undefined;
+  const allowed = section?.["allowed_numbers"];
+  return Array.isArray(allowed) ? (allowed as string[]) : [];
+}
+
 /** A credential box: never seeded, never re-rendered with what was saved. */
 export function SecretField({
   id,
