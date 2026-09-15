@@ -983,13 +983,20 @@ export function WhatsAppWebCard({
   >("idle");
   const [qrSvg, setQrSvg] = React.useState<string | null>(null);
   const [failReason, setFailReason] = React.useState<string | null>(null);
-  const [confirmDisconnect, setConfirmDisconnect] = React.useState(false);
-  const [disconnecting, setDisconnecting] = React.useState(false);
-  const abortRef = React.useRef<AbortController | null>(null);
-  // The allowlist the user types in; seeded from the saved list and
-  // reset to that list after a successful pair.
+  // The half-configured state's Clear-section button goes through its
+  // own dialog so the manage state's confirmDisconnect (provided by
+  // the hook below) does not get tangled up. The two paths are
+  // mutually exclusive — `manage` and `halfConfigured` cannot both be
+  // true at once — so one dialog component reading both flags is fine.
+  const [halfConfirmDisconnect, setHalfConfirmDisconnect] = React.useState(false);
+  const [halfDisconnecting, setHalfDisconnecting] = React.useState(false);
+  // The pair-time allowlist the user is about to link with. The pair
+  // endpoint takes it once; afterwards the manage hook owns the
+  // editable copy. Seeded from the saved list so a re-pair starts
+  // from what the runtime already had.
   const [numbers, setNumbers] = React.useState<string[]>(allowedNumbers);
   React.useEffect(() => setNumbers(allowedNumbers), [allowedNumbers]);
+  const abortRef = React.useRef<AbortController | null>(null);
 
   const manage = connected && !missingCredentials;
   // `halfConfigured`: a `channels_config.whatsapp_web` section exists
@@ -999,6 +1006,23 @@ export function WhatsAppWebCard({
   // the console needs to offer that path because `rantaiclaw setup`
   // would just write the same broken section back.
   const halfConfigured = connected && missingCredentials;
+
+  // The allowlist half of the manage state goes through the same hook
+  // Telegram/Discord/Slack use: a Save button, the drift pre-check
+  // when the server's list moved while the box was open, and the one
+  // shared disconnect dialog. The hook names the field `allowedUsers`
+  // because Telegram set it that way; the array itself is the same
+  // string[] whether the gateway calls it `allowed_users` or
+  // `allowed_numbers`. Only the wire body differs.
+  const s = useChannelSetup({
+    channelKey: "whatsapp_web",
+    allowedUsers: allowedNumbers,
+    connected,
+    onReload,
+    freshAllowlist: async () => whatsappAllowlist(await api.config()),
+    updateAllowlist: (users) => api.updateWhatsappWebAllowlist(users),
+    disconnect: () => api.disconnectWhatsappWeb(),
+  });
 
   // Open the SSE pairing stream. One per click; a second `Link` click
   // while a stream is open is a no-op so the in-flight flag on the
@@ -1116,27 +1140,21 @@ export function WhatsAppWebCard({
     };
   }, []);
 
-  // Disconnect is the same DELETE endpoint for both the manage and
-  // the half-configured case. Half-configured: clears the empty
-  // section so the operator can pair again. Manage: tears down the
-  // paired session. Both schedule a daemon reload.
-  const runDisconnect = React.useCallback(async () => {
-    setDisconnecting(true);
+  // The half-configured Clear-section path uses the same DELETE endpoint
+  // the manage state does, but goes through its own state because the
+  // hook above already owns the dialog for the manage path. The toast
+  // is the same one Telegram/Discord/Slack use: the shared toast helper
+  // (`@/lib/channels`) maps the count into the title.
+  const runHalfConfiguredDisconnect = React.useCallback(async () => {
+    setHalfDisconnecting(true);
     try {
-      const res = await fetch("/api/rc/channels/whatsapp_web", {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      // Clearing the section triggers a daemon reload.
-      onReload(true);
+      const r = await api.disconnectWhatsappWeb();
+      onReload(r.restarts_runtime === true);
     } catch (err) {
       setFailReason(err instanceof Error ? err.message : "disconnect failed");
     } finally {
-      setDisconnecting(false);
-      setConfirmDisconnect(false);
+      setHalfDisconnecting(false);
+      setHalfConfirmDisconnect(false);
     }
   }, [onReload]);
 
@@ -1152,48 +1170,15 @@ export function WhatsAppWebCard({
             className="space-y-2"
             onSubmit={(e) => {
               e.preventDefault();
-              // An allowlist-only edit goes through the same
-              // POST route as Discord and Slack, with no token.
-              // The runtime applies it live via
-              // Channel::apply_allowed_senders.
-              void (async () => {
-                try {
-                  const res = await fetch("/api/rc/channels/whatsapp_web", {
-                    method: "POST",
-                    headers: { "content-type": "application/json" },
-                    body: JSON.stringify({
-                      allowed_numbers: numbers
-                        .map((n) => n.trim())
-                        .filter((n) => n !== ""),
-                    }),
-                  });
-                  if (!res.ok) {
-                    const text = await res.text();
-                    throw new Error(text || `HTTP ${res.status}`);
-                  }
-                  onReload(false);
-                } catch (err) {
-                  setFailReason(
-                    err instanceof Error ? err.message : "save failed",
-                  );
-                  setPairState("failed");
-                }
-              })();
+              void s.saveAllowlist();
             }}
           >
             <PlainField
-              id="whatsapp-web-allowlist"
+              id={s.fieldId("allowlist")}
               label="Allowed WhatsApp phone numbers (comma-separated, E.164)"
               placeholder="+15551234567"
-              value={numbers.join(", ")}
-              onChange={(v) =>
-                setNumbers(
-                  v
-                    .split(",")
-                    .map((s) => s.trim())
-                    .filter((s) => s !== ""),
-                )
-              }
+              value={s.users}
+              onChange={s.setUsers}
             />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
@@ -1201,13 +1186,21 @@ export function WhatsAppWebCard({
               </span>
               <div className="flex shrink-0 gap-2">
                 <Button
+                  type="submit"
+                  size="sm"
+                  variant="outline"
+                  disabled={s.busy || !s.dirty}
+                >
+                  {s.busy ? "Saving…" : "Save WhatsApp allowlist"}
+                </Button>
+                <Button
                   type="button"
                   size="sm"
                   variant="destructive"
-                  onClick={() => setConfirmDisconnect(true)}
-                  disabled={disconnecting}
+                  onClick={() => s.setConfirmDisconnect(true)}
+                  disabled={s.busy}
                 >
-                  {disconnecting ? "Disconnecting…" : "Disconnect WhatsApp"}
+                  {s.busy ? "Disconnecting…" : "Disconnect WhatsApp"}
                 </Button>
               </div>
             </div>
@@ -1234,10 +1227,10 @@ export function WhatsAppWebCard({
                 type="button"
                 size="sm"
                 variant="destructive"
-                onClick={() => setConfirmDisconnect(true)}
-                disabled={disconnecting}
+                onClick={() => setHalfConfirmDisconnect(true)}
+                disabled={halfDisconnecting}
               >
-                {disconnecting ? "Disconnecting…" : "Clear section"}
+                {halfDisconnecting ? "Disconnecting…" : "Clear section"}
               </Button>
             </div>
             {failReason && (
@@ -1306,16 +1299,35 @@ export function WhatsAppWebCard({
         )}
       </SetupCardFrame>
       <DisconnectDialog
-        open={confirmDisconnect}
-        label={manage ? "WhatsApp" : "the WhatsApp Web section"}
+        open={halfConfigured ? halfConfirmDisconnect : s.confirmDisconnect}
+        label={halfConfigured ? "the WhatsApp Web section" : "WhatsApp"}
         description={
-          manage
-            ? "The paired session is cleared. To reconnect, scan a fresh QR with your phone."
-            : "The empty channels_config.whatsapp_web section is cleared. Press Link WhatsApp after the daemon reloads to scan a fresh QR."
+          halfConfigured
+            ? "The empty channels_config.whatsapp_web section is cleared. Press Link WhatsApp after the daemon reloads to scan a fresh QR."
+            : "The paired session is cleared. To reconnect, scan a fresh QR with your phone."
         }
-        busy={disconnecting}
-        onClose={() => setConfirmDisconnect(false)}
-        onConfirm={() => void runDisconnect()}
+        busy={s.busy || halfDisconnecting}
+        onClose={() =>
+          halfConfigured
+            ? setHalfConfirmDisconnect(false)
+            : s.setConfirmDisconnect(false)
+        }
+        onConfirm={() => {
+          if (halfConfigured) {
+            void runHalfConfiguredDisconnect();
+          } else {
+            void s.runDisconnect("WhatsApp");
+          }
+        }}
+      />
+      <DriftDialog
+        drift={s.drift}
+        busy={s.busy}
+        onClose={() => s.setDrift(null)}
+        onConfirm={async () => {
+          s.setDrift(null);
+          await s.runSave();
+        }}
       />
     </>
   );

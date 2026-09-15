@@ -163,6 +163,20 @@ const CASES: Record<string, Case> = {
     url: "/api/rc/channels/slack",
     method: "DELETE",
   },
+  // Plan 367/369. Same shape as the other channels, different field
+  // name on the wire. The pair endpoint sits on its own SSE route
+  // and is not covered by this contract table.
+  updateWhatsappWebAllowlist: {
+    args: [["+15551234567"]],
+    url: "/api/rc/channels/whatsapp_web",
+    method: "POST",
+    body: { allowed_numbers: ["+15551234567"] },
+  },
+  disconnectWhatsappWeb: {
+    args: [],
+    url: "/api/rc/channels/whatsapp_web",
+    method: "DELETE",
+  },
   providers: { args: [], url: "/api/rc/providers" },
   providerModels: {
     args: ["open ai"],
