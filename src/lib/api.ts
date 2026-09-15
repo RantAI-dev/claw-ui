@@ -267,6 +267,21 @@ export const api = {
     }),
   disconnectSlack: () =>
     rc<ChannelDisconnectResult>("channels/slack", { method: "DELETE" }),
+  // Plan 367/369: WhatsApp Web shares the connect/disconnect shape
+  // with the other channels but the field is `allowed_numbers` (not
+  // `allowed_users`) and the credential is a session file the console
+  // never touches. Pair lives on a dedicated SSE route at
+  // `/api/whatsapp-web/pair`; the buffered rc proxy can't relay it.
+  // Allowlist-only edits POST here with no token; the gateway applies
+  // them live through Channel::apply_allowed_senders, the same hook
+  // Telegram/Discord/Slack use.
+  updateWhatsappWebAllowlist: (allowed_numbers: string[]) =>
+    rc<ChannelConnectResult>("channels/whatsapp_web", {
+      method: "POST",
+      body: JSON.stringify({ allowed_numbers }),
+    }),
+  disconnectWhatsappWeb: () =>
+    rc<ChannelDisconnectResult>("channels/whatsapp_web", { method: "DELETE" }),
   providers: () =>
     rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   // Model catalog for a provider — resolved by the gateway from the SAME on-disk

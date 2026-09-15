@@ -244,7 +244,7 @@ export function useChannelSetup({
       const r = await updateAllowlist(parseUsers());
       // What the SERVER stored, not what was requested. A mismatch between the
       // two is exactly what an operator needs to see.
-      toast.success(allowlistToastTitle(r.allowed_users), {
+      toast.success(allowlistToastTitle(r.allowed_users ?? r.allowed_numbers ?? 0), {
         description: r.warning ?? undefined,
       });
       onReload(r.restarts_runtime === true);

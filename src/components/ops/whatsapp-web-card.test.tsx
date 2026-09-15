@@ -263,7 +263,7 @@ describe("WhatsAppWebCard pairing", () => {
     };
     const onReload = vi.fn();
     global.fetch = vi.fn(async () =>
-      jsonResponse({ disconnected: true, channel: "whatsapp_web" }, 200),
+      jsonResponse({ disconnected: true, channel: "whatsapp_web", restarts_runtime: true }, 200),
     ) as unknown as typeof fetch;
 
     const { WhatsAppWebCard } = await import("./channels-panel");
@@ -310,7 +310,7 @@ describe("WhatsAppWebCard pairing", () => {
     };
     const onReload = vi.fn();
     global.fetch = vi.fn(async () =>
-      jsonResponse({ disconnected: true, channel: "whatsapp_web" }, 200),
+      jsonResponse({ disconnected: true, channel: "whatsapp_web", restarts_runtime: true }, 200),
     ) as unknown as typeof fetch;
 
     const { WhatsAppWebCard } = await import("./channels-panel");
@@ -335,5 +335,74 @@ describe("WhatsAppWebCard pairing", () => {
     await vi.waitFor(() =>
       expect(onReload).toHaveBeenCalledWith(true),
     );
+  });
+
+  it("shows a Save button in the manage state and posts allowed_numbers on click", async () => {
+    // Regression: plan 369's first version had no Save button, so the
+    // operator could edit the allowlist but had no way to submit it. The
+    // hook now gives every manage card the same Save + drift + toast UX;
+    // this test pins the WhatsApp path.
+    const configuredState = {
+      word: "running" as const,
+      label: "Running",
+      tone: "success" as const,
+      detail: null,
+    };
+    const onReload = vi.fn();
+    // The hook calls `api.updateWhatsappWebAllowlist` (and reads via
+    // `api.config()` for the drift pre-check), so mock those directly
+    // rather than the underlying fetch.
+    const apiModule = await import("@/lib/api");
+    const spy = vi
+      .spyOn(apiModule.api, "updateWhatsappWebAllowlist")
+      .mockResolvedValue({
+        connected: true,
+        channel: "whatsapp_web",
+        bot_username: null,
+        allowed_numbers: 2,
+        restarts_runtime: false,
+      });
+    vi.spyOn(apiModule.api, "config").mockResolvedValue({
+      channels_config: {
+        whatsapp_web: { allowed_numbers: ["+15551234567"] },
+      },
+    } as never);
+    vi.spyOn(apiModule.api, "disconnectWhatsappWeb").mockResolvedValue({
+      disconnected: true,
+      channel: "whatsapp_web",
+      restarts_runtime: false,
+    });
+
+    const { WhatsAppWebCard } = await import("./channels-panel");
+    render(
+      <WhatsAppWebCard
+        connected={true}
+        missingCredentials={false}
+        state={configuredState}
+        verification={null}
+        allowedNumbers={["+15551234567"]}
+        onReload={onReload}
+      />,
+    );
+
+    const save = screen.getByRole("button", { name: /save whatsapp allowlist/i });
+    expect(save).toBeTruthy();
+    expect(save.hasAttribute("disabled")).toBe(true);
+
+    // Edit the field; the Save button enables when dirty.
+    const input = screen.getByLabelText(/allowed whatsapp phone numbers/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "+15551234567, +15559999999" } });
+    expect(save.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(save);
+    await vi.waitFor(() => {
+      expect(spy).toHaveBeenCalledWith(["+15551234567", "+15559999999"]);
+    });
+    // An allowlist-only edit is applied live — the runtime does not bounce.
+    await vi.waitFor(() =>
+      expect(onReload).toHaveBeenCalledWith(false),
+    );
+
+    spy.mockRestore();
   });
 });

@@ -381,7 +381,13 @@ export interface ChannelConnectResult {
    * so one response shape covers all three, not because a name is coming.
    */
   bot_username: string | null;
-  allowed_users: number;
+  /**
+   * Count of allowlist entries saved by the gateway. Telegram, Discord and
+   * Slack name it `allowed_users`; WhatsApp Web names it `allowed_numbers`.
+   * Both are accepted here so one toast helper covers every channel.
+   */
+  allowed_users?: number;
+  allowed_numbers?: number;
   experimental?: boolean;
   warning?: string | null;
   note?: string;
