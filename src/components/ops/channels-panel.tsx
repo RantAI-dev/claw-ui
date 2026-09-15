@@ -1204,11 +1204,6 @@ export function WhatsAppWebCard({
                 </Button>
               </div>
             </div>
-            {pairState === "connected" && (
-              <p className="text-xs text-emerald-400">
-                Linked. The runtime picked up the new session after the next reload.
-              </p>
-            )}
           </form>
         ) : halfConfigured ? (
           // The section exists in `config.toml` but has no usable
@@ -1294,6 +1289,11 @@ export function WhatsAppWebCard({
             )}
             {pairState === "failed" && failReason && (
               <p className="text-xs text-red-400">{failReason}</p>
+            )}
+            {pairState === "connected" && (
+              <p className="text-xs text-emerald-400">
+                Linked. The runtime picked up the new session after the next reload.
+              </p>
             )}
           </div>
         )}
