@@ -168,6 +168,18 @@ describe("configuredRows", () => {
     expect(rows.map((r) => r.key)).toEqual(["irc"]);
   });
 
+  it("leaves Lark to its own card too", () => {
+    // Plan 381: Lark is the fifth channel with a setup card. Same rule as
+    // Discord, Slack and WhatsApp Web above.
+    const rows = configuredRows(
+      ["telegram", "discord", "slack", "whatsapp_web", "lark", "irc"],
+      null,
+      false,
+      CATALOG,
+    );
+    expect(rows.map((r) => r.key)).toEqual(["irc"]);
+  });
+
   it("is empty before the list has loaded", () => {
     expect(configuredRows(null, null, false, CATALOG)).toEqual([]);
   });

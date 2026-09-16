@@ -282,6 +282,38 @@ export const api = {
     }),
   disconnectWhatsappWeb: () =>
     rc<ChannelDisconnectResult>("channels/whatsapp_web", { method: "DELETE" }),
+  // Plan 381: Lark, a credential channel like Discord and Slack. `use_feishu`
+  // is always sent explicitly (D-2: international is the default, `false`) —
+  // unlike the optional string fields below, a boolean has no natural "leave
+  // it alone" absence, so omitting it would read as a region change.
+  connectLark: (
+    app_id: string,
+    app_secret: string,
+    allowed_users: string[],
+    use_feishu: boolean,
+    encrypt_key?: string,
+    verification_token?: string,
+  ) =>
+    rc<ChannelConnectResult>("channels/lark", {
+      method: "POST",
+      body: JSON.stringify({
+        app_id,
+        app_secret,
+        allowed_users,
+        use_feishu,
+        ...(encrypt_key?.trim() ? { encrypt_key: encrypt_key.trim() } : {}),
+        ...(verification_token?.trim()
+          ? { verification_token: verification_token.trim() }
+          : {}),
+      }),
+    }),
+  updateLarkAllowlist: (allowed_users: string[]) =>
+    rc<ChannelConnectResult>("channels/lark", {
+      method: "POST",
+      body: JSON.stringify({ allowed_users }),
+    }),
+  disconnectLark: () =>
+    rc<ChannelDisconnectResult>("channels/lark", { method: "DELETE" }),
   providers: () =>
     rc<{ providers: ProviderInfo[]; count: number }>("providers"),
   // Model catalog for a provider — resolved by the gateway from the SAME on-disk

@@ -14,6 +14,9 @@ const disconnectDiscord = vi.fn();
 const updateSlackAllowlist = vi.fn();
 const connectSlack = vi.fn();
 const disconnectSlack = vi.fn();
+const updateLarkAllowlist = vi.fn();
+const connectLark = vi.fn();
+const disconnectLark = vi.fn();
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 const gateway: { connection: "connecting" | "online" | "offline" } = { connection: "online" };
@@ -37,6 +40,16 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     connectSlack: (bot: string, app: string, users: string[], channel?: string) =>
       connectSlack(bot, app, users, channel),
     disconnectSlack: () => disconnectSlack(),
+    updateLarkAllowlist: (users: string[]) => updateLarkAllowlist(users),
+    connectLark: (
+      appId: string,
+      appSecret: string,
+      users: string[],
+      useFeishu: boolean,
+      encryptKey?: string,
+      verificationToken?: string,
+    ) => connectLark(appId, appSecret, users, useFeishu, encryptKey, verificationToken),
+    disconnectLark: () => disconnectLark(),
   },
 }));
 vi.mock("@/hooks/use-gateway-status", () => ({ useGatewayStatus: () => gateway }));
@@ -116,6 +129,18 @@ const CATALOG = [
   {
     key: "webhook",
     label: "Webhook",
+    support: "under_development" as const,
+    maturity: "under_development" as const,
+    verification: "not_driven" as const,
+    configured: false,
+  },
+  // Plan 381: the fifth setup card. Still under development (plan 382, the
+  // drive that promotes it, is not part of this fixture's history) — its card
+  // renders anyway, the same way Discord's and Slack's do before they are
+  // driven; support/maturity is a separate axis from "has a setup card".
+  {
+    key: "lark",
+    label: "Lark",
     support: "under_development" as const,
     maturity: "under_development" as const,
     verification: "not_driven" as const,
@@ -275,8 +300,10 @@ describe("ChannelsPanel status words", () => {
 
   it("says what the label means before an operator commits credentials", async () => {
     render(<ChannelsPanel />);
+    // Webhook and Lark: two of the six channel types this fixture's runtime
+    // knows are under development.
     expect(
-      await screen.findByText(/1 of the 5 channel types this runtime knows/),
+      await screen.findByText(/2 of the 6 channel types this runtime knows/),
     ).toBeTruthy();
   });
 
@@ -285,15 +312,16 @@ describe("ChannelsPanel status words", () => {
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
     expect(await screen.findByText("Not reachable on any channel")).toBeTruthy();
-    // One badge per setup card, and all four say the same thing. Asserting the
+    // One badge per setup card, and all five say the same thing. Asserting the
     // count rather than "at least one" is what would catch a card that drifts
     // out of step with the others.
-    expect(await screen.findAllByText("Not configured")).toHaveLength(4);
+    expect(await screen.findAllByText("Not configured")).toHaveLength(5);
     expect(screen.queryByRole("list")).toBeNull();
     expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Discord" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Link WhatsApp" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Connect Lark" })).toBeTruthy();
   });
 
   it("says the runtime-level cause once, in the band, not on every card", async () => {
@@ -323,7 +351,7 @@ describe("ChannelsPanel status words", () => {
     // Every card, not just the first one: a card still claiming "Running" from
     // the last good fetch while the gateway is down is the defect this covers,
     // and it would hide behind a single-element assertion.
-    expect(await screen.findAllByText("Status unknown")).toHaveLength(4);
+    expect(await screen.findAllByText("Status unknown")).toHaveLength(5);
   });
 });
 
@@ -702,5 +730,178 @@ describe("ChannelsPanel Slack", () => {
 
     await waitFor(() => expect(updateSlackAllowlist).toHaveBeenCalledWith(["U1", "U2"]));
     expect(connectSlack).not.toHaveBeenCalled();
+  });
+});
+
+describe("ChannelsPanel Lark", () => {
+  beforeEach(() => {
+    channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: {} });
+  });
+
+  const CONNECTED = {
+    connected: true,
+    channel: "lark",
+    bot_username: null,
+    allowed_users: 1,
+    warning: null,
+    restarts_runtime: true,
+  };
+
+  it("does not offer a card when the gateway's catalog omits Lark", async () => {
+    // Plan 381: a console pointed at a gateway older than plan 377/380 shows
+    // nothing new, rather than a card whose Connect button would 404.
+    channels.mockResolvedValue({
+      configured: [],
+      count: 0,
+      channels: CATALOG.filter((c) => c.key !== "lark"),
+    });
+    render(<ChannelsPanel />);
+    await screen.findByText("Not reachable on any channel");
+    expect(screen.queryByRole("button", { name: "Connect Lark" })).toBeNull();
+  });
+
+  it("sends the app id, app secret, allowlist and region", async () => {
+    render(<ChannelsPanel />);
+    const appId = (await screen.findByLabelText("Lark app id")) as HTMLInputElement;
+    const appSecret = screen.getByLabelText("Lark app secret") as HTMLInputElement;
+    const users = screen.getByLabelText(/Allowed Lark user ids/);
+    // The gateway never sends a credential back, and nothing in this card's
+    // props carries one either, so the field starts empty on every mount.
+    expect(appSecret.value).toBe("");
+
+    const connect = screen.getByRole("button", { name: "Connect Lark" }) as HTMLButtonElement;
+    // Nothing to send without both credentials, so the control says so rather
+    // than letting the operator find out from a 400.
+    expect(connect.disabled).toBe(true);
+
+    fireEvent.change(appId, { target: { value: "cli_test-app-id" } });
+    fireEvent.change(appSecret, { target: { value: "test-app-secret-not-real" } });
+    fireEvent.change(users, { target: { value: "ou_1, ou_2" } });
+    connectLark.mockResolvedValue(CONNECTED);
+    fireEvent.click(connect);
+
+    // D-2: Lark international by default, so `use_feishu` is false unless the
+    // region switch is touched.
+    await waitFor(() =>
+      expect(connectLark).toHaveBeenCalledWith(
+        "cli_test-app-id",
+        "test-app-secret-not-real",
+        ["ou_1", "ou_2"],
+        false,
+        undefined,
+        undefined,
+      ),
+    );
+    await waitFor(() => expect(appSecret.value).toBe(""));
+    // The gateway said this save restarts the runtime, so the banner tells the
+    // operator an outage is expected rather than an error.
+    expect(await screen.findByText(/Applying your change/)).toBeTruthy();
+  });
+
+  it("reaches the request body when the region switch is set to Feishu", async () => {
+    render(<ChannelsPanel />);
+    fireEvent.change(await screen.findByLabelText("Lark app id"), {
+      target: { value: "cli_test-app-id" },
+    });
+    fireEvent.change(screen.getByLabelText("Lark app secret"), {
+      target: { value: "test-app-secret-not-real" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Feishu" }));
+    connectLark.mockResolvedValue(CONNECTED);
+    fireEvent.click(screen.getByRole("button", { name: "Connect Lark" }));
+
+    await waitFor(() =>
+      expect(connectLark).toHaveBeenCalledWith(
+        "cli_test-app-id",
+        "test-app-secret-not-real",
+        [],
+        true,
+        undefined,
+        undefined,
+      ),
+    );
+  });
+
+  it("edits the allowlist without re-sending credentials, and reloads without a restart", async () => {
+    channels.mockResolvedValue({ configured: ["lark"], count: 1, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: { lark: { allowed_users: ["ou_1"] } } });
+    render(<ChannelsPanel />);
+    const box = (await screen.findByLabelText(/Allowed Lark user ids/)) as HTMLInputElement;
+    await waitFor(() => expect(box.value).toBe("ou_1"));
+
+    const save = screen.getByRole("button", { name: "Save Lark allowlist" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    fireEvent.change(box, { target: { value: "ou_1, ou_2" } });
+    updateLarkAllowlist.mockResolvedValue({
+      ...CONNECTED,
+      allowed_users: 2,
+      restarts_runtime: false,
+    });
+    fireEvent.click(save);
+
+    await waitFor(() => expect(updateLarkAllowlist).toHaveBeenCalledWith(["ou_1", "ou_2"]));
+    expect(connectLark).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(toastSuccess).toHaveBeenCalledWith("Allowlist saved: 2 senders allowed", {
+        description: undefined,
+      }),
+    );
+    // An allowlist-only edit is applied live through Channel::apply_allowed_senders
+    // (plan 380): no restart, so no outage banner.
+    expect(screen.queryByText(/Applying your change/)).toBeNull();
+  });
+
+  it("relays the gateway's warning instead of inventing one", async () => {
+    render(<ChannelsPanel />);
+    fireEvent.change(await screen.findByLabelText("Lark app id"), {
+      target: { value: "cli_test-app-id" },
+    });
+    fireEvent.change(screen.getByLabelText("Lark app secret"), {
+      target: { value: "test-app-secret-not-real" },
+    });
+    connectLark.mockResolvedValue({
+      ...CONNECTED,
+      allowed_users: 0,
+      warning: "No allowlist set: every sender is denied until one is added.",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect Lark" }));
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1));
+    expect(toastSuccess.mock.calls[0][1]).toEqual({
+      description: "No allowlist set: every sender is denied until one is added.",
+    });
+  });
+
+  it("clears the saved credentials on disconnect, after a confirmation", async () => {
+    channels.mockResolvedValue({ configured: ["lark"], count: 1, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: { lark: { allowed_users: ["ou_1"] } } });
+    render(<ChannelsPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect Lark" }));
+
+    const dialog = await screen.findByRole("dialog");
+    disconnectLark.mockResolvedValue({ disconnected: true, channel: "lark", restarts_runtime: true });
+    fireEvent.click(
+      Array.from(dialog.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Disconnect",
+      )!,
+    );
+    await waitFor(() => expect(disconnectLark).toHaveBeenCalledTimes(1));
+  });
+
+  it("reports a refusal from the gateway instead of swallowing it", async () => {
+    render(<ChannelsPanel />);
+    fireEvent.change(await screen.findByLabelText("Lark app id"), {
+      target: { value: "cli_test-app-id" },
+    });
+    fireEvent.change(screen.getByLabelText("Lark app secret"), {
+      target: { value: "bad-secret" },
+    });
+    connectLark.mockRejectedValue(new Error("lark rejected the app secret: 401"));
+    fireEvent.click(screen.getByRole("button", { name: "Connect Lark" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledTimes(1));
+    expect(String(toastError.mock.calls[0][0])).toMatch(/rejected the app secret/);
   });
 });
