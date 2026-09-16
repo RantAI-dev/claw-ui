@@ -9,6 +9,7 @@ import { useGatewayStatus } from "@/hooks/use-gateway-status";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Segmented } from "@/components/ui/segmented";
 import { PanelFrame, RefreshButton, SectionTitle } from "./shared";
 import {
   channelAllowlist,
@@ -21,7 +22,7 @@ import {
   useChannelSetup,
   whatsappAllowlist,
 } from "./channel-setup";
-import { allowlistDrift, CARDED_CHANNELS, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import { allowlistDrift, CARDED_CHANNELS, channelHasCredentials, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import type { ChannelVerification } from "@/lib/types";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
@@ -280,6 +281,26 @@ export function ChannelsPanel() {
                 onReload={refreshAfterReload}
               />
             </div>
+
+            {/* Plan 381: gates on `has_credentials`, not mere key presence.
+                The catalog already names every channel type the project
+                knows regardless of build support — RantaiClaw's last
+                released binary (v0.31.0-alpha) lists "lark" too — so a
+                gateway too old to have RantaiClaw #822/#825 would still pass
+                the naive check and offer a Connect button pointed at a route
+                that 404s. `has_credentials` is only ever sent once the
+                gateway's build actually recognises a configured Lark
+                section, which is the same fact #822 fixed. */}
+            {channelHasCredentials("lark", catalog) !== null && (
+              <div>
+                <SectionTitle>Lark</SectionTitle>
+                <LarkCard
+                  {...cardFacts("lark")}
+                  allowedUsers={channelAllowlist(cfg.data, "lark")}
+                  onReload={refreshAfterReload}
+                />
+              </div>
+            )}
           </div>
 
           <div className="space-y-8 lg:col-span-5">
@@ -928,6 +949,205 @@ function SlackCard({
         busy={s.busy}
         onClose={() => s.setConfirmDisconnect(false)}
         onConfirm={() => void s.runDisconnect("Slack")}
+      />
+      <DriftDialog
+        drift={s.drift}
+        busy={s.busy}
+        onClose={() => s.setDrift(null)}
+        onConfirm={async () => {
+          s.setDrift(null);
+          await s.runSave();
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * Lark: a credential channel like Discord and Slack, plus a region switch.
+ *
+ * Plan 381 (D-2 in plan 376): Lark international is the default endpoint
+ * (`use_feishu: false`); Feishu, the mainland-China domestic API, is the
+ * alternative. Unlike the optional string fields, `use_feishu` is always sent
+ * on connect — a boolean has no natural "leave the saved value alone" absence
+ * the way an omitted guild or channel id does.
+ */
+function LarkCard({
+  connected,
+  missingCredentials,
+  state,
+  verification,
+  allowedUsers,
+  onReload,
+}: {
+  connected: boolean;
+  missingCredentials: boolean;
+  verification: ChannelVerification | null;
+  state: ChannelState;
+  allowedUsers: string[];
+  onReload: (restartsRuntime: boolean) => void;
+}) {
+  const [appId, setAppId] = React.useState("");
+  const [appSecret, setAppSecret] = React.useState("");
+  const [encryptKey, setEncryptKey] = React.useState("");
+  const [verificationToken, setVerificationToken] = React.useState("");
+  const [region, setRegion] = React.useState<"international" | "feishu">("international");
+  const s = useChannelSetup({
+    channelKey: "lark",
+    allowedUsers,
+    connected,
+    onReload,
+    freshAllowlist: async () => channelAllowlist(await api.config(), "lark"),
+    updateAllowlist: (users) => api.updateLarkAllowlist(users),
+    disconnect: () => api.disconnectLark(),
+  });
+
+  const manage = connected && !missingCredentials;
+
+  const connect = () => {
+    const id = appId.trim();
+    const secret = appSecret.trim();
+    if (!id || !secret) return;
+    void s.runConnect(
+      () =>
+        api.connectLark(
+          id,
+          secret,
+          s.parseUsers(),
+          region === "feishu",
+          encryptKey.trim() || undefined,
+          verificationToken.trim() || undefined,
+        ),
+      () => "Connected Lark",
+      () => {
+        setAppId("");
+        setAppSecret("");
+        setEncryptKey("");
+        setVerificationToken("");
+      },
+    );
+  };
+
+  return (
+    <>
+      <SetupCardFrame channelKey="lark" state={state} verification={verification}>
+        {missingCredentials && <MissingCredentialNotice what="no app secret is saved" />}
+        {manage ? (
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void s.saveAllowlist();
+            }}
+          >
+            <PlainField
+              id="lark-allowlist"
+              label="Allowed Lark user ids (comma-separated)"
+              placeholder="ou_xxxxxxxx"
+              value={s.users}
+              onChange={s.setUsers}
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                Applied to the running channel without a restart. To change the app
+                credentials or the region, disconnect and connect again.
+              </span>
+              <div className="flex shrink-0 gap-2">
+                <Button type="submit" size="sm" variant="outline" disabled={s.busy || !s.dirty}>
+                  {s.busy ? "Saving…" : "Save Lark allowlist"}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => s.setConfirmDisconnect(true)}
+                  disabled={s.busy}
+                >
+                  Disconnect Lark
+                </Button>
+              </div>
+            </div>
+          </form>
+        ) : (
+          <form
+            className="space-y-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              connect();
+            }}
+          >
+            <div className="space-y-1">
+              <span className="text-xs text-muted-foreground">Region</span>
+              <div>
+                <Segmented
+                  value={region}
+                  onChange={setRegion}
+                  options={[
+                    { value: "international", label: "Lark international" },
+                    { value: "feishu", label: "Feishu" },
+                  ]}
+                />
+              </div>
+            </div>
+            <PlainField
+              id="lark-app-id"
+              label="Lark app id"
+              placeholder="cli_xxxxxxxx"
+              value={appId}
+              onChange={setAppId}
+            />
+            <SecretField
+              id="lark-app-secret"
+              label="Lark app secret"
+              placeholder="from the Lark developer console"
+              value={appSecret}
+              onChange={setAppSecret}
+            />
+            <SecretField
+              id="lark-encrypt-key"
+              label="Encrypt key (optional)"
+              placeholder="leave empty if event encryption is off"
+              value={encryptKey}
+              onChange={setEncryptKey}
+            />
+            <SecretField
+              id="lark-verification-token"
+              label="Verification token (optional)"
+              placeholder="leave empty if the app has none"
+              value={verificationToken}
+              onChange={setVerificationToken}
+            />
+            <PlainField
+              id="lark-users"
+              label="Allowed Lark user ids (comma-separated)"
+              placeholder="ou_xxxxxxxx"
+              value={s.users}
+              onChange={s.setUsers}
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-xs text-muted-foreground">
+                The app credentials are checked with Lark, then saved. An empty
+                allowlist denies every sender.
+              </span>
+              <Button
+                type="submit"
+                size="sm"
+                className="shrink-0"
+                disabled={s.busy || !appId.trim() || !appSecret.trim()}
+              >
+                {s.busy ? "Connecting…" : "Connect Lark"}
+              </Button>
+            </div>
+          </form>
+        )}
+      </SetupCardFrame>
+      <DisconnectDialog
+        open={s.confirmDisconnect}
+        label="Lark"
+        description="The saved app credentials are cleared. To reconnect, enter them again from the Lark developer console."
+        busy={s.busy}
+        onClose={() => s.setConfirmDisconnect(false)}
+        onConfirm={() => void s.runDisconnect("Lark")}
       />
       <DriftDialog
         drift={s.drift}

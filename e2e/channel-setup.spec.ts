@@ -90,3 +90,35 @@ test("the console offers a setup card for each channel it can configure", async 
   // allowlist rather than offering to connect.
   await expect(page.getByRole("button", { name: "Disconnect Discord" })).toBeVisible();
 });
+
+test("the Lark card appears only when the gateway actually recognises it", async ({ page }) => {
+  // Plan 381's STOP condition: CI runs the newest *released* RantaiClaw
+  // binary, and Lark joining the default build (RantaiClaw #822) plus the
+  // gateway routes this card calls (RantaiClaw #825) landed after the last
+  // cut release. Checked directly against that release: it already lists
+  // "lark" in /api/v1/channels (the catalog names every channel type the
+  // project knows, key gating or not) but omits `has_credentials` for it,
+  // because that build never recognised a configured Lark section. Gating on
+  // key presence would have offered a Connect button pointed at a route that
+  // 404s on exactly this binary — `has_credentials` being sent at all,
+  // matching what the component checks, is the real signal.
+  const catalog = await (await page.request.get(`${sandbox.baseURL}/api/rc/channels`)).json();
+  const lark = (catalog.channels ?? []).find((c: { key?: string }) => c.key === "lark");
+  const gatewayRecognisesLark = lark !== undefined && "has_credentials" in lark;
+
+  await page.goto(`${sandbox.baseURL}/ops`);
+  const nav = page.getByRole("button", { name: /^Channels/ });
+  await expect(nav).toBeVisible({ timeout: 60_000 });
+  await nav.click();
+
+  if (gatewayRecognisesLark) {
+    await expect(page.getByRole("heading", { name: "Lark" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect Lark" })).toBeVisible();
+    return;
+  }
+
+  // The gateway this run actually has: no Lark heading, no dead Connect
+  // button pointed at a route that would 404.
+  await expect(page.getByRole("heading", { name: "Lark" })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Lark" })).not.toBeVisible();
+});

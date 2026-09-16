@@ -177,6 +177,43 @@ const CASES: Record<string, Case> = {
     url: "/api/rc/channels/whatsapp_web",
     method: "DELETE",
   },
+  // Plan 381. A credential channel like Discord and Slack, plus a region flag
+  // (D-2: international is the default) that is always sent explicitly rather
+  // than omitted like the optional string fields, since a boolean has no
+  // natural "leave it alone" absence.
+  connectLark: {
+    args: [
+      "cli_test-app-id",
+      "test-app-secret-not-real",
+      ["ou_operator"],
+      false,
+      "test-encrypt-key-not-real",
+      "test-verification-token-not-real",
+    ],
+    url: "/api/rc/channels/lark",
+    method: "POST",
+    body: {
+      app_id: "cli_test-app-id",
+      app_secret: "test-app-secret-not-real",
+      allowed_users: ["ou_operator"],
+      use_feishu: false,
+      encrypt_key: "test-encrypt-key-not-real",
+      verification_token: "test-verification-token-not-real",
+    },
+  },
+  updateLarkAllowlist: {
+    // No credentials or region: the gateway keeps the saved values, which is
+    // what lets an allowlist be edited without re-sending a secret.
+    args: [["ou_operator"]],
+    url: "/api/rc/channels/lark",
+    method: "POST",
+    body: { allowed_users: ["ou_operator"] },
+  },
+  disconnectLark: {
+    args: [],
+    url: "/api/rc/channels/lark",
+    method: "DELETE",
+  },
   providers: { args: [], url: "/api/rc/providers" },
   providerModels: {
     args: ["open ai"],
