@@ -12,6 +12,10 @@ carries the paired entry and the release notes.
 
 ### Fixed
 
+- **WhatsApp Web is listed once, not twice.** Its setup card shipped in #121, but `CARDED_CHANNELS`
+  never gained the `whatsapp_web` key, so a configured WhatsApp Web section rendered both as its own
+  card and as a row under "Other channels", whose controls could not connect or disconnect it. The
+  "N more channels are available" count was one too high for the same reason.
 - **The WhatsApp Web card says what actually happens.** Disconnecting said the paired session was
   cleared and a fresh QR would reconnect, but the gateway only clears the saved section and wa-rs has
   no logout, so the phone keeps the linked device. The dialog now says WhatsApp is disconnected from

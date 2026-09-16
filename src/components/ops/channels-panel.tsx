@@ -312,7 +312,7 @@ export function ChannelsPanel() {
               )}
               {rows.length === 0 && (
                 <Card className="mt-3 p-4 text-xs text-muted-foreground">
-                  {/* The ones without a card: the three that have one are set
+                  {/* The ones without a card: the four that have one are set
                       up above, so counting them here would offer the operator
                       channels this column cannot help with. */}
                   {catalog.length > 0

@@ -58,7 +58,7 @@ export function channelVerification(
  * used to be the literal string "telegram", back when Telegram was the only
  * channel with an endpoint behind it.
  */
-export const CARDED_CHANNELS = ["telegram", "discord", "slack"] as const;
+export const CARDED_CHANNELS = ["telegram", "discord", "slack", "whatsapp_web"] as const;
 
 /**
  * Whether the runtime says `key`'s configured section carries a credential, or
