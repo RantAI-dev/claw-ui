@@ -10,6 +10,14 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **Lark can be set up from the Channels page.** The fifth setup card, alongside Telegram, Discord,
+  Slack and WhatsApp Web: app id and app secret as credential fields that are never seeded and clear
+  after a save, an allowlist editor applied live, and a region switch (Lark international by default,
+  Feishu the alternative). The card appears only once the gateway's build actually recognises Lark
+  (RantaiClaw #822/#825) — a console pointed at an older gateway sees nothing new.
+
 ### Fixed
 
 - **WhatsApp Web is listed once, not twice.** Its setup card shipped in #121, but `CARDED_CHANNELS`
