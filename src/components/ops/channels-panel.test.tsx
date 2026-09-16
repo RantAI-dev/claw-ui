@@ -145,6 +145,13 @@ const CATALOG = [
     maturity: "under_development" as const,
     verification: "not_driven" as const,
     configured: false,
+    // Present (even though false) only once the gateway's build actually
+    // recognises Lark's config section — the same fact RantaiClaw #822 fixed.
+    // A gateway old enough to not have that fix lists the "lark" key (the
+    // catalog names every channel type the project knows, key gating or not)
+    // but omits this field entirely, which is the real signal the card gates
+    // on below, not mere key presence.
+    has_credentials: false,
   },
 ];
 
@@ -748,13 +755,32 @@ describe("ChannelsPanel Lark", () => {
     restarts_runtime: true,
   };
 
-  it("does not offer a card when the gateway's catalog omits Lark", async () => {
-    // Plan 381: a console pointed at a gateway older than plan 377/380 shows
-    // nothing new, rather than a card whose Connect button would 404.
+  it("does not offer a card when the gateway's catalog omits Lark entirely", async () => {
+    // The degenerate case: a gateway too old to send this key at all.
     channels.mockResolvedValue({
       configured: [],
       count: 0,
       channels: CATALOG.filter((c) => c.key !== "lark"),
+    });
+    render(<ChannelsPanel />);
+    await screen.findByText("Not reachable on any channel");
+    expect(screen.queryByRole("button", { name: "Connect Lark" })).toBeNull();
+  });
+
+  it("does not offer a card when the catalog names Lark but the gateway predates it", async () => {
+    // The real case, checked against RantaiClaw's last released binary
+    // (v0.31.0-alpha): the catalog already names every channel type the
+    // project knows, key gating or not, so "lark" is present there too — a
+    // gateway older than RantaiClaw #822/#825 still lists it, but omits
+    // `has_credentials` because that gateway's build never recognised a
+    // configured Lark section in the first place. Key presence alone is not
+    // the signal; `has_credentials` being sent at all is.
+    channels.mockResolvedValue({
+      configured: [],
+      count: 0,
+      channels: CATALOG.map((c) =>
+        c.key === "lark" ? { ...c, has_credentials: undefined } : c,
+      ),
     });
     render(<ChannelsPanel />);
     await screen.findByText("Not reachable on any channel");
@@ -824,7 +850,13 @@ describe("ChannelsPanel Lark", () => {
   });
 
   it("edits the allowlist without re-sending credentials, and reloads without a restart", async () => {
-    channels.mockResolvedValue({ configured: ["lark"], count: 1, channels: CATALOG });
+    channels.mockResolvedValue({
+      configured: ["lark"],
+      count: 1,
+      channels: CATALOG.map((c) =>
+        c.key === "lark" ? { ...c, configured: true, has_credentials: true } : c,
+      ),
+    });
     config.mockResolvedValue({ channels_config: { lark: { allowed_users: ["ou_1"] } } });
     render(<ChannelsPanel />);
     const box = (await screen.findByLabelText(/Allowed Lark user ids/)) as HTMLInputElement;
@@ -875,7 +907,13 @@ describe("ChannelsPanel Lark", () => {
   });
 
   it("clears the saved credentials on disconnect, after a confirmation", async () => {
-    channels.mockResolvedValue({ configured: ["lark"], count: 1, channels: CATALOG });
+    channels.mockResolvedValue({
+      configured: ["lark"],
+      count: 1,
+      channels: CATALOG.map((c) =>
+        c.key === "lark" ? { ...c, configured: true, has_credentials: true } : c,
+      ),
+    });
     config.mockResolvedValue({ channels_config: { lark: { allowed_users: ["ou_1"] } } });
     render(<ChannelsPanel />);
     fireEvent.click(await screen.findByRole("button", { name: "Disconnect Lark" }));

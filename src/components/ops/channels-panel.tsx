@@ -22,7 +22,7 @@ import {
   useChannelSetup,
   whatsappAllowlist,
 } from "./channel-setup";
-import { allowlistDrift, CARDED_CHANNELS, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import { allowlistDrift, CARDED_CHANNELS, channelHasCredentials, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import type { ChannelVerification } from "@/lib/types";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
@@ -282,11 +282,16 @@ export function ChannelsPanel() {
               />
             </div>
 
-            {/* Plan 381: the card appears only once the gateway's own catalog
-                names Lark, so a console pointed at a gateway older than plans
-                377/380 shows nothing new rather than a Connect button that
-                would 404. */}
-            {catalog.some((c) => c.key === "lark") && (
+            {/* Plan 381: gates on `has_credentials`, not mere key presence.
+                The catalog already names every channel type the project
+                knows regardless of build support — RantaiClaw's last
+                released binary (v0.31.0-alpha) lists "lark" too — so a
+                gateway too old to have RantaiClaw #822/#825 would still pass
+                the naive check and offer a Connect button pointed at a route
+                that 404s. `has_credentials` is only ever sent once the
+                gateway's build actually recognises a configured Lark
+                section, which is the same fact #822 fixed. */}
+            {channelHasCredentials("lark", catalog) !== null && (
               <div>
                 <SectionTitle>Lark</SectionTitle>
                 <LarkCard

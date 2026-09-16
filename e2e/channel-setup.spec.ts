@@ -90,3 +90,33 @@ test("the console offers a setup card for each channel it can configure", async 
   // allowlist rather than offering to connect.
   await expect(page.getByRole("button", { name: "Disconnect Discord" })).toBeVisible();
 });
+
+test("the Lark card appears only when the gateway's own catalog names it", async ({ page }) => {
+  // Plan 381's STOP condition: CI runs the newest *released* RantaiClaw
+  // binary, and Lark joining the default build (RantaiClaw #822) plus the
+  // gateway routes this card calls (RantaiClaw #825) landed after the last
+  // cut release. Both branches are real behaviour the console promises, the
+  // same way the Discord/Slack routes above are branched — a gateway that
+  // predates a channel must show nothing new, and one that has it must offer
+  // the card.
+  const catalog = await (await page.request.get(`${sandbox.baseURL}/api/rc/channels`)).json();
+  const larkInCatalog = (catalog.channels ?? []).some(
+    (c: { key?: string }) => c.key === "lark",
+  );
+
+  await page.goto(`${sandbox.baseURL}/ops`);
+  const nav = page.getByRole("button", { name: /^Channels/ });
+  await expect(nav).toBeVisible({ timeout: 60_000 });
+  await nav.click();
+
+  if (larkInCatalog) {
+    await expect(page.getByRole("heading", { name: "Lark" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Connect Lark" })).toBeVisible();
+    return;
+  }
+
+  // The gateway this run actually has: no Lark heading, no dead Connect
+  // button pointed at a route that would 404.
+  await expect(page.getByRole("heading", { name: "Lark" })).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect Lark" })).not.toBeVisible();
+});
