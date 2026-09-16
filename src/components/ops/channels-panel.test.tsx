@@ -202,6 +202,22 @@ describe("ChannelsPanel status words", () => {
     expect(rows[0].textContent).toMatch(/Webhook/);
   });
 
+  it("leaves WhatsApp Web to its own card instead of listing it twice", async () => {
+    // F-41: its card shipped in #121, after CARDED_CHANNELS was last updated,
+    // so a configured WhatsApp Web section named it again under Other
+    // channels, whose controls could not do what the card does.
+    channels.mockResolvedValue({
+      configured: ["telegram", "whatsapp_web", "webhook"],
+      count: 3,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toMatch(/Webhook/);
+    expect(rows.some((r) => /whatsapp/i.test(r.textContent ?? ""))).toBe(false);
+  });
+
   it("shows the two axes separately, so the three states read differently", async () => {
     // The point of the split. A grid of equal-looking rows says every channel is
     // equally ready, and the middle state is the one that was invisible: the

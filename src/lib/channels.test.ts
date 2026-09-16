@@ -155,6 +155,19 @@ describe("configuredRows", () => {
     expect(rows.map((r) => r.key)).toEqual(["irc"]);
   });
 
+  it("leaves WhatsApp Web to its own card too", () => {
+    // F-41: its card shipped in #121, after this list was last updated. It was
+    // rendered both as a card and as a row here, with the row's controls unable
+    // to do what the card does.
+    const rows = configuredRows(
+      ["telegram", "discord", "slack", "whatsapp_web", "irc"],
+      null,
+      false,
+      CATALOG,
+    );
+    expect(rows.map((r) => r.key)).toEqual(["irc"]);
+  });
+
   it("is empty before the list has loaded", () => {
     expect(configuredRows(null, null, false, CATALOG)).toEqual([]);
   });
