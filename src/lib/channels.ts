@@ -162,6 +162,44 @@ export function channelState(
   };
 }
 
+export interface LockedChannelRow {
+  key: string;
+  label: string;
+  /** Whether the runtime's `configured` list also names this key: the section
+   * exists in config.toml, but the lock keeps the channel from starting. */
+  configured: boolean;
+}
+
+/**
+ * Every catalog channel the runtime marks `under_development`, by name,
+ * whether or not it has a configured section — the operator-facing list
+ * names all of them, not only the ones someone happened to configure before
+ * the lock. Order follows the catalog, so a new locked channel appears where
+ * the runtime places it rather than at the end.
+ *
+ * Excludes `CARDED_CHANNELS`: a channel with its own setup card already has
+ * full UI to manage it (Lark's card renders whenever the gateway sends
+ * `has_credentials` for it, regardless of tier — this is what let its card
+ * ship ahead of its promotion), so listing it dimmed in this section too
+ * would show the same channel twice. A gateway older than the lock, which CI
+ * runs against, still reports a carded channel as `under_development`; this
+ * exclusion is what keeps that case from double-listing it.
+ */
+export function lockedChannels(
+  configured: string[] | null,
+  catalog: ChannelCatalogEntry[],
+): LockedChannelRow[] {
+  const configuredSet = new Set(configured ?? []);
+  return catalog
+    .filter((c) => !(CARDED_CHANNELS as readonly string[]).includes(c.key))
+    .filter((c) => channelSupport(c.key, catalog) === "under_development")
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      configured: configuredSet.has(c.key),
+    }));
+}
+
 export interface ChannelRow {
   key: string;
   label: string;

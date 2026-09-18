@@ -9,6 +9,7 @@ import {
   channelVerification,
   channelsVerdict,
   configuredRows,
+  lockedChannels,
 } from "./channels";
 import type { RuntimeHealth } from "./status";
 import type { ChannelCatalogEntry } from "./types";
@@ -209,6 +210,57 @@ describe("configuredRows", () => {
     const rows = configuredRows(["webhook", "irc"], null, false, []);
     expect(rows.map((r) => r.label)).toEqual(["webhook", "irc"]);
     expect(rows.every((r) => r.support === null && r.verification === null)).toBe(true);
+  });
+});
+
+describe("lockedChannels", () => {
+  it("names every under_development catalog entry, whether or not it is configured", () => {
+    const locked = lockedChannels(["telegram", "irc"], CATALOG);
+    expect(locked.map((c) => [c.key, c.label, c.configured])).toEqual([
+      ["webhook", "Webhook", false],
+      ["irc", "IRC", true],
+    ]);
+  });
+
+  it("leaves out supported channels entirely", () => {
+    const locked = lockedChannels(["telegram", "discord"], CATALOG);
+    expect(locked.map((c) => c.key)).not.toContain("telegram");
+    expect(locked.map((c) => c.key)).not.toContain("discord");
+  });
+
+  it("excludes a carded channel even while a gateway older than its promotion still calls it under_development", () => {
+    // Lark's own scenario: its card shipped while it was still locked, gated
+    // on `has_credentials` rather than on tier. Listing it here too, on a
+    // pre-promotion gateway, would show the same channel twice.
+    const WITH_LOCKED_LARK: ChannelCatalogEntry[] = [
+      ...CATALOG,
+      { key: "lark", label: "Lark", support: "under_development", configured: false },
+    ];
+    expect(lockedChannels(null, WITH_LOCKED_LARK).map((c) => c.key)).not.toContain("lark");
+  });
+
+  it("is derived from the catalog's own support axis, not a fixed set of keys", () => {
+    // A catalog naming a channel this suite has never heard of still lands in
+    // the locked list when the runtime marks it under_development — proof
+    // there is no hard-coded key list backing this function.
+    const NOVEL: ChannelCatalogEntry[] = [
+      { key: "carrier_pigeon", label: "Carrier Pigeon", support: "under_development", configured: false },
+    ];
+    expect(lockedChannels(null, NOVEL).map((c) => c.key)).toEqual(["carrier_pigeon"]);
+  });
+
+  it("reports none configured when the runtime's configured list is null", () => {
+    const locked = lockedChannels(null, CATALOG);
+    expect(locked.every((c) => c.configured === false)).toBe(true);
+  });
+
+  it("reads `maturity` as support when the runtime predates the split", () => {
+    const locked = lockedChannels(["irc"], LEGACY_CATALOG);
+    expect(locked.map((c) => [c.key, c.configured])).toEqual([["irc", true]]);
+  });
+
+  it("is empty when the gateway sends no catalog at all", () => {
+    expect(lockedChannels(["irc"], [])).toEqual([]);
   });
 });
 

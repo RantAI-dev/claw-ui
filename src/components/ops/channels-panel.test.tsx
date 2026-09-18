@@ -200,24 +200,21 @@ describe("ChannelsPanel status words", () => {
     expect(await screen.findAllByText("last error: 401 Unauthorized")).toHaveLength(2);
   });
 
-  it("lists the other configured channels with the same vocabulary, and nothing else", async () => {
+  it("lists a configured, undrivable-but-usable channel in Other channels, and nothing else there", async () => {
+    // Webhook is `under_development`, so it moved out of this list into its
+    // own dimmed section (asserted separately below) — Matrix is the only
+    // one left here, since it alone is `supported`.
     channels.mockResolvedValue({
       configured: ["telegram", "matrix", "webhook"],
       count: 3,
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
-    const rows = await screen.findAllByRole("listitem");
-    expect(rows).toHaveLength(2);
+    const otherChannels = (await screen.findByText("Matrix")).closest("ul");
+    const rows = otherChannels ? Array.from(otherChannels.querySelectorAll("li")) : [];
+    expect(rows).toHaveLength(1);
     expect(rows[0].textContent).toMatch(/Matrix/);
-    expect(rows[1].textContent).toMatch(/Webhook/);
-    expect(rows[1].textContent).toMatch(/Served by the gateway/);
-    // This used to assert that "under development" appeared nowhere, back when
-    // the console had no idea what a tier was. The support badge is deliberate
-    // now, and it is still not part of the state vocabulary, so it appears on
-    // the under-development row and on no other.
-    expect(rows[0].textContent).not.toMatch(/Under development/);
-    expect(rows[1].textContent).toMatch(/Under development/);
+    expect(rows[0].textContent).not.toMatch(/under development/i);
   });
 
   it("leaves Discord and Slack to their cards instead of listing them twice", async () => {
@@ -250,27 +247,51 @@ describe("ChannelsPanel status words", () => {
     expect(rows.some((r) => /whatsapp/i.test(r.textContent ?? ""))).toBe(false);
   });
 
-  it("shows the two axes separately, so the three states read differently", async () => {
-    // The point of the split. A grid of equal-looking rows says every channel is
-    // equally ready, and the middle state is the one that was invisible: the
-    // project stands behind Matrix and nobody has driven it.
+  it("qualifies a supported-but-undriven row without a tier badge, since the row's own section already says the tier", async () => {
+    // The verification axis still needs its own words in Other channels: the
+    // support axis moved to its own section (asserted below) once it reads
+    // under_development, so this list no longer needs to distinguish it.
     channels.mockResolvedValue({
       configured: ["telegram", "matrix", "webhook"],
       count: 3,
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
-    const rows = await screen.findAllByRole("listitem");
+    const matrixRow = (await screen.findByText("Matrix")).closest("li");
+    expect(matrixRow?.textContent).not.toMatch(/under development/i);
+    expect(matrixRow?.textContent).toMatch(/not yet verified/);
+  });
 
-    // supported + not driven: no support badge, but the qualifier is there.
-    expect(rows[0].textContent).toMatch(/Matrix/);
-    expect(rows[0].textContent).not.toMatch(/Under development/);
-    expect(rows[0].textContent).toMatch(/not yet verified/);
+  it("names every under_development channel in its own dimmed section, with no button, whether or not it is configured", async () => {
+    // The tier comes from `/api/v1/channels` support, not a list this
+    // console keeps — Webhook is unconfigured and Lark is excluded (its
+    // own setup card already covers it), so only Webhook should land here.
+    channels.mockResolvedValue({
+      configured: ["telegram"],
+      count: 1,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    const heading = await screen.findByText("Under development");
+    // The heading's own wrapper (`SectionTitle`) is one div; its sibling Card
+    // sits in the section div one level up.
+    const section = heading.closest("div")?.parentElement;
+    const list = section?.querySelector("ul");
+    const rows = list ? Array.from(list.querySelectorAll("li")) : [];
+    expect(rows.map((r) => r.textContent)).toEqual(["Webhook"]);
+    expect(list?.querySelector("button")).toBeNull();
+    expect(list?.querySelector("a")).toBeNull();
+  });
 
-    // under development + not driven: both signals.
-    expect(rows[1].textContent).toMatch(/Webhook/);
-    expect(rows[1].textContent).toMatch(/Under development/);
-    expect(rows[1].textContent).toMatch(/not yet verified/);
+  it("adds 'not started' to a locked channel's row once its section is configured", async () => {
+    channels.mockResolvedValue({
+      configured: ["telegram", "webhook"],
+      count: 2,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    const row = (await screen.findByText("Webhook")).closest("li");
+    expect(row?.textContent).toMatch(/Webhook.*under development · not started/);
   });
 
   it("says a driven channel is verified rather than leaving it to an absence", async () => {
@@ -299,22 +320,25 @@ describe("ChannelsPanel status words", () => {
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
-    const rows = await screen.findAllByRole("listitem");
+    // Scoped to Other channels: the page's other list (Under development,
+    // Webhook only in this fixture) is a separate assertion above.
+    const otherChannels = (await screen.findByText("zzz")).closest("ul");
+    const rows = otherChannels ? Array.from(otherChannels.querySelectorAll("li")) : [];
     expect(rows).toHaveLength(1);
     expect(rows[0].textContent).toMatch(/zzz/);
-    expect(rows[0].textContent).not.toMatch(/Under development/);
+    expect(rows[0].textContent).not.toMatch(/under development/i);
   });
 
-  it("says what the label means before an operator commits credentials", async () => {
+  it("no longer states the removed under-development count sentence", async () => {
+    // The section itself, asserted above, replaces this sentence
+    // ("Connecting one is fine. Expect to debug it yourself.") and its count.
     render(<ChannelsPanel />);
-    // Webhook and Lark: two of the six channel types this fixture's runtime
-    // knows are under development.
-    expect(
-      await screen.findByText(/2 of the 6 channel types this runtime knows/),
-    ).toBeTruthy();
+    await screen.findByText("Under development");
+    expect(screen.queryByText(/channel types this runtime knows/)).toBeNull();
+    expect(screen.queryByText(/Connecting one is fine/)).toBeNull();
   });
 
-  it("shows the connect form and no list when nothing is configured", async () => {
+  it("shows the connect form and no configured-channel list when nothing is configured", async () => {
     channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
@@ -323,7 +347,12 @@ describe("ChannelsPanel status words", () => {
     // count rather than "at least one" is what would catch a card that drifts
     // out of step with the others.
     expect(await screen.findAllByText("Not configured")).toHaveLength(5);
-    expect(screen.queryByRole("list")).toBeNull();
+    expect(await screen.findByText("None configured yet.")).toBeTruthy();
+    // The Under development section still names Webhook — it is not gated on
+    // anything being configured — but no *configured-channel* row exists.
+    expect(screen.queryByText("Webhook")?.closest("li")?.textContent).not.toMatch(
+      /Served by the gateway|error|Running/,
+    );
     expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Discord" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();

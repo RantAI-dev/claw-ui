@@ -22,7 +22,7 @@ import {
   useChannelSetup,
   whatsappAllowlist,
 } from "./channel-setup";
-import { allowlistDrift, CARDED_CHANNELS, channelHasCredentials, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import { allowlistDrift, channelHasCredentials, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, lockedChannels, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import type { ChannelVerification } from "@/lib/types";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
@@ -85,9 +85,6 @@ export function ChannelsPanel() {
   // unknown key already got.
   const catalog = data?.channels ?? [];
   const supportOf = (c: (typeof catalog)[number]) => c.support ?? c.maturity;
-  const underDevelopmentCount = catalog.filter(
-    (c) => supportOf(c) === "under_development",
-  ).length;
   // Committed to and never driven. The count is worth its own sentence because
   // it is the state an operator is most likely to misread: the badge says the
   // project stands behind the channel, and nobody has watched a message arrive
@@ -96,6 +93,11 @@ export function ChannelsPanel() {
     (c) => supportOf(c) === "supported" && c.verification === "not_driven",
   ).length;
   const rows = configuredRows(data?.configured ?? null, runtime, staleStatus, catalog);
+  // Locked channels get their own dimmed section below rather than sitting in
+  // this list with a badge — a row here implies the operator can act on it,
+  // and for these the only action is to wait for the tier to open.
+  const usableRows = rows.filter((r) => r.support !== "under_development");
+  const locked = lockedChannels(data?.configured ?? null, catalog);
   // The four facts every setup card needs, derived once. Three cards spelling
   // this out themselves would be three chances for them to disagree about what
   // "connected" means.
@@ -310,18 +312,9 @@ export function ChannelsPanel() {
               <SectionTitle>Other channels</SectionTitle>
               <p className="text-xs text-muted-foreground">
                 Set up with <code>rantaiclaw setup</code> or in config.toml; this console
-                manages Telegram, Discord, Slack and WhatsApp Web.
+                manages Telegram, Discord, Slack, WhatsApp Web and Lark. WhatsApp Cloud is
+                set up from the terminal — it needs a public HTTPS URL for its webhook.
               </p>
-              {underDevelopmentCount > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {underDevelopmentCount} of the {catalog.length} channel types this
-                  runtime knows are marked{" "}
-                  <span className="font-medium text-foreground">under development</span>:
-                  they build and have tests, but <code>channel doctor</code> does not
-                  probe them and they are outside what an alpha release claims.
-                  Connecting one is fine. Expect to debug it yourself.
-                </p>
-              )}
               {committedUndrivenCount > 0 && (
                 <p className="mt-1 text-xs text-muted-foreground">
                   A further {committedUndrivenCount} are supported but{" "}
@@ -331,24 +324,15 @@ export function ChannelsPanel() {
                   so it is worth knowing which of the two you are getting.
                 </p>
               )}
-              {rows.length === 0 && (
+              {usableRows.length === 0 && (
                 <Card className="mt-3 p-4 text-xs text-muted-foreground">
-                  {/* The ones without a card: the four that have one are set
-                      up above, so counting them here would offer the operator
-                      channels this column cannot help with. */}
-                  {catalog.length > 0
-                    ? `None configured yet. ${
-                        catalog.filter(
-                          (c) => !(CARDED_CHANNELS as readonly string[]).includes(c.key),
-                        ).length
-                      } more channels are available.`
-                    : "None configured yet."}
+                  None configured yet.
                 </Card>
               )}
-              {rows.length > 0 && (
+              {usableRows.length > 0 && (
                 <Card className="mt-3 p-0">
                   <ul>
-                    {rows.map((r) => (
+                    {usableRows.map((r) => (
                       <li
                         key={r.key}
                         className="border-b border-border/60 px-4 py-2.5 last:border-b-0"
@@ -361,9 +345,6 @@ export function ChannelsPanel() {
                           />
                           <span className="font-medium">{r.label}</span>
                           <Badge variant={r.state.tone}>{r.state.label}</Badge>
-                          {r.support === "under_development" && (
-                            <Badge variant="warning">Under development</Badge>
-                          )}
                           {/* The verification axis reads as a quieter qualifier
                               than the support badge, because it qualifies that
                               badge rather than competing with it. Two chips per
@@ -394,6 +375,29 @@ export function ChannelsPanel() {
                 </Card>
               )}
             </div>
+
+            {locked.length > 0 && (
+              <div>
+                <SectionTitle>Under development</SectionTitle>
+                <p className="text-xs text-muted-foreground">
+                  Built and unit-tested, but not part of what this release stands behind
+                  yet. No button here — they open in a later effort.
+                </p>
+                <Card className="mt-3 p-0">
+                  <ul>
+                    {locked.map((c) => (
+                      <li
+                        key={c.key}
+                        className="border-b border-border/60 px-4 py-2 last:border-b-0 text-sm text-muted-foreground"
+                      >
+                        {c.label}
+                        {c.configured && <span> — under development · not started</span>}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
+            )}
           </div>
         </div>
       )}

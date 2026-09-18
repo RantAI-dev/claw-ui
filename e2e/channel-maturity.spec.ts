@@ -38,9 +38,11 @@ test("the console renders the runtime's labels, or degrades to keys when it has 
   await nav.click();
 
   if (servesCatalog) {
+    // A locked channel gets its own dimmed section now, named by the runtime's
+    // `support` axis, not by a badge sitting on a row it shares with usable
+    // channels — that section heading is what carries the tier label.
     const ircRow = page.getByRole("listitem").filter({ hasText: "IRC" });
-    await expect(ircRow).toContainText("Under development");
-    // Telegram is `supported` and has its own card; it carries no support badge.
+    await expect(ircRow).toContainText("under development · not started");
     await expect(page.getByText("Under development", { exact: true })).toHaveCount(1);
 
     // The verification axis, when the gateway has one. A runtime between #766
@@ -63,11 +65,12 @@ test("the console renders the runtime's labels, or degrades to keys when it has 
       // CI runs the released binary, so pinning either spelling would pass
       // locally and fail there, or the reverse.
       const undrivenRow = page.getByRole("listitem").filter({ hasText: /WhatsApp/ });
-      await expect(undrivenRow).not.toContainText("Under development");
+      await expect(undrivenRow).not.toContainText("under development");
       await expect(undrivenRow).toContainText("not yet verified");
 
-      // Under development and never driven: both signals on one row.
-      await expect(ircRow).toContainText("not yet verified");
+      // The locked section names IRC and says whether its section is
+      // configured; it does not carry a verification qualifier of its own —
+      // that axis stays with the usable-but-undriven row asserted above.
 
       // Supported and driven: said out loud on Telegram's own card, so the good
       // case is not left to be inferred from an absence.
