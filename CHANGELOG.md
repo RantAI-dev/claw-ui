@@ -18,6 +18,16 @@ carries the paired entry and the release notes.
   Feishu the alternative). The card appears only once the gateway's build actually recognises Lark
   (RantaiClaw #822/#825) — a console pointed at an older gateway sees nothing new.
 
+### Changed
+
+- **Locked channels get their own dimmed section.** "Other channels" used to fold an
+  under-development channel into the same list as usable ones, with a badge, plus a count
+  sentence naming how many of the catalog's channel types were locked. Both are replaced by an
+  "Under development" section that names every locked channel by name, whether or not it has a
+  configured section, with no button and no link; a configured one reads "under development · not
+  started". The tier still comes from `/api/v1/channels` `support`, never a list this console
+  keeps.
+
 ### Fixed
 
 - **WhatsApp Web is listed once, not twice.** Its setup card shipped in #121, but `CARDED_CHANNELS`
