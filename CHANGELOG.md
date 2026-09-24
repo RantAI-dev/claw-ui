@@ -46,7 +46,7 @@ carries the paired entry and the release notes.
 - **The Lark card's allowlist label says `open_id`, not `user_id`.** The runtime matches only the
   Lark `open_id` (`ou_…`); pasting a Lark `user_id` into the old label built an allowlist that never
   matched. The field is now labelled "Allowed Lark open_ids (ou_…, comma-separated)" with a short
-  hint that `/claim` adds one automatically.
+  hint that `/claim` adds one automatically. (#130)
 
 ## [0.3.28] — 2026-09-08
 
