@@ -98,8 +98,8 @@ export function ChannelsPanel() {
   // and for these the only action is to wait for the tier to open.
   const usableRows = rows.filter((r) => r.support !== "under_development");
   const locked = lockedChannels(data?.configured ?? null, catalog);
-  // The four facts every setup card needs, derived once. Three cards spelling
-  // this out themselves would be three chances for them to disagree about what
+  // The four facts every setup card needs, derived once. Each card spelling
+  // this out itself would be its own chance for them to disagree about what
   // "connected" means.
   const cardFacts = (key: string) => ({
     connected: !!data?.configured.includes(key),
@@ -243,10 +243,10 @@ export function ChannelsPanel() {
           gives the editor the width; the facts scan in the narrow column. */}
       {data && cfg.loaded && (
         <div className="grid gap-8 lg:grid-cols-12">
-          {/* Three cards stacked in the wide column rather than spread into a
-              grid: the band is 1120 and the 7/5 split is the page's contract,
-              and a section title per card is the device this page already uses
-              to name things. */}
+          {/* The setup cards stack in the wide column rather than spread into
+              a grid: the band is 1120 and the 7/5 split is the page's
+              contract, and a section title per card is the device this page
+              already uses to name things. */}
           <div className="space-y-8 lg:col-span-7">
             <div>
               <SectionTitle>Telegram</SectionTitle>
@@ -1046,11 +1046,14 @@ function LarkCard({
           >
             <PlainField
               id="lark-allowlist"
-              label="Allowed Lark user ids (comma-separated)"
+              label="Allowed Lark open_ids (ou_…, comma-separated)"
               placeholder="ou_xxxxxxxx"
               value={s.users}
               onChange={s.setUsers}
             />
+            <span className="text-xs text-muted-foreground">
+              <code>/claim</code> adds an open_id automatically.
+            </span>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
                 Applied to the running channel without a restart. To change the app
@@ -1123,11 +1126,14 @@ function LarkCard({
             />
             <PlainField
               id="lark-users"
-              label="Allowed Lark user ids (comma-separated)"
+              label="Allowed Lark open_ids (ou_…, comma-separated)"
               placeholder="ou_xxxxxxxx"
               value={s.users}
               onChange={s.setUsers}
             />
+            <span className="text-xs text-muted-foreground">
+              <code>/claim</code> adds an open_id automatically.
+            </span>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
                 The app credentials are checked with Lark, then saved. An empty
