@@ -98,15 +98,23 @@ export function ChannelsPanel() {
   // and for these the only action is to wait for the tier to open.
   const usableRows = rows.filter((r) => r.support !== "under_development");
   const locked = lockedChannels(data?.configured ?? null, catalog);
-  // The four facts every setup card needs, derived once. Each card spelling
+  // The facts every setup card needs, derived once. Each card spelling
   // this out itself would be its own chance for them to disagree about what
-  // "connected" means.
-  const cardFacts = (key: string) => ({
-    connected: !!data?.configured.includes(key),
-    state: channelState(key, data?.configured ?? null, runtime, staleStatus),
-    verification: channelVerification(key, catalog),
-    missingCredentials: channelMissingCredentials(key, data?.configured ?? null, catalog),
-  });
+  // "connected" means, and a checklist that came from the runtime is exactly
+  // the kind of thing that should not be re-fetched per card.
+  const cardFacts = (key: string) => {
+    const entry = catalog.find((c) => c.key === key);
+    return {
+      connected: !!data?.configured.includes(key),
+      state: channelState(key, data?.configured ?? null, runtime, staleStatus),
+      verification: channelVerification(key, catalog),
+      missingCredentials: channelMissingCredentials(key, data?.configured ?? null, catalog),
+      // The runtime only sends the field on the rows that own one (slack,
+      // discord). Cards without a checklist ignore this prop; cards that have
+      // one render it from the same value they read for everything else.
+      setupChecklist: entry?.setup_checklist,
+    };
+  };
   // Set after a save the gateway said restarts the runtime, so the outage that
   // follows is presented as the change being applied, not as a load error.
   // `waiting`: the response is in and the restart is scheduled (the gateway
@@ -653,6 +661,7 @@ function DiscordCard({
   state,
   verification,
   allowedUsers,
+  setupChecklist,
   onReload,
 }: {
   connected: boolean;
@@ -661,6 +670,13 @@ function DiscordCard({
   verification: ChannelVerification | null;
   state: ChannelState;
   allowedUsers: string[];
+  /**
+   * Platform-side steps (Discord intents, the Message Content Intent toggle)
+   * the operator has to act on before the bot will actually receive
+   * messages. The runtime sends it; the card renders it verbatim in the
+   * connect state only — `undefined` or empty renders nothing.
+   */
+  setupChecklist?: string;
   onReload: (restartsRuntime: boolean) => void;
 }) {
   const [token, setToken] = React.useState("");
@@ -732,50 +748,62 @@ function DiscordCard({
               </div>
             </div>
           </form>
-        ) : (
-          <form
-            className="space-y-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              connect();
-            }}
-          >
-            <SecretField
-              id="discord-token"
-              label="Discord bot token"
-              placeholder="from the Discord developer portal"
-              value={token}
-              onChange={setToken}
-            />
-            <PlainField
-              id="discord-users"
-              label="Allowed Discord user ids (comma-separated)"
-              placeholder="123456789012345678"
-              value={s.users}
-              onChange={s.setUsers}
-            />
-            <PlainField
-              id="discord-guild"
-              label="Server (guild) id (optional)"
-              placeholder="leave empty to answer in every server the bot is in"
-              value={guild}
-              onChange={setGuild}
-            />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-xs text-muted-foreground">
-                The token is checked with Discord, then saved. An empty allowlist denies
-                every sender.
-              </span>
-              <Button
-                type="submit"
-                size="sm"
-                className="shrink-0"
-                disabled={s.busy || !token.trim()}
-              >
-                {s.busy ? "Connecting…" : "Connect Discord"}
-              </Button>
-            </div>
-          </form>
+) : (
+          <>
+            {setupChecklist && (
+              <div className="space-y-1.5" data-testid="discord-setup-checklist">
+                <p className="text-xs font-medium text-muted-foreground">
+                  On the platform side
+                </p>
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed">
+                  {setupChecklist}
+                </pre>
+              </div>
+            )}
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                connect();
+              }}
+            >
+              <SecretField
+                id="discord-token"
+                label="Discord bot token"
+                placeholder="from the Discord developer portal"
+                value={token}
+                onChange={setToken}
+              />
+              <PlainField
+                id="discord-users"
+                label="Allowed Discord user ids (comma-separated)"
+                placeholder="123456789012345678"
+                value={s.users}
+                onChange={s.setUsers}
+              />
+              <PlainField
+                id="discord-guild"
+                label="Server (guild) id (optional)"
+                placeholder="leave empty to answer in every server the bot is in"
+                value={guild}
+                onChange={setGuild}
+              />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-xs text-muted-foreground">
+                  The token is checked with Discord, then saved. An empty allowlist denies
+                  every sender.
+                </span>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={s.busy || !token.trim()}
+                >
+                  {s.busy ? "Connecting…" : "Connect Discord"}
+                </Button>
+              </div>
+            </form>
+          </>
         )}
       </SetupCardFrame>
       <DisconnectDialog
@@ -815,6 +843,7 @@ function SlackCard({
   state,
   verification,
   allowedUsers,
+  setupChecklist,
   onReload,
 }: {
   connected: boolean;
@@ -822,6 +851,13 @@ function SlackCard({
   verification: ChannelVerification | null;
   state: ChannelState;
   allowedUsers: string[];
+  /**
+   * Platform-side steps (Slack scopes / event subscriptions) the operator has
+   * to act on before the bot will actually receive messages — DMs being the
+   * usual silent failure. The runtime sends it; the card renders it verbatim
+   * in the connect state only — `undefined` or empty renders nothing.
+   */
+  setupChecklist?: string;
   onReload: (restartsRuntime: boolean) => void;
 }) {
   const [botToken, setBotToken] = React.useState("");
@@ -894,57 +930,69 @@ function SlackCard({
             </div>
           </form>
         ) : (
-          <form
-            className="space-y-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              connect();
-            }}
-          >
-            <SecretField
-              id="slack-bot-token"
-              label="Slack bot token"
-              placeholder="xoxb-…"
-              value={botToken}
-              onChange={setBotToken}
-            />
-            <SecretField
-              id="slack-app-token"
-              label="Slack app-level token"
-              placeholder="xapp-… (optional; turns on Socket Mode)"
-              value={appToken}
-              onChange={setAppToken}
-            />
-            <PlainField
-              id="slack-users"
-              label="Allowed Slack user ids (comma-separated)"
-              placeholder="U01234567"
-              value={s.users}
-              onChange={s.setUsers}
-            />
-            <PlainField
-              id="slack-channel"
-              label="Channel id (optional)"
-              placeholder="C01234567; leave empty to answer everywhere the bot is invited"
-              value={channelId}
-              onChange={setChannelId}
-            />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-xs text-muted-foreground">
-                The bot token is checked with Slack, then saved. The app-level token is
-                checked for shape only; <code>doctor</code> reports whether Socket Mode
-                actually connects.
-              </span>
-              <Button
-                type="submit"
-                size="sm"
-                className="shrink-0"
-                disabled={s.busy || !botToken.trim()}
-              >
-                {s.busy ? "Connecting…" : "Connect Slack"}
-              </Button>
-            </div>
-          </form>
+          <>
+            {setupChecklist && (
+              <div className="space-y-1.5" data-testid="slack-setup-checklist">
+                <p className="text-xs font-medium text-muted-foreground">
+                  On the platform side
+                </p>
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-3 font-mono text-[11px] leading-relaxed">
+                  {setupChecklist}
+                </pre>
+              </div>
+            )}
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                connect();
+              }}
+            >
+              <SecretField
+                id="slack-bot-token"
+                label="Slack bot token"
+                placeholder="xoxb-…"
+                value={botToken}
+                onChange={setBotToken}
+              />
+              <SecretField
+                id="slack-app-token"
+                label="Slack app-level token"
+                placeholder="xapp-… (optional; turns on Socket Mode)"
+                value={appToken}
+                onChange={setAppToken}
+              />
+              <PlainField
+                id="slack-users"
+                label="Allowed Slack user ids (comma-separated)"
+                placeholder="U01234567"
+                value={s.users}
+                onChange={s.setUsers}
+              />
+              <PlainField
+                id="slack-channel"
+                label="Channel id (optional)"
+                placeholder="C01234567; leave empty to answer everywhere the bot is invited"
+                value={channelId}
+                onChange={setChannelId}
+              />
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-xs text-muted-foreground">
+                  The bot token is checked with Slack, then saved. The app-level token is
+                  checked for shape only; <code>doctor</code> reports whether Socket Mode
+                  actually connects.
+                </span>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={s.busy || !botToken.trim()}
+                >
+                  {s.busy ? "Connecting…" : "Connect Slack"}
+                </Button>
+              </div>
+            </form>
+          </>
         )}
       </SetupCardFrame>
       <DisconnectDialog

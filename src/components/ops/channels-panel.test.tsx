@@ -770,6 +770,108 @@ describe("ChannelsPanel Slack", () => {
   });
 });
 
+describe("ChannelsPanel setup checklist (slack and discord only)", () => {
+  // The runtime sends a multi-line string the operator needs to act on in the
+  // platform console (Slack scopes / events, Discord intents). It carries no
+  // surface beyond the two cards — Telegram, WhatsApp Web, Lark never get one
+  // — so the only thing this console renders for it is a short "On the platform
+  // side" block above the token input in the connect state. A gateway that
+  // does not yet send the field renders nothing extra.
+  const SLACK_CHECKLIST = [
+    "Slack app scopes: chat:write, im:history, im:read, users:read",
+    "Event subscriptions: message.im, message.channels",
+    "Socket Mode: on (recommended; otherwise set up an Events Request URL)",
+  ].join("\n");
+  const DISCORD_CHECKLIST = [
+    "Discord bot intents: message_content (privileged)",
+    "Message Content Intent: enabled in the developer portal",
+  ].join("\n");
+
+  beforeEach(() => {
+    channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
+    config.mockResolvedValue({ channels_config: {} });
+  });
+
+  // Build a catalog where only the named key carries a `setup_checklist`. The
+  // rest of the rows match the shared fixture byte-for-byte; the field is
+  // optional and a row's presence on the fixture must not leak into other tests.
+  function withChecklist(
+    key: "slack" | "discord" | "telegram" | "lark",
+    checklist: string,
+  ) {
+    return CATALOG.map((c) => (c.key === key ? { ...c, setup_checklist: checklist } : c));
+  }
+
+  it("Slack card shows every line of setup_checklist in the connect state", async () => {
+    channels.mockResolvedValue({
+      configured: [],
+      count: 0,
+      channels: withChecklist("slack", SLACK_CHECKLIST),
+    });
+    render(<ChannelsPanel />);
+    // Reach the connect state, not the manage state: tokens are blank until the
+    // operator pastes them in, so a found token label proves the right branch.
+    await screen.findByLabelText("Slack bot token");
+    const block = screen.getByTestId("slack-setup-checklist");
+    for (const line of SLACK_CHECKLIST.split("\n")) {
+      expect(block.textContent).toContain(line);
+    }
+  });
+
+  it("Discord card shows every line of setup_checklist in the connect state", async () => {
+    channels.mockResolvedValue({
+      configured: [],
+      count: 0,
+      channels: withChecklist("discord", DISCORD_CHECKLIST),
+    });
+    render(<ChannelsPanel />);
+    await screen.findByLabelText("Discord bot token");
+    const block = screen.getByTestId("discord-setup-checklist");
+    for (const line of DISCORD_CHECKLIST.split("\n")) {
+      expect(block.textContent).toContain(line);
+    }
+  });
+
+  it("renders no checklist and no heading when the gateway omits setup_checklist", async () => {
+    // The default fixture sends no field on any row. The cards must be
+    // byte-identical to today: no heading, no extra block, no fallback copy.
+    render(<ChannelsPanel />);
+    await screen.findByLabelText("Slack bot token");
+    await screen.findByLabelText("Discord bot token");
+    expect(screen.queryByText(/on the platform side/i)).toBeNull();
+    expect(screen.queryByTestId("slack-setup-checklist")).toBeNull();
+    expect(screen.queryByTestId("discord-setup-checklist")).toBeNull();
+  });
+
+  it("never shows the checklist on a non-slack, non-discord card, even if the row carries it", async () => {
+    // The contract is that the gateway only sends the field on slack and
+    // discord rows. The render is gated by the card's own key, not by a
+    // generic field, so a buggy row on Telegram or Lark must not produce a
+    // checklist block anywhere on the page.
+    channels.mockResolvedValue({
+      configured: [],
+      count: 0,
+      channels: CATALOG.map((c) => {
+        if (c.key === "telegram") {
+          return { ...c, setup_checklist: "telegram-not-supported-on-this-card" };
+        }
+        if (c.key === "lark") {
+          return { ...c, setup_checklist: "lark-not-supported-on-this-card" };
+        }
+        return c;
+      }),
+    });
+    render(<ChannelsPanel />);
+    // Telegram is the only channel whose connect form labels its token "Bot
+    // token" rather than "<Channel> bot token"; reach the connect state by
+    // finding the token input's label rather than the SectionTitle.
+    await screen.findByLabelText("Bot token");
+    expect(screen.queryByText(/on the platform side/i)).toBeNull();
+    expect(screen.queryByText("telegram-not-supported-on-this-card")).toBeNull();
+    expect(screen.queryByText("lark-not-supported-on-this-card")).toBeNull();
+  });
+});
+
 describe("ChannelsPanel Lark", () => {
   beforeEach(() => {
     channels.mockResolvedValue({ configured: [], count: 0, channels: CATALOG });
