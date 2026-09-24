@@ -485,11 +485,11 @@ function ApprovalsCard({ boundary }: { boundary: { owners: string[]; autonomousT
  * Telegram's card, rebuilt on the shared pieces.
  *
  * Its words and its control names are untouched, deliberately. The suites pin
- * `Connect`, `Save allowlist` and `Disconnect` as bare names, and with three
- * cards on the page those read as ambiguous — but renaming them is a Telegram
- * behaviour change, and this plan's stop condition says to keep the behaviour
- * and report it. Discord and Slack name their controls in full; the asymmetry
- * is recorded rather than smoothed over.
+ * `Connect`, `Save allowlist` and `Disconnect` as bare names, and where the
+ * cards share the page those read as ambiguous — but renaming them is a
+ * Telegram behaviour change, and this plan's stop condition says to keep the
+ * behaviour and report it. Discord and Slack name their controls in full; the
+ * asymmetry is recorded rather than smoothed over.
  */
 function TelegramCard({
   connected,
@@ -804,9 +804,10 @@ function DiscordCard({
  * filter.
  *
  * The bot token authenticates API calls; the app-level token opens Socket Mode.
- * With Socket Mode on, a channel filter makes the bot ignore direct messages —
- * the gateway returns that caveat in `warning` and the card relays it verbatim
- * rather than deciding for itself when it applies.
+ * The gateway decides when a channel filter applies and returns the caveat in
+ * `warning`; the card relays it verbatim — other channels ignored, direct
+ * messages still arrive — rather than deciding for itself when the caveat
+ * applies.
  */
 function SlackCard({
   connected,

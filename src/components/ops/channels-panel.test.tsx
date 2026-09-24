@@ -724,8 +724,9 @@ describe("ChannelsPanel Slack", () => {
 
   it("shows the gateway's Socket Mode caveat rather than inventing one", async () => {
     // F-3 from the 2026-09-11 drive: with Socket Mode on, a channel id filter
-    // makes the bot ignore every direct message. The gateway decides when that
-    // applies and returns the sentence; the console must not guess at it.
+    // makes the bot ignore every other channel, while direct messages still
+    // arrive. The gateway decides when that applies and returns the sentence;
+    // the console must not guess at it.
     render(<ChannelsPanel />);
     const bot = (await screen.findByLabelText("Slack bot token")) as HTMLInputElement;
     fireEvent.change(bot, { target: { value: "xoxb-1" } });
@@ -735,7 +736,7 @@ describe("ChannelsPanel Slack", () => {
       bot_username: null,
       allowed_users: 0,
       warning:
-        "Socket Mode with a channel_id set: the bot ignores direct messages and every other conversation.",
+        "Socket Mode is on and channel_id is set: the bot ignores every channel except that one. Direct messages still reach it. Clear channel_id to accept every channel.",
       restarts_runtime: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "Connect Slack" }));
@@ -743,7 +744,7 @@ describe("ChannelsPanel Slack", () => {
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledTimes(1));
     expect(toastSuccess.mock.calls[0][1]).toEqual({
       description:
-        "Socket Mode with a channel_id set: the bot ignores direct messages and every other conversation.",
+        "Socket Mode is on and channel_id is set: the bot ignores every channel except that one. Direct messages still reach it. Clear channel_id to accept every channel.",
     });
   });
 
