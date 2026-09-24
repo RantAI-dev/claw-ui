@@ -346,6 +346,14 @@ export interface ChannelCatalogEntry {
    * no opinion must not be rendered as one that says the token is missing.
    */
   has_credentials?: boolean;
+  /**
+   * Platform-side setup steps the operator has to act on (Slack scopes /
+   * events, Discord intents). The gateway sends it; the console renders it
+   * verbatim, in the connect state of the cards that need it, and nowhere
+   * else. Absent on every channel row the runtime does not consider itself
+   * authoritative for, so the cards that have no checklist render nothing.
+   */
+  setup_checklist?: string;
 }
 
 export interface ChannelsInfo {

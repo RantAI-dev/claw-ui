@@ -12,6 +12,15 @@ carries the paired entry and the release notes.
 
 ### Added
 
+- **Slack and Discord setup cards show the platform-side checklist the gateway sends.**
+  A connected Slack or Discord bot can still be deaf to DMs or receive empty messages when the
+  platform side is misconfigured, and the console used to show nothing about that. The catalog now
+  carries an optional `setup_checklist` on the `slack` and `discord` rows; the cards render it
+  verbatim in the connect state, above the token input, under a short "On the platform side"
+  heading. A gateway that does not yet send the field renders nothing extra — no fallback copy,
+  no heading. The other channels (Telegram, WhatsApp Web, Lark) never get a checklist, and a
+  buggy catalog row that carries one on the wrong key is ignored by the render, which is gated
+  by the card's own key.
 - **Lark can be set up from the Channels page.** The fifth setup card, alongside Telegram, Discord,
   Slack and WhatsApp Web: app id and app secret as credential fields that are never seeded and clear
   after a save, an allowlist editor applied live, and a region switch (Lark international by default,
