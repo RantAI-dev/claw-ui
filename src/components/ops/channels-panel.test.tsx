@@ -820,7 +820,7 @@ describe("ChannelsPanel Lark", () => {
     render(<ChannelsPanel />);
     const appId = (await screen.findByLabelText("Lark app id")) as HTMLInputElement;
     const appSecret = screen.getByLabelText("Lark app secret") as HTMLInputElement;
-    const users = screen.getByLabelText(/Allowed Lark user ids/);
+    const users = screen.getByLabelText(/Allowed Lark open_ids/);
     // The gateway never sends a credential back, and nothing in this card's
     // props carries one either, so the field starts empty on every mount.
     expect(appSecret.value).toBe("");
@@ -888,7 +888,7 @@ describe("ChannelsPanel Lark", () => {
     });
     config.mockResolvedValue({ channels_config: { lark: { allowed_users: ["ou_1"] } } });
     render(<ChannelsPanel />);
-    const box = (await screen.findByLabelText(/Allowed Lark user ids/)) as HTMLInputElement;
+    const box = (await screen.findByLabelText(/Allowed Lark open_ids/)) as HTMLInputElement;
     await waitFor(() => expect(box.value).toBe("ou_1"));
 
     const save = screen.getByRole("button", { name: "Save Lark allowlist" }) as HTMLButtonElement;
