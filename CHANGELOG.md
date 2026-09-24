@@ -47,6 +47,10 @@ carries the paired entry and the release notes.
   Lark `open_id` (`ou_…`); pasting a Lark `user_id` into the old label built an allowlist that never
   matched. The field is now labelled "Allowed Lark open_ids (ou_…, comma-separated)" with a short
   hint that `/claim` adds one automatically. (#130)
+- **The Slack card's caveat comment matches the gateway's new wording.** With Socket Mode on and
+  a `channel_id` set, the bot now ignores every other channel while direct messages still arrive;
+  the comment on `SlackCard` and the Socket Mode test fixture both relay that sentence, and two
+  stale "three cards" comments are reworded to drop the count.
 
 ## [0.3.28] — 2026-09-08
 

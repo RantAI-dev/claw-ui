@@ -177,7 +177,7 @@ export function MissingCredentialNotice({ what }: { what: string }) {
 }
 
 export interface ChannelSetupOptions {
-  /** Catalog key, used for the field ids so three cards can coexist. */
+  /** Catalog key, used for the field ids so the cards can coexist. */
   channelKey: string;
   /** The saved allowlist, which seeds the editor once connected. */
   allowedUsers: string[];
