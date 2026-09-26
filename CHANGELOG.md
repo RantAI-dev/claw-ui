@@ -12,20 +12,33 @@ carries the paired entry and the release notes.
 
 ## [0.3.29] — 2026-09-26
 
-Paired with RantaiClaw `v0.32.0-alpha`. Three entries below read what only that
-runtime serves: the Slack and Discord checklist (`setup_checklist`), the Lark card
-(a catalog that recognises Lark) and the WhatsApp Web restart wait
-(`restarts_runtime`). Against an older gateway each one degrades as its entry says.
+Paired with RantaiClaw `v0.32.0-alpha`, and this console needs it. The Discord, Slack,
+WhatsApp Web and Lark setup cards call gateway routes that runtime adds; an older
+gateway has none of them, so its only working card is Telegram's. The Slack and
+Discord checklist (`setup_checklist`) and the WhatsApp Web restart wait
+(`restarts_runtime`) read fields that runtime adds, and degrade as their entries say.
 
 ### Added
 
+- **Discord and Slack can be set up from the Channels page.** (#120) A Discord card and a Slack
+  card sit beside Telegram's, and each can connect, edit its allowlist live, and disconnect.
+  Discord takes the bot token, the allowlist and an optional guild id. Slack takes the bot token
+  and the app-level token as separate fields, the allowlist and an optional channel id. Optional
+  fields are sent only when set, because the gateway reads an absent field as "keep the saved
+  value". A section configured without a token now says so and offers the connect form, instead
+  of reading as connected while the channel never starts.
+- **WhatsApp Web can be linked from the Channels page.** (#121) Link WhatsApp streams the pairing
+  from the gateway and shows its QR, rendered as an image from the gateway's SVG; a pair code
+  never reaches the browser. The allowlist is edited live with a Save button like the other cards
+  (#123), and a section left without a session can be cleared from the card so it can be linked
+  again (#122).
 - **Slack and Discord setup cards show the platform-side checklist the gateway sends.**
   A connected Slack or Discord bot can still be deaf to DMs or receive empty messages when the
   platform side is misconfigured, and the console used to show nothing about that. From RantaiClaw
   `v0.32.0-alpha`, `/api/v1/channels` carries an optional `setup_checklist` on the `slack` and
   `discord` rows, and the cards render it verbatim in the connect state, above the token input,
-  under a short "On the platform side" heading. A gateway that does not yet send the field renders nothing extra — no fallback copy,
-  no heading. The other channels (Telegram, WhatsApp Web, Lark) never get a checklist, and a
+  under a short "On the platform side" heading. A gateway that does not yet send the field
+  renders nothing extra — no fallback copy, no heading. The other channels (Telegram, WhatsApp Web, Lark) never get a checklist, and a
   buggy catalog row that carries one on the wrong key is ignored by the render, which is gated
   by the card's own key.
 - **Lark can be set up from the Channels page.** The fifth setup card, alongside Telegram, Discord,
