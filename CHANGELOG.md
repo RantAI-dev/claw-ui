@@ -10,14 +10,21 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.29] — 2026-09-26
+
+Paired with RantaiClaw `v0.32.0-alpha`. Three entries below read what only that
+runtime serves: the Slack and Discord checklist (`setup_checklist`), the Lark card
+(a catalog that recognises Lark) and the WhatsApp Web restart wait
+(`restarts_runtime`). Against an older gateway each one degrades as its entry says.
+
 ### Added
 
 - **Slack and Discord setup cards show the platform-side checklist the gateway sends.**
   A connected Slack or Discord bot can still be deaf to DMs or receive empty messages when the
-  platform side is misconfigured, and the console used to show nothing about that. The catalog now
-  carries an optional `setup_checklist` on the `slack` and `discord` rows; the cards render it
-  verbatim in the connect state, above the token input, under a short "On the platform side"
-  heading. A gateway that does not yet send the field renders nothing extra — no fallback copy,
+  platform side is misconfigured, and the console used to show nothing about that. From RantaiClaw
+  `v0.32.0-alpha`, `/api/v1/channels` carries an optional `setup_checklist` on the `slack` and
+  `discord` rows, and the cards render it verbatim in the connect state, above the token input,
+  under a short "On the platform side" heading. A gateway that does not yet send the field renders nothing extra — no fallback copy,
   no heading. The other channels (Telegram, WhatsApp Web, Lark) never get a checklist, and a
   buggy catalog row that carries one on the wrong key is ignored by the render, which is gated
   by the card's own key.
@@ -56,10 +63,6 @@ carries the paired entry and the release notes.
   Lark `open_id` (`ou_…`); pasting a Lark `user_id` into the old label built an allowlist that never
   matched. The field is now labelled "Allowed Lark open_ids (ou_…, comma-separated)" with a short
   hint that `/claim` adds one automatically. (#130)
-- **The Slack card's caveat comment matches the gateway's new wording.** With Socket Mode on and
-  a `channel_id` set, the bot now ignores every other channel while direct messages still arrive;
-  the comment on `SlackCard` and the Socket Mode test fixture both relay that sentence, and two
-  stale "three cards" comments are reworded to drop the count.
 
 ## [0.3.28] — 2026-09-08
 
