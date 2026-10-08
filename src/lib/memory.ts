@@ -292,7 +292,7 @@ export function groupRecordings(sessions: readonly SessionSummary[]): RecordingG
 
 export const RECORDINGS_EMPTY = {
   title: "No chat recordings yet.",
-  hint: "Recordings come from channel conversations and are kept thirty days after the last message.",
+  hint: "Recordings come from channel conversations. The gateway deletes each message thirty days after it was written.",
 };
 
 export const CONVERSATION_BUSY_MESSAGE =

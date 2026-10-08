@@ -28,5 +28,5 @@ test("Chat recordings shows its empty state on a gateway with no recordings", as
   await page.getByRole("button", { name: "Chat recordings", exact: true }).click();
 
   await expect(page.getByText("No chat recordings yet.")).toBeVisible();
-  await expect(page.getByText(/kept thirty days after the last message/)).toBeVisible();
+  await expect(page.getByText(/deletes each message thirty days after it was written/)).toBeVisible();
 });

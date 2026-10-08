@@ -644,7 +644,7 @@ describe("MemoryPanel: chat recordings", () => {
   it("says where recordings come from and how long they are kept when there are none", async () => {
     await openRecordings();
     await screen.findByText("No chat recordings yet.");
-    expect(screen.getByText(/kept thirty days after the last message/)).toBeTruthy();
+    expect(screen.getByText(/deletes each message thirty days after it was written/)).toBeTruthy();
   });
 
   it("searches with source channel and returns to the list when cleared", async () => {
