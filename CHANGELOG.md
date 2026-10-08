@@ -25,6 +25,10 @@ carries the paired entry and the release notes.
   their earlier wording, the Chat recordings list stays empty, and its search may still list
   ordinary chats.
 
+### Changed
+
+- **Next.js moves from 16.3.4 to 16.4.0.** `npm audit --omit=dev --audit-level=high` flagged `next` (critical: "Remote Code Execution in next/og ImageResponse", plus cache-poisoning and information-disclosure advisories), `sharp` ("Vulnerability in librsvg dependency") and `source-map-js` ("event-loop denial of service through indexed source-map section offsets"). Next.js 16.4.0 closes the first, and the lockfile now resolves `sharp` 0.35.5 and `source-map-js` 1.2.2 for the other two.
+
 ## [0.3.29] — 2026-09-26
 
 Paired with RantaiClaw `v0.32.0-alpha`, and this console needs it. The Discord, Slack,
