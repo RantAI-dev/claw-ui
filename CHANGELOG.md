@@ -10,9 +10,17 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.30] — 2026-10-08
+
+Paired with RantaiClaw `v0.33.0-alpha`, and the new Memory tabs need it. The Place filter,
+the place labels, the note counts and the MEMORY.md usage read fields that runtime adds to
+`/api/v1/memory` and `/api/v1/memory/stats`. The Chat recordings tab reads channel sessions
+that runtime records, and its delete calls the conversation delete that runtime adds. On an
+older gateway the console still works and degrades as the entry below says.
+
 ### Added
 
-- **The Memory page shows where each note lives and lists chat recordings.** A new Notes tab
+- **The Memory page shows where each note lives and lists chat recordings.** (#135) A new Notes tab
   keeps the memory list and adds a Place filter ("All places", "Private", or one conversation),
   a place label on every row, and a band line with the private and conversation note counts, the
   search mode and the MEMORY.md usage as `used / max` characters. The band turns to the warning
@@ -27,7 +35,7 @@ carries the paired entry and the release notes.
 
 ### Changed
 
-- **Next.js moves from 16.3.4 to 16.4.0.** `npm audit --omit=dev --audit-level=high` flagged `next` (critical: "Remote Code Execution in next/og ImageResponse", plus cache-poisoning and information-disclosure advisories), `sharp` ("Vulnerability in librsvg dependency") and `source-map-js` ("event-loop denial of service through indexed source-map section offsets"). Next.js 16.4.0 closes the first, and the lockfile now resolves `sharp` 0.35.5 and `source-map-js` 1.2.2 for the other two.
+- **Next.js moves from 16.3.4 to 16.4.0.** (#136) `npm audit --omit=dev --audit-level=high` flagged `next` (critical: "Remote Code Execution in next/og ImageResponse", plus cache-poisoning and information-disclosure advisories), `sharp` ("Vulnerability in librsvg dependency") and `source-map-js` ("event-loop denial of service through indexed source-map section offsets"). Next.js 16.4.0 closes the first, and the lockfile now resolves `sharp` 0.35.5 and `source-map-js` 1.2.2 for the other two.
 
 ## [0.3.29] — 2026-09-26
 
