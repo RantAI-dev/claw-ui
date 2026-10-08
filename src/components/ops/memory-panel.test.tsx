@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { MemoryEntry } from "@/lib/types";
+import type { MemoryEntry, SearchResult, SessionSummary } from "@/lib/types";
 
 const memory = vi.fn();
 const memoryStats = vi.fn();
 const getMemory = vi.fn();
 const addMemory = vi.fn();
 const deleteMemory = vi.fn();
+const sessions = vi.fn();
+const searchSessions = vi.fn();
+const session = vi.fn();
+const deleteSession = vi.fn();
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 const toastMessage = vi.fn();
@@ -21,6 +25,10 @@ vi.mock("@/lib/api", async (importOriginal) => ({
     getMemory: (key: string) => getMemory(key),
     addMemory: (body: unknown) => addMemory(body),
     deleteMemory: (key: string) => deleteMemory(key),
+    sessions: (...a: unknown[]) => sessions(...a),
+    searchSessions: (...a: unknown[]) => searchSessions(...a),
+    session: (id: string) => session(id),
+    deleteSession: (id: string) => deleteSession(id),
   },
 }));
 vi.mock("sonner", () => ({
@@ -51,6 +59,28 @@ function page(entries: MemoryEntry[], total = entries.length) {
   return { entries, count: entries.length, total, listed: entries.length, offset: 0 };
 }
 
+function sessionPage(rows: SessionSummary[]) {
+  return { sessions: rows, count: rows.length, offset: 0, total: rows.length };
+}
+
+function recording(over: Partial<SessionSummary> = {}): SessionSummary {
+  return {
+    id: "sess-a1",
+    title: "Pricing question",
+    model: "model-a",
+    started_at: "2026-10-01T10:00:00+00:00",
+    ended_at: null,
+    message_count: 6,
+    source: "channel",
+    conversation_key: "telegram:team-room",
+    surface: "telegram",
+    place: "team-room",
+    thread: null,
+    last_activity_at: "2026-10-02T10:00:00+00:00",
+    ...over,
+  };
+}
+
 const ROWS = [
   entry(),
   entry({ key: "team/alpha notes", content: "Slash key test" }),
@@ -75,6 +105,10 @@ beforeEach(() => {
   getMemory.mockRejectedValue(notFound());
   addMemory.mockResolvedValue({ key: "deploy-window", stored: true, notes: [] });
   deleteMemory.mockResolvedValue({ key: "deploy-window", removed: true });
+  sessions.mockResolvedValue(sessionPage([]));
+  searchSessions.mockResolvedValue({ results: [], count: 0 });
+  session.mockResolvedValue({ id: "sess-a1", title: "Pricing question", model: null, started_at: null, messages: [] });
+  deleteSession.mockResolvedValue({ deleted: true, id: "sess-a1", conversation_key: "telegram:team-room", sessions_removed: 2 });
 });
 
 afterEach(() => {
@@ -249,7 +283,7 @@ describe("MemoryPanel: list state", () => {
     const search = screen.getByLabelText("Search memories") as HTMLInputElement;
     fireEvent.change(search, { target: { value: "zzzz" } });
     await waitFor(() =>
-      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "zzzz", category: "" }),
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "zzzz", category: "", place: "" }),
     );
     await screen.findByText("No memories match “zzzz”.");
     // The field's X carries the same name; the empty state's button is the one with the text.
@@ -265,7 +299,7 @@ describe("MemoryPanel: list state", () => {
     const filter = screen.getByLabelText("Filter by category") as HTMLInputElement;
     fireEvent.change(filter, { target: { value: "daily" } });
     await waitFor(() =>
-      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "daily" }),
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "daily", place: "" }),
     );
     await screen.findByText("No daily memories.");
     fireEvent.click(screen.getByRole("button", { name: "Show all categories" }));
@@ -283,7 +317,7 @@ describe("MemoryPanel: list state", () => {
     const filter = screen.getByLabelText("Filter by category");
     fireEvent.change(filter, { target: { value: "ops" } });
     await waitFor(() =>
-      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "ops" }),
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "ops", place: "" }),
     );
   });
 
@@ -414,5 +448,312 @@ describe("MemoryPanel: composition", () => {
     await screen.findByText(/Deploys go out on Tuesdays/);
     expect(screen.getByRole("heading", { name: "Remember something" })).toBeTruthy();
     expect(screen.getByLabelText("Category")).toBeTruthy();
+  });
+});
+
+const NEW_STATS = {
+  backend: "sqlite",
+  total_entries: 5,
+  healthy: true,
+  mode: "hybrid",
+  private_entries: 3,
+  conversation_entries: 2,
+  memory_md_chars: 1200,
+  memory_md_max_chars: 4000,
+};
+
+describe("MemoryPanel: where a note lives", () => {
+  it("shows both counts, the search mode and the MEMORY.md usage in the band", async () => {
+    memoryStats.mockResolvedValue(NEW_STATS);
+    render(<MemoryPanel />);
+    await screen.findByText("5 memories on recall");
+    expect(screen.getByText("3 private notes")).toBeTruthy();
+    expect(screen.getByText("2 conversation notes")).toBeTruthy();
+    expect(screen.getByText("hybrid search")).toBeTruthy();
+    expect(screen.getByText("MEMORY.md 1200 / 4000 characters")).toBeTruthy();
+  });
+
+  it("warns in the band when MEMORY.md is over its cap", async () => {
+    memoryStats.mockResolvedValue({ ...NEW_STATS, memory_md_chars: 4600 });
+    render(<MemoryPanel />);
+    await screen.findByText(/oldest notes are left out of the prompt file/);
+  });
+
+  it("shows none of them, and no placeholder, for stats of the older shape", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText("3 memories on recall");
+    const band = screen.getByRole("heading", { name: "3 memories on recall" }).parentElement!.parentElement!;
+    expect(band.textContent).toBe("3 memories on recallsqlite backend");
+  });
+
+  it("sends place=private and then the conversation key, and restores the list when cleared", async () => {
+    memoryStats.mockResolvedValue(NEW_STATS);
+    memory.mockResolvedValue(
+      page([
+        entry({ session_id: null, surface: null, place: null, thread: null }),
+        entry({ key: "room-note", content: "Room note.", session_id: "telegram:team-room", surface: "telegram", place: "team-room", thread: null }),
+      ]),
+    );
+    render(<MemoryPanel />);
+    await screen.findByText("Room note.");
+    const picker = screen.getByLabelText("Filter by place") as HTMLSelectElement;
+    expect([...picker.options].map((o) => [o.value, o.textContent])).toEqual([
+      ["", "All places"],
+      ["private", "Private"],
+      ["telegram:team-room", "telegram · team-room"],
+    ]);
+
+    fireEvent.change(picker, { target: { value: "private" } });
+    await waitFor(() =>
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "", place: "private" }),
+    );
+    fireEvent.change(picker, { target: { value: "telegram:team-room" } });
+    await waitFor(() =>
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "", place: "telegram:team-room" }),
+    );
+    fireEvent.change(picker, { target: { value: "" } });
+    await waitFor(() =>
+      expect(memory).toHaveBeenLastCalledWith(50, 0, { q: "", category: "", place: "" }),
+    );
+  });
+
+  it("names an empty place and offers to show all places", async () => {
+    memoryStats.mockResolvedValue(NEW_STATS);
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    memory.mockResolvedValue(page([]));
+    fireEvent.change(screen.getByLabelText("Filter by place"), { target: { value: "private" } });
+    await screen.findByText("No notes in this place.");
+    fireEvent.click(screen.getByRole("button", { name: "Show all places" }));
+    await screen.findByText("No memories yet.");
+    expect((screen.getByLabelText("Filter by place") as HTMLSelectElement).value).toBe("");
+  });
+
+  it("offers no place filter on a gateway whose stats carry no placement", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText("3 memories on recall");
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    expect(screen.queryByLabelText("Filter by place")).toBeNull();
+  });
+
+  it("labels a row with the place the gateway sent, and keeps the old wording without one", async () => {
+    memory.mockResolvedValue(
+      page([
+        entry({ key: "private-note", content: "A private note.", surface: null, place: null, thread: null }),
+        entry({ key: "slack-note", content: "A Slack note.", session_id: "slack:ops:t42", surface: "slack", place: "ops", thread: "t42" }),
+        entry({ key: "old-note", content: "An older note.", session_id: "sess-1" }),
+        entry({ key: "web-note", content: "A web session note.", session_id: "sess-2", surface: null, place: null, thread: null }),
+        entry({ key: `user_msg_${UUID}`, category: "conversation", content: "A saved turn.", surface: null, place: null, thread: null }),
+      ]),
+    );
+    render(<MemoryPanel />);
+    const row = (text: string) => screen.getByText(text).closest("[data-slot=row]")!.textContent!;
+    await screen.findByText("A private note.");
+    expect(row("A private note.")).toContain("Private");
+    expect(row("A Slack note.")).toContain("slack · ops · thread t42");
+    expect(row("A Slack note.")).not.toContain("this conversation only");
+    expect(row("An older note.")).toContain("this conversation only");
+    expect(row("A web session note.")).toContain("this conversation only");
+    expect(row("A web session note.")).not.toContain("Private");
+    expect(row("A saved turn.")).toContain("Private · saved from a conversation");
+  });
+
+  it("says in the form hint that a saved note is private", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    expect(screen.getByText(/Saved as a private note/)).toBeTruthy();
+  });
+});
+
+describe("MemoryPanel: tabs", () => {
+  it("opens on Notes and keeps the remember form there only", async () => {
+    render(<MemoryPanel />);
+    await screen.findByText(/Deploys go out on Tuesdays/);
+    expect(screen.getByRole("button", { name: "Notes" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Chat recordings" }));
+    await screen.findByText("No chat recordings yet.");
+    expect(screen.queryByRole("heading", { name: "Remember something" })).toBeNull();
+    expect(screen.queryByText(/Deploys go out on Tuesdays/)).toBeNull();
+    // The band stays above both tabs.
+    expect(screen.getByText("3 memories on recall")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Notes" }));
+    await screen.findByRole("heading", { name: "Remember something" });
+  });
+});
+
+describe("MemoryPanel: chat recordings", () => {
+  const A1 = recording();
+  const A2 = recording({ id: "sess-a2", title: "Refund policy", message_count: 3, last_activity_at: "2026-10-01T09:00:00+00:00" });
+  const B1 = recording({ id: "sess-b1", title: "Standup notes", conversation_key: "slack:ops", surface: "slack", place: "ops" });
+
+  async function openRecordings() {
+    render(<MemoryPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Chat recordings" }));
+  }
+
+  it("asks the gateway for channel recordings only", async () => {
+    sessions.mockResolvedValue(sessionPage([A1]));
+    await openRecordings();
+    await screen.findByText("Pricing question");
+    expect(sessions).toHaveBeenLastCalledWith(50, 0, "channel");
+  });
+
+  it("groups the rows of one conversation under one heading", async () => {
+    sessions.mockResolvedValue(sessionPage([A1, B1, A2]));
+    await openRecordings();
+    await screen.findByText("Pricing question");
+    const groups = screen.getAllByRole("group");
+    expect(groups.length).toBe(2);
+    const team = groups.find((g) => g.textContent!.includes("telegram · team-room"))!;
+    expect(within(team).getByText("Pricing question")).toBeTruthy();
+    expect(within(team).getByText("Refund policy")).toBeTruthy();
+    expect(within(team).queryByText("Standup notes")).toBeNull();
+    expect(team.textContent).toContain("2 recordings");
+    expect(team.textContent).toContain("6 messages");
+  });
+
+  it("does not show a row whose source is not channel", async () => {
+    sessions.mockResolvedValue(sessionPage([recording({ id: "sess-cli", title: "Terminal chat", source: "cli", conversation_key: null, surface: null, place: null })]));
+    await openRecordings();
+    await screen.findByText("No chat recordings yet.");
+    expect(screen.queryByText("Terminal chat")).toBeNull();
+  });
+
+  it("shows an empty state and no pager when an older gateway returns ordinary sessions with a large total", async () => {
+    sessions.mockResolvedValue({
+      sessions: [recording({ id: "sess-old", title: "Ordinary chat", source: undefined, conversation_key: undefined })],
+      count: 1,
+      offset: 0,
+      total: 120,
+    });
+    await openRecordings();
+    await screen.findByText("No chat recordings yet.");
+    expect(screen.queryByText("Ordinary chat")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Next/ })).toBeNull();
+    expect(screen.queryByText(/Page 1 of/)).toBeNull();
+  });
+
+  it("pages the recordings when channel rows are present", async () => {
+    sessions.mockResolvedValue({ sessions: [A1], count: 1, offset: 0, total: 120 });
+    await openRecordings();
+    await screen.findByText("Pricing question");
+    expect(screen.getByText("Page 1 of 3")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Next/ })).toBeTruthy();
+  });
+
+  it("says where recordings come from and how long they are kept when there are none", async () => {
+    await openRecordings();
+    await screen.findByText("No chat recordings yet.");
+    expect(screen.getByText(/kept thirty days after the last message/)).toBeTruthy();
+  });
+
+  it("searches with source channel and returns to the list when cleared", async () => {
+    sessions.mockResolvedValue(sessionPage([A1]));
+    const hit: SearchResult = { session_id: "sess-a2", session_title: "Refund policy", role: "user", content: "Can I get a refund?", timestamp: "2026-10-01T09:00:00+00:00", rank: 1 };
+    searchSessions.mockResolvedValue({ results: [hit], count: 1 });
+    await openRecordings();
+    await screen.findByText("Pricing question");
+    const box = screen.getByLabelText("Search recordings") as HTMLInputElement;
+    fireEvent.change(box, { target: { value: "refund" } });
+    await waitFor(() => expect(searchSessions).toHaveBeenLastCalledWith("refund", 30, "channel"));
+    await screen.findByText("Can I get a refund?");
+    expect(screen.queryByText("Pricing question")).toBeNull();
+    fireEvent.change(box, { target: { value: "" } });
+    await screen.findByText("Pricing question");
+    expect(screen.queryByText("Can I get a refund?")).toBeNull();
+  });
+
+  it("names a search that found nothing", async () => {
+    await openRecordings();
+    await screen.findByText("No chat recordings yet.");
+    fireEvent.change(screen.getByLabelText("Search recordings"), { target: { value: "zzzz" } });
+    await screen.findByText("No recordings match “zzzz”.");
+  });
+
+  it("opens a recording and shows its transcript, read-only", async () => {
+    sessions.mockResolvedValue(sessionPage([A1]));
+    session.mockResolvedValue({
+      id: "sess-a1",
+      title: "Pricing question",
+      model: "model-a",
+      started_at: null,
+      messages: [
+        { role: "user", content: "What does the team plan cost?", timestamp: null },
+        { role: "assistant", content: "It is billed per seat.", timestamp: null },
+      ],
+    });
+    await openRecordings();
+    fireEvent.click(await screen.findByRole("button", { name: "Open Pricing question" }));
+    await screen.findByText("It is billed per seat.");
+    expect(session).toHaveBeenCalledWith("sess-a1");
+    expect(screen.getByText("What does the team plan cost?")).toBeTruthy();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back to recordings" }));
+    await screen.findByText("Pricing question");
+  });
+
+  async function openDelete() {
+    sessions.mockResolvedValue(sessionPage([A1, A2]));
+    await openRecordings();
+    fireEvent.click(await screen.findByRole("button", { name: "Delete this conversation in telegram · team-room" }));
+    return screen.findByRole("dialog");
+  }
+
+  it("names the place and what stays before deleting a conversation", async () => {
+    const dialog = await openDelete();
+    expect(dialog.textContent).toContain("telegram · team-room");
+    expect(dialog.textContent).toMatch(/every recording of the conversation in telegram · team-room is removed/i);
+    expect(dialog.textContent).toMatch(/notes and scheduled jobs made in it stay/i);
+    expect(deleteSession).not.toHaveBeenCalled();
+  });
+
+  it("deletes the conversation, toasts the count and reloads the list", async () => {
+    const dialog = await openDelete();
+    sessions.mockResolvedValue(sessionPage([]));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deleteSession).toHaveBeenCalledWith("sess-a1"));
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Removed 2 recordings"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await screen.findByText("No chat recordings yet.");
+    expect(sessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not claim a removal when the gateway removed nothing", async () => {
+    deleteSession.mockResolvedValue({ deleted: false, id: "sess-a1" });
+    const dialog = await openDelete();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(toastMessage).toHaveBeenCalledWith("That conversation was already gone."));
+    expect(toastSuccess).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("reloads the recordings when the band's Refresh is pressed", async () => {
+    sessions.mockResolvedValue(sessionPage([A1]));
+    await openRecordings();
+    await screen.findByText("Pricing question");
+    expect(sessions).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(sessions).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps the dialog open and says the agent is answering on a 409", async () => {
+    deleteSession.mockRejectedValue(new ApiError("a turn is running", 409, { error: "conflict" }));
+    const dialog = await openDelete();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe("The agent is answering in that conversation. Try again in a moment.");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(toastSuccess).not.toHaveBeenCalled();
+    expect(sessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the dialog open and shows the gateway's reason on another failure", async () => {
+    deleteSession.mockRejectedValue(new ApiError("could not remove a copy", 500, {}));
+    const dialog = await openDelete();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toBe("could not remove a copy");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 });

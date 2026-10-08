@@ -22,6 +22,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmModal } from "@/components/ui/confirm-modal";
 import { Modal } from "@/components/ui/modal";
+import { Segmented } from "@/components/ui/segmented";
+import { Select } from "@/components/ui/select";
 import { toast } from "sonner";
 import { isGeneratedMemoryKey } from "@/lib/recalled-memories";
 import {
@@ -33,8 +35,9 @@ import {
   hasSeparator,
   isoTime,
   memoryVerdict,
-  originWords,
+  placeOptions,
   rememberToast,
+  rowOrigin,
   type MemoryVerdict,
 } from "@/lib/memory";
 import {
@@ -44,6 +47,7 @@ import {
   RefreshButton,
   SectionTitle,
 } from "./shared";
+import { MemoryRecordings } from "./memory-recordings";
 
 /** Rows per page. The route caps a page at 500; 50 keeps one screen scannable. */
 const PAGE_SIZE = 50;
@@ -106,11 +110,16 @@ function MemoryBand({ verdict }: { verdict: MemoryVerdict }) {
 }
 
 export function MemoryPanel() {
+  const [tab, setTab] = React.useState<"notes" | "recordings">("notes");
+  // Bumped by the Refresh button so the recordings tab reloads with the band.
+  const [refreshSignal, setRefreshSignal] = React.useState(0);
   const [search, setSearch] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [filterText, setFilterText] = React.useState("");
   const [filter, setFilter] = React.useState("");
   const [offset, setOffset] = React.useState(0);
+  // `private`, a conversation key, or "" for every place.
+  const [place, setPlace] = React.useState("");
 
   const [content, setContent] = React.useState("");
   const [name, setName] = React.useState("");
@@ -148,11 +157,11 @@ export function MemoryPanel() {
   // A narrower result set makes the current page number meaningless.
   React.useEffect(() => {
     setOffset(0);
-  }, [query, filter]);
+  }, [query, filter, place]);
 
   const { data, loading, error, refreshing, loaded, refresh } = useAsync(
-    () => api.memory(PAGE_SIZE, offset, { q: query, category: filter }),
-    [offset, query, filter],
+    () => api.memory(PAGE_SIZE, offset, { q: query, category: filter, place }),
+    [offset, query, filter, place],
   );
 
   // The band answers from the store, not from the page: filters narrow the
@@ -161,12 +170,13 @@ export function MemoryPanel() {
   const refreshAll = () => {
     stats.refresh();
     refresh();
+    setRefreshSignal((n) => n + 1);
   };
 
   const total = data?.total ?? 0;
   const first = total === 0 ? 0 : offset + 1;
   const last = offset + (data?.count ?? 0);
-  const narrowed = !!query.trim() || !!filter;
+  const narrowed = !!query.trim() || !!filter || !!place;
   // The store accepts any category name, so the pickers offer the built-ins
   // plus whatever is on screen and take a typed name as well.
   const present = React.useMemo(
@@ -174,6 +184,10 @@ export function MemoryPanel() {
     [data],
   );
   const options = categoryOptions(present, filter || category);
+  const places = React.useMemo(
+    () => placeOptions(data?.entries ?? [], place),
+    [data, place],
+  );
 
   const nameError = hasSeparator(name) ? NAME_SEPARATOR_MESSAGE : null;
 
@@ -285,9 +299,21 @@ export function MemoryPanel() {
         />
       </div>
 
+      <Segmented
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "notes", label: "Notes" },
+          { value: "recordings", label: "Chat recordings" },
+        ]}
+      />
+
+      {tab === "recordings" && <MemoryRecordings refreshSignal={refreshSignal} />}
+
       {/* The 7/5 split gives the list — the answer — the width; remembering
           something composes in the narrow column. On phones the list comes
           first. */}
+      {tab === "notes" && (
       <div className="grid gap-8 lg:grid-cols-12">
         <div className="min-w-0 lg:col-span-7">
           <SectionTitle>
@@ -339,6 +365,23 @@ export function MemoryPanel() {
                 <option key={c} value={c} />
               ))}
             </datalist>
+            {/* An older gateway ignores `place`; its stats carry no counts. */}
+            {typeof stats.data?.private_entries === "number" && (
+            <Select
+              value={place}
+              onChange={(e) => setPlace(e.target.value)}
+              aria-label="Filter by place"
+              className="h-8 w-44 text-xs"
+            >
+              <option value="">All places</option>
+              <option value="private">Private</option>
+              {places.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+            )}
           </div>
 
           <PanelFrame
@@ -350,7 +393,7 @@ export function MemoryPanel() {
           >
             {!error && data && data.count === 0 ? (
               (() => {
-                const copy = emptyCopy({ query, filter });
+                const copy = emptyCopy({ query, filter, place });
                 return (
                   <EmptyState
                     icon={<Inbox className="size-6" />}
@@ -373,6 +416,14 @@ export function MemoryPanel() {
                         >
                           Show all categories
                         </Button>
+                      ) : copy.action === "clear-place" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setPlace("")}
+                        >
+                          Show all places
+                        </Button>
                       ) : undefined
                     }
                   />
@@ -391,7 +442,7 @@ export function MemoryPanel() {
                       const w = working === e.key;
                       const open = expanded.has(e.key);
                       const clampable = isClampable(e.content);
-                      const origin = originWords(e);
+                      const origin = rowOrigin(e);
                       return (
                         <li
                           key={e.key}
@@ -582,7 +633,7 @@ export function MemoryPanel() {
                 {/* Naming is what makes an entry addressable from the CLI and
                     the API afterwards; unnamed ones get a UUID. */}
                 <p className="text-[11px] text-muted-foreground">
-                  Without a name the entry gets a generated key.
+                  Saved as a private note. Without a name it gets a generated key.
                 </p>
                 <Button
                   size="sm"
@@ -596,6 +647,7 @@ export function MemoryPanel() {
           </div>
         </div>
       </div>
+      )}
 
       <ConfirmModal
         open={!!pendingReplace}

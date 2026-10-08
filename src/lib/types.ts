@@ -6,6 +6,15 @@ export interface SessionSummary {
   model: string | null;
   started_at: number | string | null;
   message_count: number;
+  ended_at?: number | string | null;
+  /** Where the session came from. A channel recording says `channel`. Absent on an older gateway. */
+  source?: string | null;
+  /** The conversation a recording belongs to; each `/new` adds a session under the same key. */
+  conversation_key?: string | null;
+  surface?: string | null;
+  place?: string | null;
+  thread?: string | null;
+  last_activity_at?: number | string | null;
 }
 
 export interface SessionMessage {
@@ -149,6 +158,13 @@ export interface MemoryStats {
   backend: string;
   total_entries: number;
   healthy: boolean;
+  /** Search mode of the store. Each field below is absent on an older gateway. */
+  mode?: string;
+  private_entries?: number;
+  conversation_entries?: number;
+  /** Characters of private core notes before the cut at the maximum, so it can exceed it. */
+  memory_md_chars?: number;
+  memory_md_max_chars?: number;
 }
 
 export interface MemoryEntry {
@@ -157,6 +173,10 @@ export interface MemoryEntry {
   content: string;
   timestamp: number | string | null;
   session_id: string | null;
+  /** Where the note lives: all `null` for a private note, absent on an older gateway. */
+  surface?: string | null;
+  place?: string | null;
+  thread?: string | null;
   /** Search rank only: on sqlite the fraction of the query's words the row
    *  contains. Not shown; the order carries it. Absent on a plain list. */
   score?: number | null;

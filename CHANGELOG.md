@@ -10,6 +10,21 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Added
+
+- **The Memory page shows where each note lives and lists chat recordings.** A new Notes tab
+  keeps the memory list and adds a Place filter ("All places", "Private", or one conversation),
+  a place label on every row, and a band line with the private and conversation note counts, the
+  search mode and the MEMORY.md usage as `used / max` characters. The band turns to the warning
+  tone when MEMORY.md is over its limit. A note saved from the form is private. A new Chat
+  recordings tab lists recorded channel conversations grouped by conversation, searches them,
+  opens a transcript read-only, and deletes a whole conversation after a confirm that says notes
+  and scheduled jobs made in it stay. The delete answers "try again in a moment" while the agent
+  is replying in that conversation. This needs a runtime that sends the placement fields and
+  accepts `source=channel`. On a runtime without them, the Place filter is hidden, notes keep
+  their earlier wording, the Chat recordings list stays empty, and its search may still list
+  ordinary chats.
+
 ## [0.3.29] — 2026-09-26
 
 Paired with RantaiClaw `v0.32.0-alpha`, and this console needs it. The Discord, Slack,
