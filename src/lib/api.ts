@@ -123,16 +123,22 @@ export const api = {
   // (provider.ping, channels.auth, mcp.startup), so the panel can say so.
   doctor: () => rc<{ results: DoctorResult[]; skipped?: string[] }>("doctor"),
   insights: () => rc<Insights>("insights"),
-  sessions: (limit = 100, offset = 0) =>
-    rc<{ sessions: SessionSummary[]; count: number }>(
-      `sessions?limit=${limit}&offset=${offset}`,
+  // `source` narrows to one origin (`channel` for recorded channel
+  // conversations). An older gateway ignores it and answers as before.
+  sessions: (limit = 100, offset = 0, source?: string) =>
+    rc<{ sessions: SessionSummary[]; count: number; offset?: number; total?: number }>(
+      `sessions?${new URLSearchParams({
+        limit: String(limit),
+        offset: String(offset),
+        ...(source ? { source } : {}),
+      })}`,
     ),
   session: (id: string) =>
     rc<SessionDetail>(`sessions/${encodeURIComponent(id)}`),
-  searchSessions: (query: string, limit = 30) =>
+  searchSessions: (query: string, limit = 30, source?: string) =>
     rc<{ results: SearchResult[]; count: number }>("sessions/search", {
       method: "POST",
-      body: JSON.stringify({ query, limit }),
+      body: JSON.stringify({ query, limit, ...(source ? { source } : {}) }),
     }),
   setSessionTitle: (id: string, title: string) =>
     rc<{ id: string; title: string }>(
@@ -142,8 +148,16 @@ export const api = {
         body: JSON.stringify({ title }),
       },
     ),
+  // Deleting a channel session removes its whole conversation, and the gateway
+  // answers 409 while a turn for that conversation is running. The two extra
+  // fields are absent on an older gateway.
   deleteSession: (id: string) =>
-    rc<{ deleted: boolean; id: string }>(`sessions/${encodeURIComponent(id)}`, {
+    rc<{
+      deleted: boolean;
+      id: string;
+      conversation_key?: string;
+      sessions_removed?: number;
+    }>(`sessions/${encodeURIComponent(id)}`, {
       method: "DELETE",
     }),
   /** Branch a new session from an existing one. The parent is left open; the
@@ -157,12 +171,14 @@ export const api = {
   memory: (
     limit = 100,
     offset = 0,
-    opts: { q?: string; category?: string } = {},
+    opts: { q?: string; category?: string; place?: string } = {},
   ) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     // Absent params mean "no filter" server-side, so only send what narrows.
     if (opts.q?.trim()) params.set("q", opts.q.trim());
     if (opts.category) params.set("category", opts.category);
+    // `private` or a conversation key; an older gateway ignores it.
+    if (opts.place) params.set("place", opts.place);
     return rc<{
       entries: MemoryEntry[];
       count: number;

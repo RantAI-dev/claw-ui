@@ -40,16 +40,20 @@ const CASES: Record<string, Case> = {
   status: { args: [], url: "/api/rc/status" },
   doctor: { args: [], url: "/api/rc/doctor" },
   insights: { args: [], url: "/api/rc/insights" },
-  sessions: { args: [], url: "/api/rc/sessions?limit=100&offset=0" },
+  sessions: {
+    // The source branch: the chat rail sends none, the Memory panel sends `channel`.
+    args: [50, 10, "channel"],
+    url: "/api/rc/sessions?limit=50&offset=10&source=channel",
+  },
   session: {
     args: [SESSION],
     url: `/api/rc/sessions/${encodeURIComponent(SESSION)}`,
   },
   searchSessions: {
-    args: ["needle"],
+    args: ["needle", 30, "channel"],
     url: "/api/rc/sessions/search",
     method: "POST",
-    body: { query: "needle", limit: 30 },
+    body: { query: "needle", limit: 30, source: "channel" },
   },
   setSessionTitle: {
     args: [SESSION, "New title"],
@@ -71,8 +75,8 @@ const CASES: Record<string, Case> = {
   skills: { args: [], url: "/api/rc/skills" },
   memory: {
     // The opts branch trims `q` and drops empty filters, so exercise it here.
-    args: [50, 10, { q: "  needle  ", category: "user" }],
-    url: "/api/rc/memory?limit=50&offset=10&q=needle&category=user",
+    args: [50, 10, { q: "  needle  ", category: "user", place: "telegram:room" }],
+    url: "/api/rc/memory?limit=50&offset=10&q=needle&category=user&place=telegram%3Aroom",
   },
   memoryStats: { args: [], url: "/api/rc/memory/stats" },
   getMemory: { args: [KEY], url: `/api/rc/memory/${encodeURIComponent(KEY)}` },
@@ -421,4 +425,17 @@ describe("api contract", () => {
       }
     });
   }
+});
+
+describe("api contract: optional narrowing", () => {
+  it("sends no source or place unless one is given", async () => {
+    const fetchMock = recordFetch();
+    await api.sessions();
+    await api.searchSessions("needle");
+    await api.memory(50, 0, { q: "", category: "", place: "" });
+    const [list, search, memory] = fetchMock.mock.calls as [string, RequestInit | undefined][];
+    expect(list[0]).toBe("/api/rc/sessions?limit=100&offset=0");
+    expect(JSON.parse(String(search[1]?.body))).toEqual({ query: "needle", limit: 30 });
+    expect(memory[0]).toBe("/api/rc/memory?limit=50&offset=0");
+  });
 });
