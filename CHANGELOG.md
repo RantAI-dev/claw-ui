@@ -10,6 +10,16 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Sign out ends the console session on the server. A cookie copied before Sign out is refused
+  afterwards, including copies the console re-issued while the session was active.
+
+### Changed
+
+- A console restart or update asks every operator to log in again. Sign-out state is kept in the
+  console's memory, so an earlier session cannot be reused after a restart.
+
 ## [0.3.30] — 2026-10-08
 
 Paired with RantaiClaw `v0.33.0-alpha`, and the new Memory tabs need it. The Place filter,

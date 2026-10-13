@@ -23,8 +23,13 @@ const ACTIVITY_REFRESH_MS = 60_000;
  * session cannot be kept alive indefinitely by staying active. `la` is the last
  * activity stamp and slides forward; it is what the idle window is measured
  * against.
+ *
+ * `sid` names the login and `iat` is when it happened. Sign out revokes `sid`,
+ * and a cookie issued before the console started is refused, so a restart
+ * signs everyone out. Both are minted at login and carried through every
+ * re-sign unchanged.
  */
-export type SessionClaims = { exp: number; la: number };
+export type SessionClaims = { exp: number; la: number; sid: string; iat: number };
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -95,7 +100,8 @@ async function sign(claims: SessionClaims): Promise<string> {
 
 /** Mint a fresh session token at login. */
 export async function createSessionToken(ttlMs = TTL_MS, now = Date.now()): Promise<string> {
-  return sign({ exp: now + ttlMs, la: now });
+  const sid = b64urlEncode(crypto.getRandomValues(new Uint8Array(18)));
+  return sign({ exp: now + ttlMs, la: now, sid, iat: now });
 }
 
 /**
@@ -107,16 +113,17 @@ export async function refreshSessionToken(
   claims: SessionClaims,
   now = Date.now(),
 ): Promise<string> {
-  return sign({ exp: claims.exp, la: now });
+  return sign({ exp: claims.exp, la: now, sid: claims.sid, iat: claims.iat });
 }
 
 /**
  * Verify the signature and absolute expiry, returning the claims on success and
  * `null` on any failure (bad signature, malformed payload, past `exp`).
  *
- * Sessions minted before `la` existed carry only `exp`; they are accepted and
- * treated as active as of now, so an in-flight session survives the upgrade
- * instead of being logged out by it.
+ * A cookie without `sid` or `iat` is refused. Sessions minted before `la`
+ * existed carry only `exp` and fall to this rule, so each operator logs in once
+ * after the upgrade. A cookie with `sid` and `iat` but no `la` is accepted and
+ * treated as active as of now.
  */
 export async function readSessionToken(
   token: string | undefined | null,
@@ -133,9 +140,11 @@ export async function readSessionToken(
   }
   if (!valid) return null;
   try {
-    const { exp, la } = JSON.parse(decoder.decode(b64urlDecode(payload)));
+    const { exp, la, sid, iat } = JSON.parse(decoder.decode(b64urlDecode(payload)));
     if (typeof exp !== "number" || exp <= now) return null;
-    return { exp, la: typeof la === "number" ? la : now };
+    if (typeof sid !== "string" || sid.length === 0) return null;
+    if (typeof iat !== "number") return null;
+    return { exp, la: typeof la === "number" ? la : now, sid, iat };
   } catch {
     return null;
   }

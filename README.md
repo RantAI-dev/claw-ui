@@ -23,8 +23,9 @@ OpenClaw-style ops panels.
   - **Config** — edit the default model + view full config (secrets redacted)
   - **Secrets** — set the active provider key (encrypted at rest, never echoed)
   - **Persona** — switch presets
-- **Auth** — optional login gate (signed HttpOnly cookie). See [docs/auth.md](docs/auth.md) for how
-  it is enabled and what `RANTAICLAW_UI_SECRET` is for.
+- **Auth** — optional login gate (signed HttpOnly cookie). Sign out ends the session on the server,
+  and restarting the console asks for a new login. See [docs/auth.md](docs/auth.md) for how it is
+  enabled and what `RANTAICLAW_UI_SECRET` is for.
 
 Hardened for self-hosting: server-side proxy (token never reaches the browser), CSP + security
 headers, standalone Docker image, health endpoint, graceful gateway-down handling.

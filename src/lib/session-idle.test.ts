@@ -17,7 +17,7 @@ beforeAll(() => {
 });
 
 describe("idle window", () => {
-  const claims = { exp: T0 + 24 * 60 * MIN, la: T0 };
+  const claims = { exp: T0 + 24 * 60 * MIN, la: T0, sid: "s", iat: T0 };
 
   it("does not expire before the window elapses", () => {
     expect(isIdleExpired(claims, 15 * MIN, T0 + 14 * MIN)).toBe(false);
@@ -33,7 +33,7 @@ describe("idle window", () => {
 });
 
 describe("activity refresh throttle", () => {
-  const claims = { exp: T0 + MIN, la: T0 };
+  const claims = { exp: T0 + MIN, la: T0, sid: "s", iat: T0 };
 
   it("skips a re-sign for a session touched moments ago", () => {
     expect(shouldRefreshActivity(claims, T0 + 59_000)).toBe(false);
@@ -69,11 +69,50 @@ describe("background requests", () => {
   });
 });
 
+/** Sign arbitrary claims with the test secret, the way a cookie is minted. */
+async function signRaw(claims: Record<string, unknown>): Promise<string> {
+  const enc = new TextEncoder();
+  const payload = btoa(JSON.stringify(claims)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(process.env.RANTAICLAW_UI_SECRET!),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(payload)));
+  let bin = "";
+  for (const b of sig) bin += String.fromCharCode(b);
+  return `${payload}.${btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+
 describe("token round-trip", () => {
-  it("carries both the absolute cap and the activity stamp", async () => {
+  it("carries the absolute cap, the activity stamp, a session id and the issue time", async () => {
     const tok = await createSessionToken(24 * 60 * MIN, T0);
     const claims = await readSessionToken(tok, T0);
-    expect(claims).toEqual({ exp: T0 + 24 * 60 * MIN, la: T0 });
+    expect(claims).toEqual({
+      exp: T0 + 24 * 60 * MIN,
+      la: T0,
+      sid: expect.any(String),
+      iat: T0,
+    });
+    expect(claims!.sid.length).toBeGreaterThanOrEqual(16);
+  });
+
+  it("mints a different session id for each login", async () => {
+    const a = (await readSessionToken(await createSessionToken(MIN, T0), T0))!;
+    const b = (await readSessionToken(await createSessionToken(MIN, T0), T0))!;
+    expect(a.sid).not.toBe(b.sid);
+  });
+
+  it("refuses a cookie without a session id", async () => {
+    const tok = await signRaw({ exp: T0 + MIN, la: T0, iat: T0 });
+    expect(await readSessionToken(tok, T0)).toBeNull();
+  });
+
+  it("refuses a cookie without an issue time", async () => {
+    const tok = await signRaw({ exp: T0 + MIN, la: T0, sid: "abc" });
+    expect(await readSessionToken(tok, T0)).toBeNull();
   });
 
   it("rejects a token past its absolute cap", async () => {
@@ -84,18 +123,15 @@ describe("token round-trip", () => {
   it("rejects a tampered payload", async () => {
     const tok = await createSessionToken(24 * 60 * MIN, T0);
     const [, sig] = tok.split(".");
-    const forged = `${btoa(JSON.stringify({ exp: T0 + 1e9, la: T0 })).replace(/=+$/, "")}.${sig}`;
+    const forged = `${btoa(JSON.stringify({ exp: T0 + 1e9, la: T0, sid: "s", iat: T0 })).replace(/=+$/, "")}.${sig}`;
     expect(await readSessionToken(forged, T0)).toBeNull();
   });
 
-  it("treats a pre-upgrade token (no `la`) as active now, rather than logging it out", async () => {
-    // Sessions minted before this feature carry only `exp`. Re-signing them on
-    // first touch is friendlier than invalidating every open tab on deploy.
-    const legacy = await createSessionToken(24 * 60 * MIN, T0);
-    const payload = JSON.parse(atob(legacy.split(".")[0]));
-    expect(payload).toHaveProperty("la");
-    // Simulate the old shape by reading a token whose payload lacks `la`.
-    const claims = await readSessionToken(legacy, T0);
+  it("treats a token with no `la` as active now, rather than logging it out", async () => {
+    // A cookie that carries `sid` and `iat` but no `la` is still accepted, and
+    // its missing activity stamp reads as now.
+    const tok = await signRaw({ exp: T0 + 24 * 60 * MIN, sid: "abc", iat: T0 });
+    const claims = await readSessionToken(tok, T0);
     expect(claims!.la).toBe(T0);
   });
 });
@@ -111,8 +147,17 @@ describe("sliding never extends the absolute cap", () => {
     expect(after.la).toBe(later);
   });
 
+  it("keeps the session id and the issue time unchanged", async () => {
+    const tok = await createSessionToken(24 * 60 * MIN, T0);
+    const first = (await readSessionToken(tok, T0))!;
+    const later = T0 + 10 * MIN;
+    const after = (await readSessionToken(await refreshSessionToken(first, later), later))!;
+    expect(after.sid).toBe(first.sid);
+    expect(after.iat).toBe(first.iat);
+  });
+
   it("shrinks the cookie Max-Age as the cap approaches", () => {
-    const claims = { exp: T0 + 60 * MIN, la: T0 };
+    const claims = { exp: T0 + 60 * MIN, la: T0, sid: "s", iat: T0 };
     expect(remainingMaxAgeSecs(claims, T0)).toBe(3600);
     expect(remainingMaxAgeSecs(claims, T0 + 59 * MIN)).toBe(60);
     expect(remainingMaxAgeSecs(claims, T0 + 61 * MIN)).toBe(0);
