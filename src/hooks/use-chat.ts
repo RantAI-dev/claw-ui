@@ -16,6 +16,8 @@ export interface PendingApproval {
   id: string;
   tool: string;
   args: unknown;
+  /** The gateway's `always_available`; undefined from an older gateway. */
+  alwaysAvailable?: boolean;
 }
 
 let idSeq = 0;
@@ -275,7 +277,12 @@ export function useChat(opts: UseChatOptions) {
             if (owns())
               setApprovalQueue((q) => [
                 ...q,
-                { id: ev.id, tool: ev.tool, args: ev.args },
+                {
+                  id: ev.id,
+                  tool: ev.tool,
+                  args: ev.args,
+                  alwaysAvailable: ev.always_available,
+                },
               ]);
             break;
           case "approval_resolved":

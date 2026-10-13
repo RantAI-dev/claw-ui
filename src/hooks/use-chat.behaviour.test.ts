@@ -165,6 +165,32 @@ describe("useChat", () => {
     expect(result.current.pendingApproval?.id).toBe("a2");
   });
 
+  // The gateway sends `always_available` only when it knows; an absent field
+  // is an older gateway, which the modal treats as "Always holds".
+  it.each([
+    [false, false],
+    [true, true],
+    [undefined, undefined],
+  ])("carries always_available=%s onto the pending approval as %s", async (sent, expected) => {
+    const { result } = renderHook(() => useChat({}));
+    act(() => {
+      void result.current.send("go");
+    });
+    await waitFor(() => expect(onEventCb).not.toBeNull());
+
+    act(() => {
+      onEventCb!({
+        type: "approval_request",
+        id: "al1",
+        tool: "shell",
+        args: {},
+        ...(sent === undefined ? {} : { always_available: sent }),
+      });
+    });
+    expect(result.current.pendingApproval?.id).toBe("al1");
+    expect(result.current.pendingApproval?.alwaysAvailable).toBe(expected);
+  });
+
   it("dismisses a modal on an approval_resolved event", async () => {
     const { result } = renderHook(() => useChat({}));
     act(() => {

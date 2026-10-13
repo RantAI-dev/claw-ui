@@ -162,3 +162,31 @@ export async function kbSearch(
     return { context: "", sources: [] };
   }
 }
+
+/**
+ * The documents a conversation already holds in the KB, for re-seeding the
+ * composer when a stored session is opened again. The list endpoint has no
+ * category filter, so the match is client-side on `categories`.
+ *
+ * Never throws — an empty list when the KB is off, the request fails, or the
+ * network is down, so opening a chat can never surface an error.
+ */
+export async function listConversationFiles(
+  conversationId: string,
+): Promise<{ document_id: string; title: string }[]> {
+  try {
+    const res = await fetch("/api/rc/kb/documents", { cache: "no-store" });
+    if (!res.ok) return [];
+    const data = (await res.json()) as unknown;
+    if (!Array.isArray(data)) return [];
+    const out: { document_id: string; title: string }[] = [];
+    for (const d of data as { id?: unknown; title?: unknown; categories?: unknown }[]) {
+      if (typeof d?.id !== "string" || !Array.isArray(d.categories)) continue;
+      if (!d.categories.includes(conversationId)) continue;
+      out.push({ document_id: d.id, title: typeof d.title === "string" ? d.title : "" });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}

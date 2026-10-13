@@ -93,6 +93,9 @@ export function ConsoleShell({
   const [activeId, setActiveId] = React.useState<string | null>(
     initialSessionId ?? null,
   );
+  // The session id of a stored conversation the user opened (rail, deep link,
+  // reload). Null for a fresh chat, whose files are only what this tab uploads.
+  const [storedSessionId, setStoredSessionId] = React.useState<string | null>(null);
   const [sessQuery, setSessQuery] = React.useState("");
 
   const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
@@ -592,6 +595,7 @@ export function ConsoleShell({
       const detail = await api.session(id);
       chat.loadHistory(detail.messages, detail.id);
       setActiveId(detail.id);
+      setStoredSessionId(detail.id);
       setHasReadyAttachments(false);
       setSelectedKbIds([]);
       setRoute("chat");
@@ -616,6 +620,7 @@ export function ConsoleShell({
   const handleNew = () => {
     chat.reset();
     setActiveId(null);
+    setStoredSessionId(null);
     setHasReadyAttachments(false);
     setSelectedKbIds([]);
     setRoute("chat");
@@ -1185,6 +1190,7 @@ export function ConsoleShell({
             key={chat.conversationId}
             conversationId={chat.conversationId}
             onAttachmentsReadyChange={markAttachmentsReady}
+            storedSessionId={storedSessionId ?? undefined}
             messages={chat.messages}
             isStreaming={chat.isStreaming}
             pending={
@@ -1281,16 +1287,20 @@ export function ConsoleShell({
               >
                 Deny
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                title="Approve and don't ask again for this tool this session"
-                onClick={() =>
-                  chat.resolveApproval(chat.pendingApproval!.id, true, true)
-                }
-              >
-                Always
-              </Button>
+              {/* Hidden only when the gateway says Always will not hold; an
+                  absent field is an older gateway, which keeps the old offer. */}
+              {chat.pendingApproval!.alwaysAvailable !== false && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  title="Approve and don't ask again for this tool this session"
+                  onClick={() =>
+                    chat.resolveApproval(chat.pendingApproval!.id, true, true)
+                  }
+                >
+                  Always
+                </Button>
+              )}
               <Button
                 size="sm"
                 onClick={() =>

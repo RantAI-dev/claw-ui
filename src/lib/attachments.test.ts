@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { ingestFile } from "./attachments";
+import { ingestFile, listConversationFiles } from "./attachments";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -81,5 +81,52 @@ describe("ingestFile", () => {
     await expect(ingestFile(new File(["x"], "a.txt"), "conv-1")).rejects.toThrow(
       "The console could not reach the RantaiClaw gateway. Retry once it is back.",
     );
+  });
+});
+
+describe("listConversationFiles", () => {
+  it("keeps only the documents whose categories name the conversation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify([
+              { id: "d1", title: "a.md", categories: ["conv-1"] },
+              { id: "d2", title: "b.md", categories: ["conv-2"] },
+              { id: "d3", title: "c.md", categories: ["conv-1", "other"] },
+              { id: "d4", title: "d.md", categories: [] },
+            ]),
+            { status: 200 },
+          ),
+      ),
+    );
+    expect(await listConversationFiles("conv-1")).toEqual([
+      { document_id: "d1", title: "a.md" },
+      { document_id: "d3", title: "c.md" },
+    ]);
+  });
+
+  it("requests the document list through the console proxy", async () => {
+    const m = vi.fn(async (_url: string, _init?: RequestInit) => new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", m);
+    await listConversationFiles("conv-1");
+    expect(m.mock.calls[0][0]).toBe("/api/rc/kb/documents");
+  });
+
+  it("returns no files when the knowledge base is off or the request fails", async () => {
+    for (const reply of [
+      () => new Response("nope", { status: 404 }),
+      () => new Response("boom", { status: 500 }),
+      () => new Response("not json", { status: 200 }),
+    ]) {
+      vi.stubGlobal("fetch", vi.fn(async () => reply()));
+      expect(await listConversationFiles("conv-1")).toEqual([]);
+    }
+  });
+
+  it("returns no files when the network is down", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
+    expect(await listConversationFiles("conv-1")).toEqual([]);
   });
 });
