@@ -18,7 +18,8 @@ carries the paired entry and the release notes.
 ### Changed
 
 - A console restart or update asks every operator to log in again. Sign-out state is kept in the
-  console's memory, so an earlier session cannot be reused after a restart.
+  console's memory, and the console refuses every cookie issued before it started, so an earlier
+  session cannot be reused after a restart.
 
 ## [0.3.30] — 2026-10-08
 
