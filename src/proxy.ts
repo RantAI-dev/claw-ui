@@ -14,6 +14,7 @@ import {
 import { gatewayUnreachable, idleTimeoutMs } from "@/lib/auth-required";
 import { isBackgroundPath, SESSION_EXPIRED } from "@/lib/activity";
 import { expectedHosts, isCrossSiteWrite, isUnexpectedHost } from "@/lib/request-origin";
+import { isSessionRevoked, issuedBeforeStart, revokeSession } from "@/lib/session-store";
 
 // Gate every page and proxy route behind the session cookie when a password is
 // configured. Static assets, the login page, and the auth endpoints stay open.
@@ -121,11 +122,20 @@ export default async function proxy(req: NextRequest) {
   const claims = await readSessionToken(req.cookies.get(SESSION_COOKIE)?.value, now);
   if (!claims) return denied(req, pathname, "unauthorized");
 
+  // Signed out, or issued before this console process started (a restart
+  // forgets the revoked set, so the start time is what keeps old cookies out).
+  if (isSessionRevoked(claims.sid, now) || issuedBeforeStart(claims.iat)) {
+    const res = denied(req, pathname, "unauthorized");
+    res.headers.set("set-cookie", clearedCookie());
+    return res;
+  }
+
   // Idle window. Measured against `la`, which only activity-bearing requests
   // move — a background poll keeps the console's connection badge fresh without
   // making an empty desk look occupied.
   const idleMs = await idleTimeoutMs(now);
   if (isIdleExpired(claims, idleMs, now)) {
+    revokeSession(claims.sid, claims.exp, now);
     const res = denied(req, pathname, "idle");
     res.headers.set("set-cookie", clearedCookie());
     return res;

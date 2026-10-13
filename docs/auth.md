@@ -31,9 +31,11 @@ Set on the RantaiClaw side via `rantaiclaw setup login`
 console reads it from the gateway rather than carrying its own copy, so it and
 the TUI always run the same policy.
 
-The `rc_session` payload carries two stamps: `exp`, the absolute cap, minted at
-login and **never** extended; and `la`, the last-activity stamp, which slides
-forward. Staying busy therefore cannot keep a session alive past 24 h.
+The `rc_session` payload is `{ exp, la, sid, iat }`. `exp` is the absolute cap,
+minted at login and **never** extended; `la` is the last-activity stamp, which
+slides forward. Staying busy therefore cannot keep a session alive past 24 h.
+`sid` names the login and `iat` is when it happened; both are minted at login
+and carried unchanged through every re-sign.
 
 What counts as activity is decided **server-side** in `src/lib/activity.ts`, not
 by a header the client sets about itself. The console polls `/api/rc/status`
@@ -86,13 +88,26 @@ protects direct `/login` callers). The 5th UI failure returns **HTTP 429** with
 `Retry-After`; a successful login resets the counter. UI state is in-memory,
 per-process.
 
+## Sign out and restarts
+
+Sign out ends the session on the server. The console keeps the set of signed-out
+session ids in its own memory, and no cookie of that session is accepted again:
+not the one presented at Sign out, and not any copy the proxy re-signed from it.
+
+Restarting the console signs everyone out. The set is not persisted, but the
+console refuses every cookie issued before it started, so nothing signed out
+before a restart can come back after it. Each operator logs in again.
+
 ## Limitations
 
 - Single operator (single username + password). No per-user accounts or roles.
-- `rc_session` is a stateless HMAC token (24 h cap); revoke early only by
-  rotating `RANTAICLAW_UI_SECRET`.
-- Idle auto-lock defends an **unattended browser**, not a stolen cookie. Someone
-  holding a copied cookie renews it the same way a real operator does, simply by
-  making requests, so it stays good up to the absolute cap. Rotating the secret
-  is still the only way to cut a session short.
+- `rc_session` is a stateless HMAC token (24 h cap). Sign out revokes one
+  session; rotating `RANTAICLAW_UI_SECRET` still invalidates every session at
+  once.
+- Idle auto-lock defends an **unattended browser**. A copied cookie is no
+  protection on its own: a holder who makes requests renews it, and it stays
+  good until the operator signs out, the console restarts, or the absolute cap
+  is reached.
+- The signed-out set lives in one console process. A multi-instance UI would
+  need a shared store for Sign out to hold across instances.
 - UI lockout is per-process; a multi-instance UI would need a shared store.

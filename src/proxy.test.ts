@@ -104,3 +104,86 @@ describe("proxy while the gateway is unreachable", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("proxy and signed-out sessions", () => {
+  // The session store is the real module here, not a mock: the assertions are
+  // about what the proxy does with a revocation that really was recorded.
+  const LIVE = Date.now() + 60 * 60 * 1000;
+
+  beforeEach(async () => {
+    // Earlier describe blocks queue `...Once` values that the health route never
+    // consumes (it returns before these calls), so start each case from a known
+    // state rather than inherit those queues.
+    const auth = await import("@/lib/auth");
+    const authRequired = await import("@/lib/auth-required");
+    vi.mocked(auth.authEnabled).mockReset().mockResolvedValue(false);
+    vi.mocked(auth.readSessionToken).mockReset().mockResolvedValue(null);
+    vi.mocked(auth.isIdleExpired).mockReset().mockReturnValue(false);
+    vi.mocked(authRequired.gatewayUnreachable).mockReset().mockResolvedValue(false);
+    vi.mocked(authRequired.idleTimeoutMs).mockReset().mockResolvedValue(0);
+  });
+
+  async function withLiveCookie(sid: string, iat = Date.now()) {
+    const { authEnabled, readSessionToken } = await import("@/lib/auth");
+    vi.mocked(authEnabled).mockResolvedValueOnce(true);
+    vi.mocked(readSessionToken).mockResolvedValueOnce({ exp: LIVE, la: Date.now(), sid, iat });
+  }
+
+  it("refuses a revoked session on an API path with 401", async () => {
+    const { revokeSession } = await import("@/lib/session-store");
+    revokeSession("sid-revoked-api", LIVE);
+    await withLiveCookie("sid-revoked-api");
+    const res = await proxy(req("/api/rc/status"));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({ error: "unauthorized" });
+  });
+
+  it("redirects a revoked session on a page to /login", async () => {
+    const { revokeSession } = await import("@/lib/session-store");
+    revokeSession("sid-revoked-page", LIVE);
+    await withLiveCookie("sid-revoked-page");
+    const res = await proxy(req("/chat"));
+    expect(res.status).toBe(307);
+    expect(new URL(res.headers.get("location")!).pathname).toBe("/login");
+  });
+
+  it("clears the cookie on a refused revoked session", async () => {
+    const { revokeSession } = await import("@/lib/session-store");
+    const { clearedCookie } = await import("@/lib/auth");
+    vi.mocked(clearedCookie).mockReturnValueOnce("rc_session=; Max-Age=0");
+    revokeSession("sid-revoked-clear", LIVE);
+    await withLiveCookie("sid-revoked-clear");
+    const res = await proxy(req("/api/rc/status"));
+    expect(res.headers.get("set-cookie")).toBe("rc_session=; Max-Age=0");
+  });
+
+  it("refuses a session issued before the console started", async () => {
+    await withLiveCookie("sid-pre-start", 0);
+    const res = await proxy(req("/api/rc/status"));
+    expect(res.status).toBe(401);
+  });
+
+  it("passes a live session that is not revoked and was issued after start", async () => {
+    await withLiveCookie("sid-live");
+    const res = await proxy(req("/api/rc/status"));
+    expect(res.status).toBe(200);
+  });
+
+  it("revokes the session an idle timeout rejects", async () => {
+    const { authEnabled, readSessionToken, isIdleExpired } = await import("@/lib/auth");
+    const { idleTimeoutMs } = await import("@/lib/auth-required");
+    const claims = { exp: LIVE, la: Date.now() - 2 * 60 * 60 * 1000, sid: "sid-idle", iat: Date.now() };
+    vi.mocked(authEnabled).mockResolvedValueOnce(true);
+    vi.mocked(readSessionToken).mockResolvedValueOnce(claims);
+    vi.mocked(idleTimeoutMs).mockResolvedValueOnce(60_000);
+    vi.mocked(isIdleExpired).mockReturnValueOnce(true);
+    const first = await proxy(req("/api/rc/config"));
+    expect(first.status).toBe(401);
+    expect(await first.json()).toMatchObject({ reason: "idle" });
+
+    // The same cookie, replayed after the idle rejection, is refused by sid.
+    await withLiveCookie("sid-idle", claims.iat);
+    const replay = await proxy(req("/api/rc/config"));
+    expect(replay.status).toBe(401);
+  });
+});

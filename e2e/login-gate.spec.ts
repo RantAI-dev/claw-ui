@@ -60,3 +60,76 @@ test("logging in opens the console, and the same API call then answers", async (
   expect(res.status()).toBe(200);
   expect(await res.text()).toContain("configured");
 });
+
+async function logIn(page: import("@playwright/test").Page) {
+  await page.goto(`${sandbox.baseURL}/login`);
+  await page.getByPlaceholder("Username").fill(LOGIN.username);
+  await page.getByPlaceholder("Password").fill(LOGIN.password);
+  await page.getByRole("button", { name: /sign in|log in|unlock/i }).click();
+  await expect(page).not.toHaveURL(/\/login/);
+}
+
+async function sessionCookie(context: import("@playwright/test").BrowserContext) {
+  const cookie = (await context.cookies(sandbox.baseURL)).find((c) => c.name === "rc_session");
+  if (!cookie) throw new Error("no rc_session cookie after login");
+  return cookie.value;
+}
+
+test("a signed-out cookie is refused when replayed", async ({ page, context, request }) => {
+  await logIn(page);
+  const cookie = await sessionCookie(context);
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login/);
+
+  const replay = await request.get(`${sandbox.baseURL}/api/rc/status`, {
+    headers: { cookie: `rc_session=${cookie}` },
+  });
+  expect(replay.status(), "a cookie presented after Sign out must not be accepted").toBe(401);
+});
+
+test("signing out also refuses an earlier re-signed copy of the session", async ({
+  page,
+  context,
+  request,
+}) => {
+  await logIn(page);
+  const cookieA = await sessionCookie(context);
+
+  // The proxy re-signs a cookie once its activity stamp is a minute stale. Wait
+  // past that, then make an activity-bearing call so the proxy issues cookie B.
+  await page.waitForTimeout(61_000);
+  const touch = await page.request.get(`${sandbox.baseURL}/api/rc/channels`);
+  expect(touch.status()).toBe(200);
+  const cookieB = await sessionCookie(context);
+  expect(cookieB, "activity should have re-signed the cookie").not.toBe(cookieA);
+
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login/);
+
+  const replay = await request.get(`${sandbox.baseURL}/api/rc/status`, {
+    headers: { cookie: `rc_session=${cookieA}` },
+  });
+  expect(replay.status(), "the earlier copy of the signed-out session must not be accepted").toBe(401);
+});
+
+test("signing out in one browser leaves a separate browser signed in", async ({
+  page,
+  browser,
+}) => {
+  await logIn(page);
+
+  const other = await browser.newContext();
+  try {
+    const otherPage = await other.newPage();
+    await logIn(otherPage);
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/login/);
+
+    const status = await otherPage.request.get(`${sandbox.baseURL}/api/rc/status`);
+    expect(status.status(), "a second, separately logged-in browser must stay signed in").toBe(200);
+  } finally {
+    await other.close();
+  }
+});
