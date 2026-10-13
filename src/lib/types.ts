@@ -506,7 +506,14 @@ export type ChatEvent =
   | { type: "usage"; model: string; prompt: number; completion: number; total: number; cost_usd: number }
   | { type: "tool_call_start"; id: string; name: string; args: unknown }
   | { type: "tool_call_end"; id: string; ok: boolean; output_preview: string }
-  | { type: "approval_request"; id: string; tool: string; args: unknown }
+  | {
+      type: "approval_request";
+      id: string;
+      tool: string;
+      args: unknown;
+      /** Absent on an older gateway; false hides the Always answer. */
+      always_available?: boolean;
+    }
   | { type: "approval_resolved"; id: string; approved: boolean; timed_out: boolean }
   | { type: "memory_recalled"; keys: string[] }
   | { type: "error"; message: string }
@@ -552,7 +559,8 @@ export interface ToolCall {
 export interface Attachment {
   id: string;
   name: string;
-  chunks: number;
+  /** Absent for a file restored from the KB, whose list answer has no count. */
+  chunks?: number;
   status: "uploading" | "ready" | "error";
   error?: string;
 }

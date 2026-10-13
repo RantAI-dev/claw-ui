@@ -12,6 +12,11 @@ carries the paired entry and the release notes.
 
 ### Fixed
 
+- The tool-approval dialog shows Always only when the gateway says it will hold for the conversation.
+  Before, Always was offered on every request, including ones where it did the same as Approve.
+- A conversation opened again from the rail, a link, or after a reload shows its attached files and
+  uses them for follow-up questions. Before, the files were dropped from the composer and follow-up
+  questions were not answered from them.
 - Sign out ends the console session on the server. A cookie copied before Sign out is refused
   afterwards, including copies the console re-issued while the session was active.
 

@@ -20,7 +20,14 @@ import type { Attachment, ChatMessage, KbGroup, ProviderInfo } from "@/lib/types
 import { Button } from "@/components/ui/button";
 import { ModelPicker } from "@/components/ui/model-picker";
 import { brand } from "@/lib/branding";
-import { acceptAttr, imageAcceptAttr, ingestFile, MAX_BYTES, MAX_FILES } from "@/lib/attachments";
+import {
+  acceptAttr,
+  imageAcceptAttr,
+  ingestFile,
+  listConversationFiles,
+  MAX_BYTES,
+  MAX_FILES,
+} from "@/lib/attachments";
 import type { Connection } from "@/hooks/use-gateway-status";
 import { Transcript } from "./transcript";
 
@@ -41,6 +48,8 @@ export interface ChatPaneProps {
   conversationId: string;
   /** Reports up whether ≥1 attachment is ingested & ready (drives KB retrieval on send). */
   onAttachmentsReadyChange: (ready: boolean) => void;
+  /** Set when this pane opens a stored session: its files are loaded from the KB. */
+  storedSessionId?: string;
   messages: ChatMessage[];
   isStreaming: boolean;
   pending: boolean;
@@ -129,6 +138,7 @@ export function ChatPane(props: ChatPaneProps) {
   const {
     conversationId,
     onAttachmentsReadyChange,
+    storedSessionId,
     messages,
     isStreaming,
     pending,
@@ -198,6 +208,29 @@ export function ChatPane(props: ChatPaneProps) {
   React.useEffect(() => {
     onAttachmentsReadyChange(readyCount > 0);
   }, [readyCount, onAttachmentsReadyChange]);
+
+  // A stored session's files live in the KB, not in this tab's state. Seed the
+  // composer from the KB so the chips show and retrieval runs on every send,
+  // however the conversation was opened. A fresh chat has no stored session
+  // and makes no request.
+  React.useEffect(() => {
+    if (!storedSessionId) return;
+    let live = true;
+    void listConversationFiles(storedSessionId).then((files) => {
+      if (!live || files.length === 0) return;
+      setAttachments((prev) => [
+        ...files.map((f) => ({
+          id: nextAttachId(),
+          name: f.title || "Untitled document",
+          status: "ready" as const,
+        })),
+        ...prev,
+      ]);
+    });
+    return () => {
+      live = false;
+    };
+  }, [storedSessionId]);
 
   const patchAttachment = React.useCallback((id: string, fn: (a: Attachment) => Attachment) => {
     setAttachments((prev) => prev.map((a) => (a.id === id ? fn(a) : a)));
@@ -394,7 +427,9 @@ export function ChatPane(props: ChatPaneProps) {
                         ? "uploading…"
                         : a.status === "error"
                           ? a.error || "error"
-                          : `${a.chunks} chunk${a.chunks === 1 ? "" : "s"}`}
+                          : a.chunks === undefined
+                            ? "ready"
+                            : `${a.chunks} chunk${a.chunks === 1 ? "" : "s"}`}
                     </span>
                     <button
                       type="button"
