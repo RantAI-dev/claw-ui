@@ -19,6 +19,16 @@ carries the paired entry and the release notes.
   questions were not answered from them.
 - Sign out ends the console session on the server. A cookie copied before Sign out is refused
   afterwards, including copies the console re-issued while the session was active.
+- A rung write names the preset it applies, so Smart keeps the shell allowlist its own preset
+  carries. Before, the console wrote only the level and the always-ask list, so the allowlist stayed
+  whatever the last preset left — empty after an Off applied from the CLI or TUI — and every shell
+  command opened a prompt. This needs a gateway that accepts the `preset` field (RantaiClaw #1119);
+  on an older gateway the extra field is ignored and the console behaves as before.
+- The Tools and autonomy labels say what the runtime does. A tool named in `always_ask` now reads
+  "always prompts" under Off, because the runtime asks for it under every level; before, every tool
+  under Off read "runs (Off: nothing prompts)". And the `workspace_only` flag reads "Confine file
+  tools to the workspace (the shell is not confined)": it binds the file tools, the `ssh` tool's local
+  path and a path-shaped argument of a cron job's command, but not the shell.
 
 ### Changed
 

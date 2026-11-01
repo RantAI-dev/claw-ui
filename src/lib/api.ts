@@ -483,6 +483,8 @@ export const api = {
     }>("config/model", { method: "PUT", body: JSON.stringify(body) }),
   setAutonomy: (body: {
     level?: string;
+    /** The preset to apply, by name; the server applies it before the fields below. */
+    preset?: string;
     auto_approve?: string[];
     always_ask?: string[];
     allowed_commands?: string[];

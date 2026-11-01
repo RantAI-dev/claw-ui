@@ -74,10 +74,19 @@ export interface AutonomyPayload {
   level: string;
   always_ask?: string[];
   auto_approve?: string[];
+  /** The preset to apply, by name: the server applies it before the fields above. */
+  preset?: string;
 }
 
 /**
  * What a rung write sends to `PUT /config/autonomy`.
+ *
+ * Every rung names its `preset`, so the server applies the same preset
+ * bundle the CLI applies — the shell allowlist a preset carries and the
+ * always-ask list that goes with it — and then the explicit fields on top,
+ * where the operator's own words are the last ones. A gateway older than
+ * the runtime release that carries the `preset` field ignores the unknown
+ * key and behaves as before.
  *
  * Manual writes the wildcard and clears `auto_approve`, exactly what the
  * CLI/TUI preset writer does, so "prompt for every tool call" covers every
@@ -92,11 +101,16 @@ export function rungToAutonomyPayload(
 ): AutonomyPayload {
   switch (rung) {
     case "manual":
-      return { level: "supervised", always_ask: [WILDCARD], auto_approve: [] };
+      return {
+        level: "supervised",
+        always_ask: [WILDCARD],
+        auto_approve: [],
+        preset: "manual",
+      };
     case "strict":
-      return { level: "readonly" };
+      return { level: "readonly", preset: "strict" };
     case "off":
-      return { level: "full" };
+      return { level: "full", preset: "off" };
     case "smart":
     default:
       return {
@@ -104,6 +118,7 @@ export function rungToAutonomyPayload(
         always_ask: list(current?.always_ask).filter(
           (t) => t !== WILDCARD && !BUILTIN_TOOLS.includes(t),
         ),
+        preset: "smart",
       };
   }
 }
@@ -112,30 +127,35 @@ export type Outcome =
   | "always prompts"
   | "runs without asking"
   | "prompts"
-  | "runs (Off: nothing prompts)"
+  | "runs without asking (Off)"
   | "denied unless read-only (Strict)";
 
 /**
  * What the runtime does with a call to `tool` under this config, in the
- * order it decides (RantAIClaw `approval/mod.rs` `needs_approval`): the
- * level first, then an always-ask match (the wildcard or the name), then
- * auto-approve, else the supervised default of a prompt.
+ * order it decides (RantAIClaw `approval/mod.rs` `needs_approval`): Strict
+ * denies, then an always-ask match (the wildcard or the name) asks, then Off
+ * runs it, then an auto-approve entry runs it, else the supervised default of
+ * a prompt.
+ *
+ * Off is not "nothing prompts": the always-ask list is read before the
+ * level's own rule, so a tool named there still asks under every level.
  */
 export function toolOutcome(tool: string, a: AutonomyLike): Outcome {
   const l = normLevel(a?.level);
-  if (l === "full") return "runs (Off: nothing prompts)";
   if (l === "readonly") return "denied unless read-only (Strict)";
   const ask = list(a?.always_ask);
   if (ask.includes(WILDCARD) || ask.includes(tool)) return "always prompts";
+  if (l === "full") return "runs without asking (Off)";
   if (list(a?.auto_approve).includes(tool)) return "runs without asking";
   return "prompts";
 }
 
 /**
  * Whether the auto-approve switch for `tool` changes anything under this
- * config. Under Off nothing prompts, under Strict acting tools are denied,
- * and an always-ask match wins over auto-approve; a switch shown live in any
- * of those states says "runs without asking" for a call that prompts.
+ * config. Under Off nothing but an always-ask entry prompts, under Strict
+ * acting tools are denied, and an always-ask match wins over auto-approve; a
+ * switch shown live in any of those states says "runs without asking" for a
+ * call that prompts.
  */
 export function autoApproveEffective(tool: string, a: AutonomyLike): boolean {
   const l = normLevel(a?.level);
