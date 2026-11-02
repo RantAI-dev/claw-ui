@@ -25,6 +25,7 @@ carries the paired entry and the release notes.
 - A console restart or update asks every operator to log in again. Sign-out state is kept in the
   console's memory, and the console refuses every cookie issued before it started, so an earlier
   session cannot be reused after a restart.
+- **Next.js moves from 16.4.0 to 16.4.3.** `npm audit --omit=dev --audit-level=high` flagged `next` again (critical: GHSA-2464-fhr4-w9xw, "Unauthenticated Remote Code Execution in Image Optimization API when SVG files are used", and GHSA-673q-mjm6-r5xr, "Unauthenticated Remote Code Execution in `use cache` functions returning typed arrays"; high: GHSA-p3m5-59mp-jv5r, "Denial of Service in App Router using Server Actions"). Next.js 16.4.3 closes all three, and the runtime dependency audit passes again.
 
 ## [0.3.30] — 2026-10-08
 
