@@ -300,10 +300,13 @@ const CASES: Record<string, Case> = {
     body: { provider: "openai", model: "gpt-4o-mini" },
   },
   setAutonomy: {
-    args: [{ level: "supervised" }],
+    // The preset rides with the level: the gateway applies the preset bundle
+    // first and the explicit fields on top, so a rung write lands the same
+    // policy the CLI writes.
+    args: [{ level: "supervised", preset: "smart" }],
     url: "/api/rc/config/autonomy",
     method: "PUT",
-    body: { level: "supervised" },
+    body: { level: "supervised", preset: "smart" },
   },
   addMcpServer: {
     args: ["my server", { command: "npx", args: ["-y", "pkg"] }],

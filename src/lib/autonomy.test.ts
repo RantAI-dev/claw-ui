@@ -59,6 +59,7 @@ describe("rungToAutonomyPayload", () => {
       level: "supervised",
       always_ask: ["*"],
       auto_approve: [],
+      preset: "manual",
     });
   });
 
@@ -67,18 +68,37 @@ describe("rungToAutonomyPayload", () => {
       rungToAutonomyPayload("smart", {
         always_ask: ["*", "shell", "ssh", "pty"],
       }),
-    ).toEqual({ level: "supervised", always_ask: ["ssh", "pty"] });
+    ).toEqual({
+      level: "supervised",
+      always_ask: ["ssh", "pty"],
+      preset: "smart",
+    });
     expect(rungToAutonomyPayload("smart", null)).toEqual({
       level: "supervised",
       always_ask: [],
+      preset: "smart",
     });
   });
 
   it("sends the level only for Strict and Off", () => {
     expect(rungToAutonomyPayload("strict", current)).toEqual({
       level: "readonly",
+      preset: "strict",
     });
-    expect(rungToAutonomyPayload("off", current)).toEqual({ level: "full" });
+    expect(rungToAutonomyPayload("off", current)).toEqual({
+      level: "full",
+      preset: "off",
+    });
+  });
+
+  it("names the preset for every rung, so the server applies its own bundle", () => {
+    // The console used to write the fields alone, so the server kept the
+    // allowlist the last preset left and Smart prompted for every command.
+    // The preset name travels with the write; the server applies it first and
+    // the explicit fields on top.
+    for (const { id } of AUTONOMY) {
+      expect(rungToAutonomyPayload(id, current).preset).toBe(id);
+    }
   });
 
   it("round-trips every rung through the config encoding", () => {
@@ -99,9 +119,6 @@ describe("rungToAutonomyPayload", () => {
 
 describe("toolOutcome / autoApproveEffective", () => {
   it("follows the runtime's precedence: level, always-ask, auto-approve, default", () => {
-    expect(toolOutcome("file_read", { level: "full", auto_approve: [] })).toBe(
-      "runs (Off: nothing prompts)",
-    );
     expect(
       toolOutcome("file_write", {
         level: "readonly",
@@ -134,6 +151,21 @@ describe("toolOutcome / autoApproveEffective", () => {
         auto_approve: [],
       }),
     ).toBe("prompts");
+  });
+
+  it("names the always-ask exception under Off", () => {
+    // The runtime asks for an always-ask tool under every level, Off
+    // included (RantaiClaw `approval/mod.rs` `needs_approval`), so the row
+    // must not claim that nothing prompts.
+    expect(
+      toolOutcome("pty", { level: "full", always_ask: ["pty"] }),
+    ).toBe("always prompts");
+    expect(
+      toolOutcome("file_read", { level: "full", always_ask: ["pty"] }),
+    ).toBe("runs without asking (Off)");
+    expect(
+      toolOutcome("file_read", { level: "full", auto_approve: [] }),
+    ).toBe("runs without asking (Off)");
   });
 
   it("says when the switch cannot take effect", () => {

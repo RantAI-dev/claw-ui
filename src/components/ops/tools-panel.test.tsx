@@ -108,6 +108,7 @@ describe("ToolsPanel rung and rows", () => {
         level: "supervised",
         always_ask: ["*"],
         auto_approve: [],
+        preset: "manual",
       }),
     );
     await waitFor(() => expect(heard).toHaveBeenCalledTimes(1));
@@ -311,6 +312,19 @@ describe("ToolsPanel flags and feedback", () => {
         "Block high-risk shell commands even when allowlisted: on",
       ),
     );
+  });
+
+  it("names the workspace flag after what it confines, and leaves the shell out", async () => {
+    // The flag binds the file tools, the `ssh` tool's local path and a cron
+    // job's path-shaped command argument — not the shell. A label that said
+    // "command paths" sent the operator looking for a confinement the shell
+    // never had.
+    render(<ToolsPanel />);
+    await screen.findByText(/Prompt only for writes/);
+    const confine = screen.getByRole("switch", {
+      name: "Confine file tools to the workspace (the shell is not confined)",
+    });
+    expect(confine.getAttribute("aria-checked")).toBe("true");
   });
 
   it("marks only the control being written busy, and never disables it", async () => {

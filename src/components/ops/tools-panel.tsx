@@ -44,7 +44,10 @@ const SAFETY_FLAGS: { key: FlagKey; label: string }[] = [
   },
   {
     key: "workspace_only",
-    label: "Confine file writes and command paths to the workspace",
+    // The flag binds the file tools, the `ssh` tool's local path and a
+    // path-shaped argument of a cron job's command — not the shell. A label
+    // that said "command paths" promised a confinement the shell never had.
+    label: "Confine file tools to the workspace (the shell is not confined)",
   },
 ];
 
