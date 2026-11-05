@@ -10,32 +10,39 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.31] — 2026-11-05
+
+Paired with RantaiClaw `v0.34.0-alpha`. Two entries need that runtime: Always is gated on the
+`always_available` field of an approval request (RantaiClaw #1045), and a rung write sends the
+`preset` field (RantaiClaw #1119). On an older gateway the console still works: Always is offered on
+every request as before, and the extra field is ignored.
+
 ### Fixed
 
 - The tool-approval dialog shows Always only when the gateway says it will hold for the conversation.
-  Before, Always was offered on every request, including ones where it did the same as Approve.
+  Before, Always was offered on every request, including ones where it did the same as Approve. (#139)
 - A conversation opened again from the rail, a link, or after a reload shows its attached files and
   uses them for follow-up questions. Before, the files were dropped from the composer and follow-up
-  questions were not answered from them.
+  questions were not answered from them. (#139)
 - Sign out ends the console session on the server. A cookie copied before Sign out is refused
-  afterwards, including copies the console re-issued while the session was active.
+  afterwards, including copies the console re-issued while the session was active. (#138)
 - A rung write names the preset it applies, so Smart keeps the shell allowlist its own preset
   carries. Before, the console wrote only the level and the always-ask list, so the allowlist stayed
   whatever the last preset left — empty after an Off applied from the CLI or TUI — and every shell
   command opened a prompt. This needs a gateway that accepts the `preset` field (RantaiClaw #1119);
-  on an older gateway the extra field is ignored and the console behaves as before.
+  on an older gateway the extra field is ignored and the console behaves as before. (#140)
 - The Tools and autonomy labels say what the runtime does. A tool named in `always_ask` now reads
   "always prompts" under Off, because the runtime asks for it under every level; before, every tool
   under Off read "runs (Off: nothing prompts)". And the `workspace_only` flag reads "Confine file
   tools to the workspace (the shell is not confined)": it binds the file tools, the `ssh` tool's local
-  path and a path-shaped argument of a cron job's command, but not the shell.
+  path and a path-shaped argument of a cron job's command, but not the shell. (#140)
 
 ### Changed
 
 - A console restart or update asks every operator to log in again. Sign-out state is kept in the
   console's memory, and the console refuses every cookie issued before it started, so an earlier
-  session cannot be reused after a restart.
-- **Next.js moves from 16.4.0 to 16.4.3.** `npm audit --omit=dev --audit-level=high` flagged `next` again (critical: GHSA-2464-fhr4-w9xw, "Unauthenticated Remote Code Execution in Image Optimization API when SVG files are used", and GHSA-673q-mjm6-r5xr, "Unauthenticated Remote Code Execution in `use cache` functions returning typed arrays"; high: GHSA-p3m5-59mp-jv5r, "Denial of Service in App Router using Server Actions"). Next.js 16.4.3 closes all three, and the runtime dependency audit passes again.
+  session cannot be reused after a restart. (#138)
+- **Next.js moves from 16.4.0 to 16.4.3.** `npm audit --omit=dev --audit-level=high` flagged `next` again (critical: GHSA-2464-fhr4-w9xw, "Unauthenticated Remote Code Execution in Image Optimization API when SVG files are used", and GHSA-673q-mjm6-r5xr, "Unauthenticated Remote Code Execution in `use cache` functions returning typed arrays"; high: GHSA-p3m5-59mp-jv5r, "Denial of Service in App Router using Server Actions"). Next.js 16.4.3 closes all three, and the runtime dependency audit passes again. (#141)
 
 ## [0.3.30] — 2026-10-08
 
