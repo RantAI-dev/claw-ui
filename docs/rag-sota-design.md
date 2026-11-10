@@ -84,7 +84,7 @@ optional add-on.
    asserts `file_read` present; `file_read` auto-approved in dev config, workspace-scoped). → **P0 needs ~no
    rantaiclaw change.**
 2. **rantaiclaw skills can execute code, not just prompt text.** `tools/skill_tool.rs` wraps a skill's tools
-   as real function-calling tools with `kind:"shell"` (runs `Command::new(program)`, e.g. `bun run script.js`
+   as real function-calling tools with `kind:"shell"` (runs `Command::new(program)`, e.g. `node script.js`
    / `python3 ...`) or `kind:"http"` (curl). Skills have install recipes (`rantaiclaw skills install-deps`).
    → **A qmd-style RAG CAN be a rantaiclaw skill that shells out to a retrieval binary** (Level 2 feasible).
 3. **`memory/` store supports scoping:** `MemoryCategory::{Core,Daily,Conversation,Custom(name)}` + optional

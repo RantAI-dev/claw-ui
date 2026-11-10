@@ -179,10 +179,10 @@ Automated (chosen: **both** unit + e2e):
   4. `RANTAICLAW_UI_PASSWORD` unset → login returns `authDisabled:true`, gate off
      (old dev behavior unchanged).
 
-Regression gate before commit (repo uses bun): `bunx tsc --noEmit` and
-`bun run test`. Note: `bun run lint` is unavailable in this repo (Next 16 removed
-the `next lint` subcommand and no eslint dependency exists) — `tsc --noEmit` is
-the type gate instead.
+Regression gate before commit (repo uses npm): `npx tsc --noEmit`, `npm test`
+and `npm run lint`. (When this spec was written the repo had no working lint —
+`next lint` was removed in Next 16 and no eslint dependency existed — so
+`tsc --noEmit` was the only local gate; `eslint` and a `lint` script exist now.)
 
 ## 8. Rollback
 
@@ -203,7 +203,7 @@ the type gate instead.
 | `src/app/login/page.tsx` | **edit** — surface the `Retry-After` time on 429 |
 | `docs/auth.md` | **new** — enable + behavior + verification |
 | `.env.example` | **edit** — document `RANTAICLAW_UI_TRUST_PROXY` |
-| `package.json` / `bun.lock` | **edit** — add `vitest` devDep + `test` script |
+| `package.json` / `package-lock.json` | **edit** — add `vitest` devDep + `test` script |
 | `.env.local` | operator-set, **not committed** |
 
 ## 10. Future (out of scope)
