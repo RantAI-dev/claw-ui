@@ -12,7 +12,7 @@
  *
  * Then restart your gateway and the UI:
  *   ./target/release/rantaiclaw gateway --host 127.0.0.1 -p 3000
- *   bun run dev
+ *   npm run dev
  *
  * This intentionally modifies YOUR gateway config, so it is a script YOU run —
  * the build agent deliberately did NOT touch your config automatically.
@@ -67,5 +67,5 @@ console.log(`✔ Registered a UI token in profile "${profile}" (backup: ${cfgPat
 console.log(`✔ Wrote .env.local -> http://127.0.0.1:${port}`);
 console.log(`\nNext:`);
 console.log(`  1) (re)start your gateway:  ./target/release/rantaiclaw gateway --host 127.0.0.1 -p ${port}`);
-console.log(`  2) (re)start the UI:        bun run dev   # http://127.0.0.1:3939`);
+console.log(`  2) (re)start the UI:        npm run dev   # http://127.0.0.1:3939`);
 console.log(`\nTo undo: restore ${cfgPath}.bak-rantaiclaw-ui`);

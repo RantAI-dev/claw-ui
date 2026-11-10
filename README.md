@@ -54,8 +54,8 @@ server proxies everything (`src/app/api/rc/*` for JSON, `src/app/api/chat` for t
 
 # 2) Configure + run the UI
 cp .env.example .env.local        # set RANTAICLAW_TOKEN if the gateway requires pairing
-bun install
-bun run dev                       # → http://127.0.0.1:3939
+npm ci
+npm run dev                       # → http://127.0.0.1:3939
 ```
 
 If the gateway requires pairing, put the token from `POST /pair` into `RANTAICLAW_TOKEN` in

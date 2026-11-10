@@ -53,6 +53,6 @@ sleep 3
 printf 'RANTAICLAW_GATEWAY_URL=http://127.0.0.1:%s\nRANTAICLAW_TOKEN=\n' "$GW_PORT" > "$UI_DIR/.env.local"
 echo "▶ .env.local -> http://127.0.0.1:$GW_PORT (no token; pairing disabled)"
 
-echo "▶ UI: bun run dev  ->  http://127.0.0.1:3939"
+echo "▶ UI: npm run dev  ->  http://127.0.0.1:3939"
 cd "$UI_DIR"
-exec bun run dev
+exec npm run dev

@@ -3,6 +3,11 @@
 /.pnp
 .pnp.js
 
+# bun's lockfiles — npm's package-lock.json is the only lockfile here, so a
+# stray `bun install` must not leave a second one behind
+bun.lock
+bun.lockb
+
 # next
 /.next/
 /out/

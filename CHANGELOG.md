@@ -10,6 +10,15 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Changed
+
+- **The console builds with npm.** `package-lock.json` is now the only lockfile. The old Bun
+  lockfile is deleted, and both of its names are ignored, so a stray Bun install cannot leave a
+  second resolution behind. The README, `scripts/dev.sh`, `scripts/setup-minimax.mjs` and the
+  docs now say `npm ci` and `npm run dev`, and the Dockerfile installs with `npm ci` and builds
+  with `npm run build`. A developer who follows the README installs exactly the versions CI
+  tests; before, the two lockfiles disagreed on eight direct dependencies. (#143)
+
 ## [0.3.31] — 2026-11-05
 
 Paired with RantaiClaw `v0.34.0-alpha`. Two entries need that runtime: Always is gated on the

@@ -54,7 +54,7 @@ cd ../rantaiclaw-ui && ./scripts/dev.sh        # → http://127.0.0.1:3939
 # OR point at your real MiniMax agent (real LLM chat):
 node scripts/setup-minimax.mjs                 # registers a token in your active profile
 ( cd ../rantaiclaw && ./target/release/rantaiclaw gateway --host 127.0.0.1 -p 3000 )
-bun run dev
+npm run dev
 ```
 
 Docker: `docker build -t rantaiclaw-ui . && docker run -p 3939:3939 -e RANTAICLAW_GATEWAY_URL=http://host.docker.internal:3000 -e RANTAICLAW_TOKEN=… rantaiclaw-ui`

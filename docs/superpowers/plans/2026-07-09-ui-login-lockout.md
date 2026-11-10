@@ -6,7 +6,7 @@
 
 **Architecture:** A pure, in-memory sliding-window lockout module (`login-guard.ts`, built as a factory + singleton) is unit-tested with vitest, then wired into the existing login route so repeated wrong passwords from one client return HTTP 429 with `Retry-After`. No changes to the Rust `rantaiclaw` repo; the session/cookie model is unchanged.
 
-**Tech Stack:** Next.js 16 (App Router, Node runtime route handlers), TypeScript 5.7, Web Crypto session auth (already present), vitest (new dev dependency), bun package manager.
+**Tech Stack:** Next.js 16 (App Router, Node runtime route handlers), TypeScript 5.7, Web Crypto session auth (already present), vitest (new dev dependency), npm package manager.
 
 ## Global Constraints
 
@@ -15,8 +15,8 @@
 - Lockout parameters, copied verbatim: **`maxAttempts = 5`**, **`windowMs = 300_000`**, **`maxKeys = 1024`** (matches the Rust gateway `PairingGuard`).
 - Lockout semantics: failures **1–4 → HTTP 401**; the **5th failure → HTTP 429** (locked); further attempts within the window → **429**; lockout lifts automatically as the oldest in-window failure ages past `windowMs`; a **successful login resets** the counter; 429 carries `Retry-After` and a generic message (no remaining-attempt leak).
 - Guard runs **only when `authEnabled()` is true** (auth disabled returns early, unchanged dev behavior).
-- Package manager is **bun**; work is on branch **`feat/ui-login-lockout`** (already created off `main`).
-- **Do not touch** the repo's pre-existing uncommitted changes (`bun.lock` drift, untracked `.run`) except where `bun add -d vitest` legitimately updates `bun.lock` — before staging `bun.lock`, run `git diff bun.lock` and confirm the diff is only the vitest addition.
+- Package manager is **npm**; work is on branch **`feat/ui-login-lockout`** (already created off `main`).
+- **Do not touch** the repo's pre-existing uncommitted changes (`package-lock.json` drift, untracked `.run`) except where `npm install -D vitest` legitimately updates `package-lock.json` — before staging `package-lock.json`, run `git diff package-lock.json` and confirm the diff is only the vitest addition.
 - Commit style: **atomic, bullet-point body, no `Co-authored-by` trailer, no AI-attribution residue** (per operator preference).
 - Secrets (`RANTAICLAW_UI_PASSWORD`, `RANTAICLAW_UI_SECRET`) are **never committed** — they live only in `.env.local`.
 
@@ -28,7 +28,7 @@
 - Create: `src/lib/login-guard.ts`
 - Create: `src/lib/login-guard.test.ts`
 - Create: `vitest.config.ts`
-- Modify: `package.json` (add `vitest` devDep + `test` script), `bun.lock` (via `bun add`)
+- Modify: `package.json` (add `vitest` devDep + `test` script), `package-lock.json` (via `npm install -D vitest`)
 
 **Interfaces:**
 - Consumes: nothing (leaf module).
@@ -43,7 +43,7 @@
 Run:
 ```bash
 cd ~/.rantaiclaw/ui
-bun add -d vitest
+npm install -D vitest
 ```
 
 Then add the `test` script to `package.json` (leave every other line untouched):
@@ -133,7 +133,7 @@ describe("login-guard", () => {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `bun run test`
+Run: `npm test`
 Expected: FAIL — vitest cannot resolve `./login-guard` (module does not exist yet).
 
 - [ ] **Step 4: Write the minimal implementation**
@@ -210,23 +210,23 @@ export const loginGuard: LoginGuard = createLoginGuard();
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `bun run test`
+Run: `npm test`
 Expected: PASS — all 6 tests green.
 
 - [ ] **Step 6: Verify lint and type-check are clean**
 
-Run: `bun run lint`
+Run: `npm run lint`
 Expected: no errors for the new files.
 
 - [ ] **Step 7: Commit**
 
-First confirm `bun.lock` only gained vitest:
+First confirm `package-lock.json` only gained vitest:
 ```bash
-git diff bun.lock | head -40   # sanity-check: only vitest-related entries
+git diff package-lock.json | head -40   # sanity-check: only vitest-related entries
 ```
 Then:
 ```bash
-git add src/lib/login-guard.ts src/lib/login-guard.test.ts vitest.config.ts package.json bun.lock
+git add src/lib/login-guard.ts src/lib/login-guard.test.ts vitest.config.ts package.json package-lock.json
 git commit -F - <<'EOF'
 feat(auth): add in-memory login lockout guard
 
@@ -253,7 +253,7 @@ EOF
 Start the dev server with a throwaway password (a real secret is not needed for this test; do not commit it):
 ```bash
 cd ~/.rantaiclaw/ui
-RANTAICLAW_UI_PASSWORD=test-pw-123 RANTAICLAW_UI_SECRET=test-secret bun run dev
+RANTAICLAW_UI_PASSWORD=test-pw-123 RANTAICLAW_UI_SECRET=test-secret npm run dev
 ```
 In a second terminal, send 6 wrong passwords:
 ```bash
@@ -330,7 +330,7 @@ export async function POST(req: NextRequest) {
 
 Restart the server with the throwaway password:
 ```bash
-RANTAICLAW_UI_PASSWORD=test-pw-123 RANTAICLAW_UI_SECRET=test-secret bun run dev
+RANTAICLAW_UI_PASSWORD=test-pw-123 RANTAICLAW_UI_SECRET=test-secret npm run dev
 ```
 Re-run the 6-attempt loop from Step 1.
 Expected: `401 401 401 401 429 429` — the 5th wrong password trips the lockout.
@@ -361,7 +361,7 @@ Expected: `HTTP/1.1 200 ...` and `set-cookie: rc_session=...`.
 Then verify the gate stays off when no password is configured (unchanged dev behavior):
 ```bash
 # stop server, restart WITHOUT the password env
-bun run dev
+npm run dev
 curl -s -X POST "$BASE/api/auth/login" -H 'content-type: application/json' \
   -d '{"password":"anything"}'
 ```
@@ -371,9 +371,9 @@ Expected: `{"ok":true,"authDisabled":true}`. Stop the server.
 
 Run:
 ```bash
-bun run lint
-bun run test
-bun run build
+npm run lint
+npm test
+npm run build
 ```
 Expected: all succeed (lint clean, 6 tests pass, build completes).
 
