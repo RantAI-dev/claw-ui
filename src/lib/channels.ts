@@ -162,6 +162,25 @@ export function channelState(
   };
 }
 
+/** The section of the page a catalog row belongs to. */
+export type ChannelBucket = "usable" | "gateway_served" | "locked";
+
+/**
+ * Where a channel row sits on the page, from the support value alone.
+ *
+ * Every value lands in exactly one bucket. `gateway_served` is the only tier
+ * besides `supported` this console knows how to present; anything else,
+ * including a value a newer runtime added, is locked. The check is inverted on
+ * purpose: listing the locked values would hide the next tier the runtime
+ * introduces. `null` is a row the catalog says nothing about (a gateway too
+ * old to send a catalog), which stays usable and renders as its key.
+ */
+export function channelBucket(support: ChannelSupport | null): ChannelBucket {
+  if (support === null || support === "supported") return "usable";
+  if (support === "gateway_served") return "gateway_served";
+  return "locked";
+}
+
 export interface LockedChannelRow {
   key: string;
   label: string;
@@ -171,11 +190,12 @@ export interface LockedChannelRow {
 }
 
 /**
- * Every catalog channel the runtime marks `under_development`, by name,
- * whether or not it has a configured section — the operator-facing list
- * names all of them, not only the ones someone happened to configure before
- * the lock. Order follows the catalog, so a new locked channel appears where
- * the runtime places it rather than at the end.
+ * Every catalog channel in the locked bucket (`under_development` or a support
+ * value this console does not know), by name, whether or not it has a
+ * configured section. The operator-facing list names all of them, not only the
+ * ones someone happened to configure before the lock. Order follows the
+ * catalog, so a new locked channel appears where the runtime places it rather
+ * than at the end.
  *
  * Excludes `CARDED_CHANNELS`: a channel with its own setup card already has
  * full UI to manage it (Lark's card renders whenever the gateway sends
@@ -192,7 +212,37 @@ export function lockedChannels(
   const configuredSet = new Set(configured ?? []);
   return catalog
     .filter((c) => !(CARDED_CHANNELS as readonly string[]).includes(c.key))
-    .filter((c) => channelSupport(c.key, catalog) === "under_development")
+    .filter((c) => channelBucket(channelSupport(c.key, catalog)) === "locked")
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      configured: configuredSet.has(c.key),
+    }));
+}
+
+export interface GatewayServedRow {
+  key: string;
+  label: string;
+  /** Whether the runtime's `configured` list also names this key. */
+  configured: boolean;
+}
+
+/**
+ * Every catalog channel the gateway process serves itself, configured or not.
+ *
+ * Such a channel has no runtime component and nothing to connect, so the page
+ * lists it with no action. It is catalog-driven for the same reason
+ * `lockedChannels` is: an unconfigured one is in no other list, so deriving this
+ * from the configured keys would hide it. Order follows the catalog.
+ */
+export function gatewayServedChannels(
+  configured: string[] | null,
+  catalog: ChannelCatalogEntry[],
+): GatewayServedRow[] {
+  const configuredSet = new Set(configured ?? []);
+  return catalog
+    .filter((c) => !(CARDED_CHANNELS as readonly string[]).includes(c.key))
+    .filter((c) => channelBucket(channelSupport(c.key, catalog)) === "gateway_served")
     .map((c) => ({
       key: c.key,
       label: c.label,
@@ -239,6 +289,43 @@ export function configuredRows(
       support: channelSupport(key, catalog),
       verification: channelVerification(key, catalog),
     }));
+}
+
+/**
+ * The rows of the "Other channels" list: every usable channel without a setup
+ * card, configured or not.
+ *
+ * `configuredRows` alone left a supported channel with no card (WhatsApp Cloud,
+ * which is set up from the terminal) on no part of the page until it was
+ * configured. An unconfigured one is added from the catalog and reads "Not
+ * configured" through `channelState`. Catalog order first, keys the catalog
+ * does not carry after, in the order reported.
+ */
+export function otherChannelRows(
+  configured: string[] | null,
+  runtime: RuntimeHealth | null,
+  stale: boolean,
+  catalog: ChannelCatalogEntry[],
+): ChannelRow[] {
+  const configuredSet = new Set(configured ?? []);
+  const unconfigured: ChannelRow[] = catalog
+    .filter((c) => !(CARDED_CHANNELS as readonly string[]).includes(c.key))
+    .filter((c) => !configuredSet.has(c.key))
+    .map((c) => ({
+      key: c.key,
+      label: c.label,
+      state: channelState(c.key, configured, runtime, stale),
+      support: channelSupport(c.key, catalog),
+      verification: channelVerification(c.key, catalog),
+    }));
+  const known = catalog.map((c) => c.key);
+  const rank = (k: string) => {
+    const i = known.indexOf(k);
+    return i === -1 ? known.length : i;
+  };
+  return [...configuredRows(configured, runtime, stale, catalog), ...unconfigured]
+    .filter((r) => channelBucket(r.support) === "usable")
+    .sort((a, b) => rank(a.key) - rank(b.key));
 }
 
 export interface ChannelsVerdict {

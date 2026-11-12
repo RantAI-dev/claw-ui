@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { CARDED_CHANNELS } from "@/lib/channels";
 
 const channels = vi.fn();
 const config = vi.fn();
@@ -126,9 +127,28 @@ const CATALOG = [
     verification: "not_driven" as const,
     configured: false,
   },
+  // Supported, has no setup card of its own (it is set up from the terminal),
+  // and is unconfigured: the row that used to appear nowhere on the page.
+  {
+    key: "whatsapp",
+    label: "WhatsApp Cloud",
+    support: "supported" as const,
+    maturity: "supported" as const,
+    verification: "not_driven" as const,
+    configured: false,
+  },
+  // Served by the gateway process itself: nothing to connect, nothing to start.
   {
     key: "webhook",
     label: "Webhook",
+    support: "gateway_served" as const,
+    maturity: "gateway_served" as const,
+    verification: "not_driven" as const,
+    configured: false,
+  },
+  {
+    key: "irc",
+    label: "IRC",
     support: "under_development" as const,
     maturity: "under_development" as const,
     verification: "not_driven" as const,
@@ -200,10 +220,10 @@ describe("ChannelsPanel status words", () => {
     expect(await screen.findAllByText("last error: 401 Unauthorized")).toHaveLength(2);
   });
 
-  it("lists a configured, undrivable-but-usable channel in Other channels, and nothing else there", async () => {
-    // Webhook is `under_development`, so it moved out of this list into its
-    // own dimmed section (asserted separately below) — Matrix is the only
-    // one left here, since it alone is `supported`.
+  it("lists a configured usable channel in Other channels next to the unconfigured ones, and nothing else there", async () => {
+    // Webhook is gateway-served and has its own section (asserted separately
+    // below). Matrix is configured; WhatsApp Cloud is supported with no card
+    // and unconfigured, so it is listed too, as Not configured.
     channels.mockResolvedValue({
       configured: ["telegram", "matrix", "webhook"],
       count: 3,
@@ -212,9 +232,21 @@ describe("ChannelsPanel status words", () => {
     render(<ChannelsPanel />);
     const otherChannels = (await screen.findByText("Matrix")).closest("ul");
     const rows = otherChannels ? Array.from(otherChannels.querySelectorAll("li")) : [];
-    expect(rows).toHaveLength(1);
-    expect(rows[0].textContent).toMatch(/Matrix/);
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "MatrixConfigurednot yet verified",
+      "WhatsApp CloudNot configurednot yet verified",
+    ]);
     expect(rows[0].textContent).not.toMatch(/under development/i);
+  });
+
+  it("lists an unconfigured supported channel that has no card, with its status and no action", async () => {
+    // WhatsApp Cloud is set up from the terminal, so the page has no button
+    // for it; the row only says where it stands.
+    channels.mockResolvedValue({ configured: ["telegram"], count: 1, channels: CATALOG });
+    render(<ChannelsPanel />);
+    const row = (await screen.findByText("WhatsApp Cloud")).closest("li");
+    expect(row?.textContent).toBe("WhatsApp CloudNot configurednot yet verified");
+    expect(row?.querySelector("button, a, input")).toBeNull();
   });
 
   it("leaves Discord and Slack to their cards instead of listing them twice", async () => {
@@ -226,9 +258,12 @@ describe("ChannelsPanel status words", () => {
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
-    const rows = await screen.findAllByRole("listitem");
-    expect(rows).toHaveLength(1);
-    expect(rows[0].textContent).toMatch(/Webhook/);
+    // Webhook is gateway-served and IRC locked, so each sits in its own list;
+    // no list names Discord or Slack a second time.
+    const rows = (await screen.findAllByRole("listitem")).map((r) => r.textContent ?? "");
+    expect(rows).toContain("Webhook · configured");
+    expect(rows).toContain("IRC");
+    expect(rows.some((t) => /discord|slack/i.test(t))).toBe(false);
   });
 
   it("leaves WhatsApp Web to its own card instead of listing it twice", async () => {
@@ -241,10 +276,13 @@ describe("ChannelsPanel status words", () => {
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
-    const rows = await screen.findAllByRole("listitem");
-    expect(rows).toHaveLength(1);
-    expect(rows[0].textContent).toMatch(/Webhook/);
-    expect(rows.some((r) => /whatsapp/i.test(r.textContent ?? ""))).toBe(false);
+    const rows = (await screen.findAllByRole("listitem")).map((r) => r.textContent ?? "");
+    expect(rows).toContain("Webhook · configured");
+    expect(rows).toContain("IRC");
+    // The Cloud row is a different channel and is listed; the Web one is not.
+    // This fixture has no `whatsapp_web` entry, so a regression row would read
+    // as its key, hence the `[ _]`.
+    expect(rows.some((t) => /whatsapp[ _]web/i.test(t))).toBe(false);
   });
 
   it("qualifies a supported-but-undriven row without a tier badge, since the row's own section already says the tier", async () => {
@@ -264,8 +302,8 @@ describe("ChannelsPanel status words", () => {
 
   it("names every under_development channel in its own dimmed section, with no button, whether or not it is configured", async () => {
     // The tier comes from `/api/v1/channels` support, not a list this
-    // console keeps — Webhook is unconfigured and Lark is excluded (its
-    // own setup card already covers it), so only Webhook should land here.
+    // console keeps — IRC is unconfigured and Lark is excluded (its
+    // own setup card already covers it), so only IRC should land here.
     channels.mockResolvedValue({
       configured: ["telegram"],
       count: 1,
@@ -278,20 +316,90 @@ describe("ChannelsPanel status words", () => {
     const section = heading.closest("div")?.parentElement;
     const list = section?.querySelector("ul");
     const rows = list ? Array.from(list.querySelectorAll("li")) : [];
-    expect(rows.map((r) => r.textContent)).toEqual(["Webhook"]);
+    expect(rows.map((r) => r.textContent)).toEqual(["IRC"]);
     expect(list?.querySelector("button")).toBeNull();
     expect(list?.querySelector("a")).toBeNull();
   });
 
   it("adds 'not started' to a locked channel's row once its section is configured", async () => {
     channels.mockResolvedValue({
+      configured: ["telegram", "irc"],
+      count: 2,
+      channels: CATALOG,
+    });
+    render(<ChannelsPanel />);
+    const row = (await screen.findByText(/^IRC/)).closest("li");
+    expect(row?.textContent).toMatch(/IRC.*under development · not started/);
+  });
+
+  it("shows an unconfigured gateway-served channel as available, with no enable action", async () => {
+    // The webhook has no runtime component and nothing to connect: the gateway
+    // process serves it. Before this section the row was in no list at all
+    // unless it was configured, so the page never mentioned it.
+    channels.mockResolvedValue({ configured: ["telegram"], count: 1, channels: CATALOG });
+    render(<ChannelsPanel />);
+    const heading = await screen.findByText("Served by the gateway");
+    const section = heading.closest("div")?.parentElement;
+    const list = section?.querySelector("ul");
+    const rows = list ? Array.from(list.querySelectorAll("li")) : [];
+    expect(rows.map((r) => r.textContent)).toEqual(["Webhook"]);
+    expect(list?.querySelector("button")).toBeNull();
+    expect(list?.querySelector("a")).toBeNull();
+    expect(list?.querySelector("input")).toBeNull();
+  });
+
+  it("marks a configured gateway-served channel as configured, still in its own section", async () => {
+    channels.mockResolvedValue({
       configured: ["telegram", "webhook"],
       count: 2,
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
-    const row = (await screen.findByText("Webhook")).closest("li");
-    expect(row?.textContent).toMatch(/Webhook.*under development · not started/);
+    const heading = await screen.findByText("Served by the gateway");
+    const rows = Array.from(heading.closest("div")?.parentElement?.querySelectorAll("li") ?? []);
+    expect(rows.map((r) => r.textContent)).toEqual(["Webhook · configured"]);
+    // Not duplicated into Other channels.
+    expect(screen.getByText("None configured yet.")).toBeTruthy();
+  });
+
+  it("shows a support value it does not know as locked, not hidden", async () => {
+    channels.mockResolvedValue({
+      configured: ["telegram", "carrier_pigeon"],
+      count: 2,
+      channels: [
+        ...CATALOG,
+        {
+          key: "carrier_pigeon",
+          label: "Carrier Pigeon",
+          support: "future_tier" as never,
+          verification: "not_driven" as const,
+          configured: true,
+        },
+      ],
+    });
+    render(<ChannelsPanel />);
+    const row = (await screen.findByText(/^Carrier Pigeon/)).closest("li");
+    expect(row?.textContent).toMatch(/Carrier Pigeon.*under development · not started/);
+    const section = (await screen.findByText("Under development")).closest("div")?.parentElement;
+    expect(section?.contains(row ?? null)).toBe(true);
+  });
+
+  it("puts every catalog row on the page in exactly one place", async () => {
+    // Whatever the runtime configured, each catalog row is found in exactly one
+    // list: never two, never none. The one explicit exception is a channel with
+    // its own setup card, which is in no list because the card carries it.
+    for (const configured of [["telegram"], ["telegram", "matrix", "webhook", "irc"]]) {
+      channels.mockResolvedValue({ configured, count: configured.length, channels: CATALOG });
+      const { unmount } = render(<ChannelsPanel />);
+      await screen.findByText("Served by the gateway");
+      const rows = screen.getAllByRole("listitem").map((r) => r.textContent ?? "");
+      for (const c of CATALOG) {
+        const listed = rows.filter((t) => t.startsWith(c.label)).length;
+        const carded = (CARDED_CHANNELS as readonly string[]).includes(c.key);
+        expect([c.key, configured.join(), listed]).toEqual([c.key, configured.join(), carded ? 0 : 1]);
+      }
+      unmount();
+    }
   });
 
   it("says a driven channel is verified rather than leaving it to an absence", async () => {
@@ -320,13 +428,13 @@ describe("ChannelsPanel status words", () => {
       channels: CATALOG,
     });
     render(<ChannelsPanel />);
-    // Scoped to Other channels: the page's other list (Under development,
-    // Webhook only in this fixture) is a separate assertion above.
+    // Scoped to Other channels: the page's other lists (Under development,
+    // Served by the gateway) are separate assertions above.
     const otherChannels = (await screen.findByText("zzz")).closest("ul");
     const rows = otherChannels ? Array.from(otherChannels.querySelectorAll("li")) : [];
-    expect(rows).toHaveLength(1);
-    expect(rows[0].textContent).toMatch(/zzz/);
-    expect(rows[0].textContent).not.toMatch(/under development/i);
+    const zzz = rows.filter((r) => /zzz/.test(r.textContent ?? ""));
+    expect(zzz).toHaveLength(1);
+    expect(zzz[0].textContent).not.toMatch(/under development/i);
   });
 
   it("no longer states the removed under-development count sentence", async () => {
@@ -343,16 +451,15 @@ describe("ChannelsPanel status words", () => {
     config.mockResolvedValue({ channels_config: {} });
     render(<ChannelsPanel />);
     expect(await screen.findByText("Not reachable on any channel")).toBeTruthy();
-    // One badge per setup card, and all five say the same thing. Asserting the
-    // count rather than "at least one" is what would catch a card that drifts
-    // out of step with the others.
-    expect(await screen.findAllByText("Not configured")).toHaveLength(5);
+    // One badge per setup card, and all five say the same thing, plus one for
+    // each unconfigured row in Other channels (Matrix, WhatsApp Cloud).
+    // Asserting the count rather than "at least one" is what would catch a card
+    // that drifts out of step with the others.
+    expect(await screen.findAllByText("Not configured")).toHaveLength(5 + 2);
     expect(await screen.findByText("None configured yet.")).toBeTruthy();
-    // The Under development section still names Webhook — it is not gated on
-    // anything being configured — but no *configured-channel* row exists.
-    expect(screen.queryByText("Webhook")?.closest("li")?.textContent).not.toMatch(
-      /Served by the gateway|error|Running/,
-    );
+    // The gateway-served section still names Webhook — it is not gated on
+    // anything being configured — but it states no runtime status.
+    expect(screen.getByText("Webhook").closest("li")?.textContent).toBe("Webhook");
     expect(screen.getByRole("button", { name: "Connect" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Discord" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Connect Slack" })).toBeTruthy();
@@ -387,7 +494,8 @@ describe("ChannelsPanel status words", () => {
     // Every card, not just the first one: a card still claiming "Running" from
     // the last good fetch while the gateway is down is the defect this covers,
     // and it would hide behind a single-element assertion.
-    expect(await screen.findAllByText("Status unknown")).toHaveLength(5);
+    // Five cards, plus the two unconfigured rows in Other channels.
+    expect(await screen.findAllByText("Status unknown")).toHaveLength(5 + 2);
   });
 });
 

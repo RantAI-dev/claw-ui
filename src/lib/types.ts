@@ -332,7 +332,7 @@ export interface KbReExtractResult {
  * The runtime's `ChannelSupport` (RantaiClaw `src/channels/mod.rs`), on the
  * wire. Not a union the console decides, a value it renders.
  */
-export type ChannelSupport = "supported" | "under_development";
+export type ChannelSupport = "supported" | "gateway_served" | "under_development";
 
 /**
  * Whether anyone has driven the channel against the real platform.

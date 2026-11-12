@@ -9,19 +9,22 @@ import {
   channelVerification,
   channelsVerdict,
   configuredRows,
+  channelBucket,
+  gatewayServedChannels,
   lockedChannels,
+  otherChannelRows,
 } from "./channels";
 import type { RuntimeHealth } from "./status";
-import type { ChannelCatalogEntry } from "./types";
+import type { ChannelCatalogEntry, ChannelSupport } from "./types";
 
 /**
  * A stand-in for what `/api/v1/channels` sends, not a copy of the runtime's
  * catalog: the console no longer holds one, and a sixteen-row fixture here
  * would recreate the duplication this suite's subject exists to delete.
  *
- * Four rows, covering the three states an operator can meet plus an unknown
- * key. Telegram is supported and driven, Discord is supported and not driven,
- * and the two under-development rows are neither.
+ * Four rows, covering the states an operator can meet. Telegram is supported
+ * and driven, Discord is supported and not driven, the webhook is served by the
+ * gateway itself, and IRC is under development.
  */
 const CATALOG: ChannelCatalogEntry[] = [
   {
@@ -43,8 +46,8 @@ const CATALOG: ChannelCatalogEntry[] = [
   {
     key: "webhook",
     label: "Webhook",
-    support: "under_development",
-    maturity: "under_development",
+    support: "gateway_served",
+    maturity: "gateway_served",
     verification: "not_driven",
     configured: false,
   },
@@ -216,10 +219,8 @@ describe("configuredRows", () => {
 describe("lockedChannels", () => {
   it("names every under_development catalog entry, whether or not it is configured", () => {
     const locked = lockedChannels(["telegram", "irc"], CATALOG);
-    expect(locked.map((c) => [c.key, c.label, c.configured])).toEqual([
-      ["webhook", "Webhook", false],
-      ["irc", "IRC", true],
-    ]);
+    expect(locked.map((c) => [c.key, c.label, c.configured])).toEqual([["irc", "IRC", true]]);
+    expect(lockedChannels([], CATALOG).map((c) => [c.key, c.configured])).toEqual([["irc", false]]);
   });
 
   it("leaves out supported channels entirely", () => {
@@ -247,6 +248,26 @@ describe("lockedChannels", () => {
       { key: "carrier_pigeon", label: "Carrier Pigeon", support: "under_development", configured: false },
     ];
     expect(lockedChannels(null, NOVEL).map((c) => c.key)).toEqual(["carrier_pigeon"]);
+  });
+
+  it("leaves a gateway-served channel out of the locked list", () => {
+    expect(lockedChannels(["webhook"], CATALOG).map((c) => c.key)).not.toContain("webhook");
+  });
+
+  it("locks a support value this console has never heard of instead of hiding the row", () => {
+    // A runtime newer than this console may add a tier. Hiding the row would
+    // make the channel vanish from the page; locked is the safe reading.
+    const FUTURE: ChannelCatalogEntry[] = [
+      {
+        key: "carrier_pigeon",
+        label: "Carrier Pigeon",
+        support: "future_tier" as ChannelSupport,
+        configured: true,
+      },
+    ];
+    expect(lockedChannels(["carrier_pigeon"], FUTURE).map((c) => [c.key, c.configured])).toEqual([
+      ["carrier_pigeon", true],
+    ]);
   });
 
   it("reports none configured when the runtime's configured list is null", () => {
@@ -315,7 +336,7 @@ describe("channelMissingCredentials", () => {
 describe("channelLabel / channelSupport / channelVerification", () => {
   it("reads all three off the catalog the runtime sent", () => {
     expect(channelLabel("webhook", CATALOG)).toBe("Webhook");
-    expect(channelSupport("webhook", CATALOG)).toBe("under_development");
+    expect(channelSupport("webhook", CATALOG)).toBe("gateway_served");
     expect(channelSupport("telegram", CATALOG)).toBe("supported");
     expect(channelVerification("telegram", CATALOG)).toBe("driven");
     expect(channelVerification("discord", CATALOG)).toBe("not_driven");
@@ -411,5 +432,83 @@ describe("detail scope", () => {
       channelState("discord", ["discord"], runtime([{ name: "channels" }]), false).detailScope,
     ).toBe("channel");
     expect(channelState("webhook", ["webhook"], null, false).detailScope).toBe("channel");
+  });
+});
+
+describe("gatewayServedChannels", () => {
+  it("names every gateway_served catalog entry, whether or not it is configured", () => {
+    expect(gatewayServedChannels([], CATALOG).map((c) => [c.key, c.label, c.configured])).toEqual([
+      ["webhook", "Webhook", false],
+    ]);
+    expect(gatewayServedChannels(["webhook"], CATALOG).map((c) => [c.key, c.configured])).toEqual([
+      ["webhook", true],
+    ]);
+  });
+
+  it("leaves out supported and under_development channels", () => {
+    const keys = gatewayServedChannels(["telegram", "irc"], CATALOG).map((c) => c.key);
+    expect(keys).not.toContain("telegram");
+    expect(keys).not.toContain("irc");
+  });
+
+  it("is derived from the catalog's own support axis, not a fixed key", () => {
+    const NOVEL: ChannelCatalogEntry[] = [
+      { key: "carrier_pigeon", label: "Carrier Pigeon", support: "gateway_served", configured: false },
+    ];
+    expect(gatewayServedChannels(null, NOVEL).map((c) => c.key)).toEqual(["carrier_pigeon"]);
+  });
+
+  it("reads `maturity` as support when the runtime predates the split", () => {
+    const LEGACY: ChannelCatalogEntry[] = [
+      { key: "webhook", label: "Webhook", maturity: "gateway_served", configured: false },
+    ];
+    expect(gatewayServedChannels(null, LEGACY).map((c) => c.key)).toEqual(["webhook"]);
+  });
+});
+
+describe("channelBucket", () => {
+  it("puts every support value in exactly one bucket, and an unknown one in locked", () => {
+    expect(channelBucket("supported")).toBe("usable");
+    expect(channelBucket("gateway_served")).toBe("gateway_served");
+    expect(channelBucket("under_development")).toBe("locked");
+    expect(channelBucket("future_tier" as ChannelSupport)).toBe("locked");
+  });
+
+  it("keeps a row the catalog says nothing about usable", () => {
+    // No claim is not a lock: a key the catalog does not carry renders as itself.
+    expect(channelBucket(null)).toBe("usable");
+  });
+});
+
+describe("otherChannelRows", () => {
+  // A supported row with no setup card, like WhatsApp Cloud.
+  const WITH_CLOUD: ChannelCatalogEntry[] = [
+    ...CATALOG,
+    { key: "whatsapp", label: "WhatsApp Cloud", support: "supported", configured: false },
+  ];
+
+  it("lists an unconfigured supported channel that has no card, as Not configured", () => {
+    const rows = otherChannelRows(["telegram"], null, false, WITH_CLOUD);
+    expect(rows.map((r) => [r.key, r.state.word])).toEqual([["whatsapp", "not configured"]]);
+  });
+
+  it("lists a configured one too, in catalog order, and keys the catalog lacks after", () => {
+    const rows = otherChannelRows(["zzz", "whatsapp"], null, false, WITH_CLOUD);
+    expect(rows.map((r) => [r.key, r.state.word])).toEqual([
+      ["whatsapp", "configured"],
+      ["zzz", "configured"],
+    ]);
+  });
+
+  it("leaves out carded, gateway-served and locked channels", () => {
+    const keys = otherChannelRows(["discord", "webhook", "irc"], null, false, WITH_CLOUD).map(
+      (r) => r.key,
+    );
+    expect(keys).toEqual(["whatsapp"]);
+  });
+
+  it("reads Status unknown, not Not configured, while the status is stale", () => {
+    const rows = otherChannelRows([], null, true, WITH_CLOUD);
+    expect(rows.map((r) => r.state.word)).toEqual(["unknown"]);
   });
 });
