@@ -10,6 +10,18 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Channels page lists channels the gateway serves itself.** The runtime now reports the
+  `webhook` channel with `support: "gateway_served"`. The console only knew `supported` and
+  `under_development`, so an unconfigured webhook was in no list and the page never mentioned it.
+  A new "Served by the gateway" section lists every such channel from the runtime's catalog,
+  configured or not, with no button, because there is nothing to connect. Any support value the
+  console does not recognise is now shown under "Under development" instead of being hidden, so a
+  tier added by a newer runtime cannot make a channel disappear. A supported channel with no setup
+  card, such as WhatsApp Cloud, is listed under "Other channels" as "Not configured" instead of
+  appearing only after it is configured.
+
 ### Changed
 
 - **The console builds with npm.** `package-lock.json` is now the only lockfile. The old Bun

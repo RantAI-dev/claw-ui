@@ -22,7 +22,7 @@ import {
   useChannelSetup,
   whatsappAllowlist,
 } from "./channel-setup";
-import { allowlistDrift, channelHasCredentials, channelMissingCredentials, channelState, channelVerification, channelsVerdict, configuredRows, lockedChannels, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
+import { allowlistDrift, channelHasCredentials, channelMissingCredentials, channelState, channelVerification, channelsVerdict, gatewayServedChannels, lockedChannels, otherChannelRows, type ChannelState, type ChannelsVerdict } from "@/lib/channels";
 import type { ChannelVerification } from "@/lib/types";
 import { parseRuntimeHealth } from "@/lib/status";
 import { channelDot } from "@/lib/console";
@@ -92,11 +92,17 @@ export function ChannelsPanel() {
   const committedUndrivenCount = catalog.filter(
     (c) => supportOf(c) === "supported" && c.verification === "not_driven",
   ).length;
-  const rows = configuredRows(data?.configured ?? null, runtime, staleStatus, catalog);
+  // The usable rows without a card, configured or not: an unconfigured one
+  // reads "Not configured" instead of being left off the page.
+  const usableRows = otherChannelRows(data?.configured ?? null, runtime, staleStatus, catalog);
+  const noneConfigured = !usableRows.some((r) => data?.configured.includes(r.key));
+  // Served by the gateway process itself: listed from the catalog, because an
+  // unconfigured one is in no other list, and with no action because there is
+  // nothing to connect.
+  const gatewayServed = gatewayServedChannels(data?.configured ?? null, catalog);
   // Locked channels get their own dimmed section below rather than sitting in
   // this list with a badge — a row here implies the operator can act on it,
   // and for these the only action is to wait for the tier to open.
-  const usableRows = rows.filter((r) => r.support !== "under_development");
   const locked = lockedChannels(data?.configured ?? null, catalog);
   // The facts every setup card needs, derived once. Each card spelling
   // this out itself would be its own chance for them to disagree about what
@@ -339,6 +345,11 @@ export function ChannelsPanel() {
               )}
               {usableRows.length > 0 && (
                 <Card className="mt-3 p-0">
+                  {noneConfigured && (
+                    <p className="border-b border-border/60 px-4 py-2.5 text-xs text-muted-foreground">
+                      None configured yet.
+                    </p>
+                  )}
                   <ul>
                     {usableRows.map((r) => (
                       <li
@@ -383,6 +394,36 @@ export function ChannelsPanel() {
                 </Card>
               )}
             </div>
+
+            {gatewayServed.length > 0 && (
+              <div>
+                <SectionTitle>Served by the gateway</SectionTitle>
+                <p className="text-xs text-muted-foreground">
+                  The gateway answers these itself, so there is nothing to connect or
+                  start here.
+                </p>
+                <Card className="mt-3 p-0">
+                  <ul>
+                    {gatewayServed.map((c) => (
+                      <li
+                        key={c.key}
+                        className="flex items-center gap-x-3 border-b border-border/60 px-4 py-2.5 text-sm last:border-b-0"
+                      >
+                        <span
+                          aria-hidden
+                          className="inline-block size-2 rounded-full"
+                          style={{ background: channelDot(c.key) }}
+                        />
+                        <span className="font-medium">{c.label}</span>
+                        {c.configured && (
+                          <span className="text-xs text-muted-foreground"> · configured</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              </div>
+            )}
 
             {locked.length > 0 && (
               <div>
