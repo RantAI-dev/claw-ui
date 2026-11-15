@@ -10,6 +10,12 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.32] — 2026-11-15
+
+Paired with RantaiClaw `v0.35.0-alpha`. The Channels page entry needs that runtime: it reports the
+`webhook` channel with `support: "gateway_served"`. On an older gateway the page still works, and
+an unknown support value is shown under "Under development".
+
 ### Fixed
 
 - **The Channels page lists channels the gateway serves itself.** The runtime now reports the
@@ -20,7 +26,7 @@ carries the paired entry and the release notes.
   console does not recognise is now shown under "Under development" instead of being hidden, so a
   tier added by a newer runtime cannot make a channel disappear. A supported channel with no setup
   card, such as WhatsApp Cloud, is listed under "Other channels" as "Not configured" instead of
-  appearing only after it is configured.
+  appearing only after it is configured. (#144)
 
 ### Changed
 
