@@ -28,7 +28,9 @@ describe("gateway path confinement", () => {
 
   // These are the exact payloads that reached the gateway before the fix. Next
   // hands the route already-decoded segments, so `..%2f..%2fpair` on the wire
-  // arrives here as the single string "../../pair".
+  // arrives here as the single string "../../pair". Re-encoded it would stay one
+  // segment, but an intermediary that decodes `%2F` would turn it back into a
+  // traversal, so a dot component inside a segment is refused outright.
   it.each([
     ["../../pair"],
     ["../../webhook"],
@@ -47,10 +49,71 @@ describe("gateway path confinement", () => {
     expect(resolveGatewayUrl(["..\\..\\pair"], "", GW)).toBeNull();
   });
 
+  it("refuses a lone traversal element", () => {
+    expect(resolveGatewayUrl([".."], "", GW)).toBeNull();
+    expect(resolveGatewayUrl(["."], "", GW)).toBeNull();
+    expect(resolveGatewayUrl(["providers", "..", "models"], "", GW)).toBeNull();
+  });
+
+  it.each([
+    [["providers", "a/../b", "models"]],
+    [["x/./y"]],
+    [["..\\x"]],
+    [["a\\..\\b"]],
+    [["a/.."]],
+    [["./a"]],
+  ])("refuses a dot component inside a segment: %j", (segs) => {
+    expect(resolveGatewayUrl(segs, "", GW)).toBeNull();
+  });
+
+  it("refuses an empty segment", () => {
+    expect(resolveGatewayUrl([""], "", GW)).toBeNull();
+    expect(resolveGatewayUrl(["providers", "", "models"], "", GW)).toBeNull();
+  });
+
   it("cannot be redirected to another host", () => {
-    // A protocol-relative segment would otherwise re-point the authority.
-    expect(resolveGatewayUrl(["//evil.example"], "", GW)).toBeNull();
-    expect(resolveGatewayUrl(["http://evil.example/x"], "", GW)).toBeNull();
+    // These have no dot component, so they are allowed, but they are encoded
+    // into one path segment: the origin and the /api/v1/ prefix are unchanged,
+    // and they stay there even if an intermediary decodes `%2F`.
+    for (const [seg, encoded] of [
+      ["//evil.example", "%2F%2Fevil.example"],
+      ["http://evil.example/x", "http%3A%2F%2Fevil.example%2Fx"],
+    ]) {
+      const url = resolveGatewayUrl([seg], "", GW);
+      expect(url).toBe(`${GW}/api/v1/${encoded}`);
+      expect(new URL(url as string).origin).toBe(GW);
+    }
+  });
+
+  // The console encodes an id with encodeURIComponent, Next decodes it, and the
+  // proxy encodes it again. The gateway decodes one `{id}` segment, so a custom
+  // provider id that is a URL has to reach it as one segment.
+  it("forwards a provider id that contains slashes as one encoded segment", () => {
+    const id = "custom:https://host/v1";
+    expect(resolveGatewayUrl(["providers", id, "models"], "", GW)).toBe(
+      `${GW}/api/v1/providers/custom%3Ahttps%3A%2F%2Fhost%2Fv1/models`,
+    );
+    expect(resolveGatewayUrl(["providers", id, "models", "refresh"], "", GW)).toBe(
+      `${GW}/api/v1/providers/custom%3Ahttps%3A%2F%2Fhost%2Fv1/models/refresh`,
+    );
+  });
+
+  it("forwards a memory key and a document id that contain slashes as one segment", () => {
+    expect(resolveGatewayUrl(["memory", "notes/2026/plan"], "", GW)).toBe(
+      `${GW}/api/v1/memory/notes%2F2026%2Fplan`,
+    );
+    expect(resolveGatewayUrl(["memory", "a/b.c/d"], "", GW)).toBe(
+      `${GW}/api/v1/memory/a%2Fb.c%2Fd`,
+    );
+    expect(resolveGatewayUrl(["memory", "notes..txt"], "", GW)).toBe(
+      `${GW}/api/v1/memory/notes..txt`,
+    );
+    expect(resolveGatewayUrl(["kb", "documents", "docs/guide.md"], "", GW)).toBe(
+      `${GW}/api/v1/kb/documents/docs%2Fguide.md`,
+    );
+    expect(
+      resolveGatewayUrl(["kb", "groups", "g1", "documents", "docs\\guide.md"], "", GW),
+    ).toBe(`${GW}/api/v1/kb/groups/g1/documents/docs%5Cguide.md`);
   });
 
   it("passes through a segment that merely contains dots", () => {
