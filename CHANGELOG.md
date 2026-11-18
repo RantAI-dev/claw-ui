@@ -10,6 +10,18 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The console lists models for a provider id that contains a slash.** The `/api/rc` proxy
+  rejected any path segment containing `/` or `\`, so a custom provider id such as
+  `custom:https://host/v1` got `400 invalid_path` when the Providers page asked for its models
+  or refreshed them, while the gateway answers that same id with 200. The proxy now accepts `/`
+  and `\` inside a segment and forwards the segment percent-encoded, so the gateway receives it as
+  one path segment. Memory keys, knowledge-base document ids and other ids that contain a slash
+  work the same way. An empty segment, a segment that contains a `.` or `..` path component (for
+  example `../../pair` or `a/../b`), and anything that would resolve outside `/api/v1/` or off the
+  gateway origin are still refused.
+
 ## [0.3.32] — 2026-11-15
 
 Paired with RantaiClaw `v0.35.0-alpha`. The Channels page entry needs that runtime: it reports the

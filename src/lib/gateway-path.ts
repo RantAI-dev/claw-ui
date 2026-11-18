@@ -15,23 +15,31 @@
  * normalised pathname afterwards catches anything the encoding missed.
  */
 /**
- * A segment that is a traversal element, or that smuggles a path separator.
+ * True when a segment has a `.` or `..` path component.
  *
- * Next only ever hands us *decoded* segments, so a literal "/" or "\" in one
- * means the caller percent-encoded it to sneak past segment-wise checks. Those
- * are rejected outright rather than merely re-encoded: forwarding a nonsense
- * path to the gateway spends the bearer token for a guaranteed 404, and it
- * would still traverse if anything between here and the gateway decoded `%2F`
- * before routing.
+ * `/` and `\` are allowed inside a segment because ids contain them, for
+ * example the custom provider id `custom:https://host/v1`, and the gateway
+ * decodes one `{id}` segment. `encodeURIComponent` below turns each into `%2F`
+ * or `%5C`, so the segment reaches the gateway as one path segment.
+ *
+ * A dot component is still refused. Next hands us *decoded* segments, so
+ * `..%2F..%2Fpair` on the wire arrives as `../../pair`. Re-encoded it stays one
+ * segment, but an intermediary between here and the gateway (reverse proxy,
+ * tunnel, ingress) that decodes `%2F` before routing would turn it into
+ * `/api/v1/../../pair`, which leaves `/api/v1/` carrying the bearer token.
+ * Segments without a dot component, such as `//evil.example`, stay under
+ * `/api/v1/` on the same origin even if something decodes them.
  */
-const UNSAFE_SEGMENT = /[/\\]|^\.\.?$/;
+function isTraversalSegment(seg: string): boolean {
+  return seg.split(/[\\/]/).some((part) => part === "." || part === "..");
+}
 
 export function resolveGatewayUrl(
   path: string[],
   search: string,
   gatewayUrl: string,
 ): string | null {
-  if (path.some((seg) => seg === "" || UNSAFE_SEGMENT.test(seg))) return null;
+  if (path.some((seg) => seg === "" || isTraversalSegment(seg))) return null;
   const suffix = path.map(encodeURIComponent).join("/");
   let target: URL;
   let base: URL;
