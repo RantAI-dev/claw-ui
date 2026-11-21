@@ -246,6 +246,25 @@ describe("CronPanel run now", () => {
     expect(title).toBe("Run failed");
     expect(opts.description).toMatch(/gateway is unreachable/);
   });
+
+  it("names a rejected provider key and reloads the history after the failed run", async () => {
+    const detail = "provider custom:http://h/v1 rejected the credential (HTTP 401)";
+    runCron.mockImplementation(() =>
+      Promise.reject(new ApiError(detail, 502, { error: "provider_auth_failed", detail })),
+    );
+    render(<CronPanel />);
+    await screen.findByText("Morning hello");
+    const listCallsBefore = cron.mock.calls.length;
+    fireEvent.click(button("Run Morning hello now"));
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    const [title, opts] = toastError.mock.calls[0] as [string, { description: string }];
+    expect(title).toBe("Run failed");
+    expect(opts.description).toMatch(/rejected its API key/);
+    expect(opts.description).toContain(detail);
+    expect(opts.description).not.toMatch(/unreachable/);
+    // The failed attempt is in the history only after the list is requested again.
+    await waitFor(() => expect(cron.mock.calls.length).toBeGreaterThan(listCallsBefore));
+  });
 });
 
 describe("CronPanel create", () => {

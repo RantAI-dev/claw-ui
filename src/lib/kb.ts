@@ -4,6 +4,7 @@
 // component so a test can pin each sentence and so the chat composer's
 // attachment path (which shares `ingestFile`) reports the same failure the
 // same way.
+import { PROVIDER_AUTH_FAILED, providerKeyRejectedMessage } from "@/lib/api";
 import { formatNumber } from "@/lib/utils";
 
 /** The accept list in words, for the failure sentence and the dropzone hint. */
@@ -31,6 +32,11 @@ export function describeIngestError(input: {
   const error = typeof obj?.error === "string" ? obj.error : "";
   const detail = typeof obj?.detail === "string" ? obj.detail : "";
 
+  // Before the status checks: the gateway answers a rejected key with a 502,
+  // and the key is the cause, not an outage.
+  if (error === PROVIDER_AUTH_FAILED) {
+    return providerKeyRejectedMessage(detail);
+  }
   if (error === "unsupported_file_type") {
     const ext = extensionOf(detail);
     return `${ext ?? "this file"} is not a supported type. Supported: ${SUPPORTED_UPLOADS}.`;

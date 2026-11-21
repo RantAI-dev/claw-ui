@@ -138,6 +138,61 @@ describe("describeApiError", () => {
     );
   });
 
+  it("names a rejected provider key on a 502 instead of calling it an outage", () => {
+    const detail = "provider custom:http://h/v1 rejected the credential (HTTP 401)";
+    const e = new ApiError(detail, 502, { error: "provider_auth_failed", detail });
+    const text = describeApiError(e);
+    expect(text).toBe(
+      `The provider rejected its API key; update the key in Providers. (${detail})`,
+    );
+    expect(text).not.toMatch(/unreachable|restarting/);
+  });
+
+  it("lets the provider code win over the status for a 503", () => {
+    const detail = "provider custom:http://h/v1 rejected the credential (HTTP 401)";
+    const e = new ApiError(detail, 503, { error: "provider_auth_failed", detail });
+    expect(describeApiError(e)).toBe(
+      `The provider rejected its API key; update the key in Providers. (${detail})`,
+    );
+  });
+
+  it("gives the key sentence alone when the provider code has no detail", () => {
+    const e = new ApiError("", 502, { error: "provider_auth_failed" });
+    expect(describeApiError(e)).toBe("The provider rejected its API key; update the key in Providers.");
+  });
+
+  it("gives the key sentence alone when rc() takes the error code as the message", async () => {
+    // rc() sets the message to `detail || error || statusText`, so a body with
+    // no detail arrives here with the code itself as the message.
+    stubFetch(502, { error: "provider_auth_failed" });
+    const e = await api.status().catch((err) => err);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as ApiError).message).toBe("provider_auth_failed");
+    expect(describeApiError(e)).toBe("The provider rejected its API key; update the key in Providers.");
+  });
+
+  it("keeps the outage sentence for a proxy 502 with a different error code", () => {
+    const e = new ApiError("the gateway is unreachable", 502, {
+      error: "gateway_unreachable",
+      detail: "the gateway is unreachable",
+    });
+    expect(describeApiError(e)).toBe("The gateway is unreachable; it may be restarting.");
+  });
+
+  it("keeps the outage sentence for a non-JSON 502 body", () => {
+    const e = new ApiError("Bad Gateway", 502, null);
+    expect(describeApiError(e)).toBe(
+      "The gateway is unreachable; it may be restarting. (Bad Gateway)",
+    );
+  });
+
+  it("ignores the provider code when it is not a field of an object body", () => {
+    const e = new ApiError("upstream timeout", 502, "provider_auth_failed");
+    expect(describeApiError(e)).toBe(
+      "The gateway is unreachable; it may be restarting. (upstream timeout)",
+    );
+  });
+
   it("passes a non-ApiError through unchanged", () => {
     expect(describeApiError(new Error("boom"))).toBe("boom");
     expect(describeApiError("plain string")).toBe("plain string");

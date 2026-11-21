@@ -12,6 +12,12 @@ carries the paired entry and the release notes.
 
 ### Fixed
 
+- **A rejected provider key reads as a rejected key, not as an outage.** When the gateway answers
+  `provider_auth_failed`, the console says the provider rejected its API key, names the key to
+  update in Providers, and shows the gateway's detail. The same applies to ingest errors in the
+  knowledge base. A 502 without that code, a 503 and a 504 keep the outage text. The cron panel
+  also refreshes its run history after a failed run, so the failed attempt appears without a
+  reload.
 - **The console lists models for a provider id that contains a slash.** The `/api/rc` proxy
   rejected any path segment containing `/` or `\`, so a custom provider id such as
   `custom:https://host/v1` got `400 invalid_path` when the Providers page asked for its models

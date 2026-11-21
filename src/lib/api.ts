@@ -53,6 +53,25 @@ export class ApiError extends Error {
   }
 }
 
+/** The gateway's `error` code when a provider refuses the API key it was given. */
+export const PROVIDER_AUTH_FAILED = "provider_auth_failed";
+
+function isProviderAuthFailed(body: unknown): boolean {
+  return typeof body === "object" && body !== null && "error" in body && body.error === PROVIDER_AUTH_FAILED;
+}
+
+/**
+ * The sentence for a provider that rejected the key, with the gateway's detail
+ * after it when there is one. Shared so every caller words the failure alike.
+ * `rc` puts the error code in the message when the body has no detail, so the
+ * code is not a detail and is dropped here.
+ */
+export function providerKeyRejectedMessage(detail: string): string {
+  const sentence = "The provider rejected its API key; update the key in Providers.";
+  const d = detail.trim();
+  return d && d !== PROVIDER_AUTH_FAILED ? `${sentence} (${d})` : sentence;
+}
+
 /**
  * An operator-facing sentence for a failed request.
  *
@@ -66,6 +85,11 @@ export class ApiError extends Error {
 export function describeApiError(e: unknown): string {
   if (!(e instanceof ApiError)) {
     return e instanceof Error ? e.message : String(e);
+  }
+  // Checked before the status: the gateway answers this code with a 502, and
+  // the key is the cause, not an outage.
+  if (isProviderAuthFailed(e.body)) {
+    return providerKeyRejectedMessage(e.message);
   }
   switch (e.status) {
     case 401:

@@ -317,6 +317,9 @@ export function CronPanel() {
       // anything runs; every other failure is the request itself.
       const refused = e instanceof ApiError && e.status === 400;
       toast.error(refused ? "Run refused" : "Run failed", { id: t, description: describeApiError(e) });
+      // A request that fails after the job started can still leave a history
+      // entry, so reload the list rather than wait for the next poll.
+      refresh();
     }
   };
   const del = async () => {
