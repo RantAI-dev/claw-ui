@@ -12,6 +12,7 @@ carries the paired entry and the release notes.
 
 ### Fixed
 
+- **Next.js is bumped from 16.4.3 to 16.4.5.** That release fixes GHSA-pc58-hwjq-p385 (cross-client response injection and disclosure in self-hosted applications that forward fetched responses), which the console proxy does, and six medium advisories published 2026-11-16 to 2026-11-19 (GHSA-f3mh-rxg3-f5g2, GHSA-7qx7-33qx-rqx2, GHSA-rhh4-g77r-r9qj, GHSA-vvgp-ww4w-46vf, GHSA-vc7v-qv4w-wrv8, GHSA-mfr8-8qww-v76h).
 - **A rejected provider key reads as a rejected key, not as an outage.** When the gateway answers
   `provider_auth_failed`, the console says the provider rejected its API key, names the key to
   update in Providers, and shows the gateway's detail. The same applies to ingest errors in the
