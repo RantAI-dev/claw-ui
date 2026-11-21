@@ -50,6 +50,34 @@ describe("describeIngestError", () => {
       /could not reach the RantaiClaw gateway\. Retry/,
     );
   });
+  it("names a rejected provider key on a 502 and keeps the gateway detail", () => {
+    const detail = "provider custom:http://h/v1 rejected the credential (HTTP 401)";
+    expect(err(502, { error: "provider_auth_failed", detail })).toBe(
+      `The provider rejected its API key; update the key in Providers. (${detail})`,
+    );
+  });
+  it("never echoes the raw response body as the detail of a rejected key", () => {
+    const body = { error: "provider_auth_failed" };
+    expect(err(502, body, JSON.stringify(body))).toBe(
+      "The provider rejected its API key; update the key in Providers.",
+    );
+  });
+  it("gives the key sentence alone for a rejected key with no detail, whatever the body text", () => {
+    expect(err(502, { error: "provider_auth_failed" })).toBe(
+      "The provider rejected its API key; update the key in Providers.",
+    );
+    expect(err(502, { error: "provider_auth_failed" }, "  rejected  \n")).toBe(
+      "The provider rejected its API key; update the key in Providers.",
+    );
+  });
+  it("keeps the unreachable sentence for a gateway_unreachable 502", () => {
+    expect(err(502, { error: "gateway_unreachable" })).toBe(
+      "The console could not reach the RantaiClaw gateway. Retry once it is back.",
+    );
+  });
+  it("does not name the key for a non-JSON 502 body", () => {
+    expect(err(502, null, "Bad Gateway", "Bad Gateway")).toBe("Bad Gateway");
+  });
   it("passes a 404 detail through and falls back to the body text then the status", () => {
     expect(err(404, { error: "not_found", detail: "group abc not found" })).toBe("group abc not found");
     expect(err(500, null, "<html>boom</html>", "Internal Server Error")).toBe("<html>boom</html>");
