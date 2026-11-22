@@ -10,15 +10,21 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.33] — 2026-11-22
+
+Paired with RantaiClaw `v0.36.0-alpha`. The rejected-key text needs that runtime's
+`provider_auth_failed` answers on every route. On an older gateway the console still shows the
+outage text for answers it does not recognise.
+
 ### Fixed
 
-- **Next.js is bumped from 16.4.3 to 16.4.5.** That release fixes GHSA-pc58-hwjq-p385 (cross-client response injection and disclosure in self-hosted applications that forward fetched responses), which the console proxy does, and six medium advisories published 2026-11-16 to 2026-11-19 (GHSA-f3mh-rxg3-f5g2, GHSA-7qx7-33qx-rqx2, GHSA-rhh4-g77r-r9qj, GHSA-vvgp-ww4w-46vf, GHSA-vc7v-qv4w-wrv8, GHSA-mfr8-8qww-v76h).
+- **Next.js is bumped from 16.4.3 to 16.4.5.** That release fixes GHSA-pc58-hwjq-p385 (cross-client response injection and disclosure in self-hosted applications that forward fetched responses), which the console proxy does, and six medium advisories published 2026-11-16 to 2026-11-19 (GHSA-f3mh-rxg3-f5g2, GHSA-7qx7-33qx-rqx2, GHSA-rhh4-g77r-r9qj, GHSA-vvgp-ww4w-46vf, GHSA-vc7v-qv4w-wrv8, GHSA-mfr8-8qww-v76h). (#148)
 - **A rejected provider key reads as a rejected key, not as an outage.** When the gateway answers
   `provider_auth_failed`, the console says the provider rejected its API key, names the key to
   update in Providers, and shows the gateway's detail. The same applies to ingest errors in the
   knowledge base. A 502 without that code, a 503 and a 504 keep the outage text. The cron panel
   also refreshes its run history after a failed run, so the failed attempt appears without a
-  reload.
+  reload. (#147)
 - **The console lists models for a provider id that contains a slash.** The `/api/rc` proxy
   rejected any path segment containing `/` or `\`, so a custom provider id such as
   `custom:https://host/v1` got `400 invalid_path` when the Providers page asked for its models
@@ -27,7 +33,7 @@ carries the paired entry and the release notes.
   one path segment. Memory keys, knowledge-base document ids and other ids that contain a slash
   work the same way. An empty segment, a segment that contains a `.` or `..` path component (for
   example `../../pair` or `a/../b`), and anything that would resolve outside `/api/v1/` or off the
-  gateway origin are still refused.
+  gateway origin are still refused. (#146)
 
 ## [0.3.32] — 2026-11-15
 
