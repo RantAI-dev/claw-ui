@@ -1,5 +1,6 @@
 // Parses the SSE stream from /api/chat (which relays the gateway's agent/chat
 // event-stream). Each SSE frame is `data: <json>` with a discriminated `type`.
+import { PROVIDER_AUTH_FAILED, providerKeyRejectedMessage } from "./api";
 import type { ChatEvent } from "./types";
 
 export interface ChatRequest {
@@ -43,7 +44,13 @@ export async function streamChat(
     let detail = res.statusText;
     try {
       const j = await res.json();
-      detail = j?.detail || j?.error || detail;
+      // The gateway answers a rejected key with 502 and the code in `error`,
+      // not a gateway outage. Use the same sentence as the other panels.
+      if (j?.error === PROVIDER_AUTH_FAILED) {
+        detail = providerKeyRejectedMessage(j.detail || detail);
+      } else {
+        detail = j?.detail || j?.error || detail;
+      }
     } catch {
       /* ignore */
     }
@@ -113,7 +120,16 @@ export async function streamChat(
         // Dispatch OUTSIDE the JSON try: an exception thrown by the React event
         // handler must propagate, not be swallowed and misread as a bad frame
         // (which left the stream running with corrupt state).
-        if (ev.type === "error") sawError = true;
+        if (ev.type === "error") {
+          sawError = true;
+          // The SSE error frame has no `code` field: the gateway prefixes the
+          // message with the exact code. Strip that prefix (not a detail) and
+          // use the same sentence as the other panels.
+          const prefix = `${PROVIDER_AUTH_FAILED}:`;
+          if (ev.message.startsWith(prefix)) {
+            ev = { type: "error", message: providerKeyRejectedMessage(ev.message.slice(prefix.length)) };
+          }
+        }
         onEvent(ev);
         if (ev.type === "done") return;
       }

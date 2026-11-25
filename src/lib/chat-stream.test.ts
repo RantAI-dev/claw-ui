@@ -2,6 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { streamChat } from "./chat-stream";
 import type { ChatEvent } from "./types";
 
+const SENTENCE = "The provider rejected its API key; update the key in Providers.";
+const DETAIL = "provider example.com rejected the credential (HTTP 401)";
+const REJECTED_KEY_MESSAGE = `${SENTENCE} (${DETAIL})`;
+
 function frame(obj: unknown): string {
   return `data: ${JSON.stringify(obj)}\n\n`;
 }
@@ -77,6 +81,43 @@ describe("streamChat", () => {
     // The synthetic "ended before completing" fallback must NOT overwrite it.
     expect(errors.some((e) => e.message.includes("ended before completing"))).toBe(false);
     expect(events.at(-1)?.type).toBe("done");
+  });
+
+  it("names a rejected key and shows the gateway detail when the SSE error carries the auth-failed code", async () => {
+    // The gateway prefixes the SSE error message with the exact `provider_auth_failed`
+    // code. The code is not a detail: the operator must see the shared sentence and
+    // the credential failure text that follows it.
+    stubFetch([frame({ type: "error", message: `provider_auth_failed: ${DETAIL}` })]);
+    const events = await collect();
+    const errors = events.filter((e) => e.type === "error") as Extract<ChatEvent, { type: "error" }>[];
+    expect(errors.some((e) => e.message === REJECTED_KEY_MESSAGE)).toBe(true);
+  });
+
+  it("names a rejected key and shows the gateway detail when a 502 answer carries the auth-failed code", async () => {
+    // Before the stream starts there is no SSE frame: the rejection is a 502 body
+    // with the code in `error` and the reason in `detail`.
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response(JSON.stringify({ error: "provider_auth_failed", detail: DETAIL }), {
+          status: 502,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const events = await collect();
+    const errors = events.filter((e) => e.type === "error") as Extract<ChatEvent, { type: "error" }>[];
+    expect(errors.some((e) => e.message === `Gateway error (502): ${REJECTED_KEY_MESSAGE}`)).toBe(true);
+  });
+
+  it("keeps another stream error's own text unchanged", async () => {
+    // Only the exact auth-failed code triggers the sentence; a different failure
+    // must reach the operator verbatim.
+    const message = "provider rate limited; retry shortly";
+    stubFetch([frame({ type: "error", message })]);
+    const events = await collect();
+    const errors = events.filter((e) => e.type === "error") as Extract<ChatEvent, { type: "error" }>[];
+    expect(errors.some((e) => e.message === message)).toBe(true);
+    expect(errors.some((e) => e.message.includes("rejected its API key"))).toBe(false);
   });
 
   it("rejects when the request fails before the stream starts", async () => {
