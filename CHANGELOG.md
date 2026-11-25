@@ -10,6 +10,14 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Chat shows a rejected provider key as a rejected key, not as raw gateway text.** When a turn fails
+  because the provider refused its credential, chat now says the provider rejected its API key, names
+  where to update it, and shows the gateway's detail. This covers both the streamed error frame and a
+  502 before the stream starts, matching the sentence already used by the other panels. Other errors
+  keep their original text.
+
 ## [0.3.33] — 2026-11-22
 
 Paired with RantaiClaw `v0.36.0-alpha`. The rejected-key text needs that runtime's
