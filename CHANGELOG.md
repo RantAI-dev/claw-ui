@@ -10,13 +10,17 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.34] — 2026-11-25
+
+Paired with RantaiClaw `v0.37.0-alpha`. The chat rejected-key sentence needs that runtime's `provider_auth_failed` error frames. On an older gateway the console still shows the raw failure text for answers it does not recognise.
+
 ### Fixed
 
 - **Chat shows a rejected provider key as a rejected key, not as raw gateway text.** When a turn fails
   because the provider refused its credential, chat now says the provider rejected its API key, names
   where to update it, and shows the gateway's detail. This covers both the streamed error frame and a
   502 before the stream starts, matching the sentence already used by the other panels. Other errors
-  keep their original text.
+  keep their original text. (#150)
 
 ## [0.3.33] — 2026-11-22
 
