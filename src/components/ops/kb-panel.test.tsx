@@ -52,6 +52,7 @@ vi.mock("./doc-viewer-drawer", () => ({
 }));
 
 import { ApiError } from "@/lib/api";
+import { PERSONA_CHANGED } from "@/lib/console";
 import { getFileTypeIcon } from "@/lib/file-type";
 import { KbPanel } from "./kb-panel";
 
@@ -420,6 +421,35 @@ describe("KbPanel keyboard, touch and semantics", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /^Delete$/ }));
     await waitFor(() => expect(screen.queryByRole("heading", { level: 3, name: "Product Docs" })).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Name")));
+  });
+});
+
+describe("KbPanel delete and the persona's always-on list", () => {
+  it("announces PERSONA_CHANGED after a successful group delete, from the list and the detail", async () => {
+    const heard = vi.fn();
+    window.addEventListener(PERSONA_CHANGED, heard);
+    kbDeleteGroup.mockResolvedValue({ id: "g-legal", deleted: true });
+    kbGroups
+      .mockResolvedValueOnce(GROUPS) // mount
+      .mockResolvedValueOnce(GROUPS.slice(1)) // refresh after the list delete
+      .mockResolvedValue(GROUPS.slice(1, 2)); // refresh after the detail delete
+    render(<KbPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete knowledge base Legal" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Delete$/ }));
+    await waitFor(() => expect(kbDeleteGroup).toHaveBeenCalledWith("g-legal"));
+    await waitFor(() => expect(heard).toHaveBeenCalledTimes(1));
+
+    // Same contract from the detail view: its delete button must broadcast too,
+    // or the shell's cached always-on ids keep the dead group in the next send.
+    kbDeleteGroup.mockResolvedValue({ id: "g-product", deleted: true });
+    await openProductDocs();
+    fireEvent.click(screen.getByRole("button", { name: "Delete knowledge base" }));
+    const d2 = await screen.findByRole("dialog");
+    fireEvent.click(within(d2).getByRole("button", { name: /^Delete$/ }));
+    await waitFor(() => expect(kbDeleteGroup).toHaveBeenNthCalledWith(2, "g-product"));
+    await waitFor(() => expect(heard).toHaveBeenCalledTimes(2));
+    window.removeEventListener(PERSONA_CHANGED, heard);
   });
 });
 

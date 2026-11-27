@@ -68,9 +68,11 @@ export const NAV: NavDef[] = [
 export const SKILLS_CHANGED = "rantaiclaw:skills-changed";
 
 /**
- * Broadcast by the Persona panel after a successful save. The chat rail's agent
- * name/role/initials are a snapshot the console shell takes once at load, so
- * without this the rail shows the old identity until a full reload.
+ * Broadcast by the Persona panel after a successful save, and by the KB panel
+ * after a successful group delete (the shell refetches the persona on it, so
+ * the deleted group leaves the shell's cached always-on KB ids). The chat
+ * rail's agent name/role/initials are a snapshot the console shell takes once
+ * at load, so without this the rail shows the old identity until a full reload.
  */
 export const PERSONA_CHANGED = "rantaiclaw:persona-changed";
 

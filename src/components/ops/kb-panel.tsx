@@ -25,6 +25,7 @@ import {
   FileScan,
 } from "lucide-react";
 import { api, describeApiError } from "@/lib/api";
+import { PERSONA_CHANGED } from "@/lib/console";
 import { useAsync } from "@/hooks/use-async";
 import {
   acceptAttr,
@@ -277,6 +278,9 @@ function KbList({
     try {
       await api.kbDeleteGroup(deleteTarget.id);
       toast.success(`Deleted “${name}”`);
+      // The shell caches the persona's always-on KB ids; on this event it
+      // refetches the persona, so the deleted group leaves the next send.
+      window.dispatchEvent(new CustomEvent(PERSONA_CHANGED));
       // Refresh before closing the confirm: its opener (the row's Delete) is
       // gone by the time the Modal tries to hand focus back.
       await groups.refresh();
@@ -895,6 +899,9 @@ function KbDetail({
     try {
       await api.kbDeleteGroup(group.id);
       toast.success(`Deleted “${group.name}”`);
+      // Same broadcast as the list delete: the shell must drop this group
+      // from its cached always-on KB ids via the persona refetch.
+      window.dispatchEvent(new CustomEvent(PERSONA_CHANGED));
       await onDeleted();
     } catch (e) {
       toast.error(`Delete failed: ${errMsg(e)}`);
