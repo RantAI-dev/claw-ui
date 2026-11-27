@@ -10,6 +10,19 @@ carries the paired entry and the release notes.
 
 ## [Unreleased]
 
+## [0.3.35] — 2026-11-27
+
+Paired with RantaiClaw `v0.38.0-alpha`. The persona refresh after a knowledge-base group
+delete needs that runtime's filtered `GET /api/v1/personality`. On an older gateway the
+persona may still echo the id of a deleted group.
+
+### Fixed
+
+- **Deleting a knowledge-base group refreshes the persona in the same session.** After a
+  successful group delete the console dispatches `PERSONA_CHANGED`, so it refetches the
+  persona instead of keeping the deleted group id in the always-on knowledge-base list
+  and losing all knowledge-base context on the next chat search. (#152)
+
 ## [0.3.34] — 2026-11-25
 
 Paired with RantaiClaw `v0.37.0-alpha`. The chat rejected-key sentence needs that runtime's `provider_auth_failed` error frames. On an older gateway the console still shows the raw failure text for answers it does not recognise.
